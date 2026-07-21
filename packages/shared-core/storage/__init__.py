@@ -113,3 +113,31 @@ def purge_asset_file(asset_id: str) -> bool:
     f.unlink()
     update_asset_meta(asset_id, {"arquivo_removido": True})
     return True
+
+
+def registrar_interacao(produto: str, *, cliente: str | None = None,
+                        segmento: str | None = None, input: dict | None = None,
+                        output: dict | None = None, modelo: str | None = None,
+                        handoff_whatsapp: bool | None = None) -> int:
+    """Registra UMA interação REAL (não-mock) na tabela interacoes — fundação
+    honesta pro tuning futuro. NÃO é tuning: só guarda input/output/segmento/
+    handoff pra quando houver volume o histórico já existir. Devolve o id.
+    Fica intocada enquanto tudo é mock (o chamador gateia por não-mock)."""
+    with conn() as c:
+        cur = c.execute(
+            "INSERT INTO interacoes (ts, produto, cliente, segmento, input, output, modelo, handoff_whatsapp) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (_agora(), produto, cliente, segmento,
+             json.dumps(input, ensure_ascii=False) if input is not None else None,
+             json.dumps(output, ensure_ascii=False) if output is not None else None,
+             modelo,
+             None if handoff_whatsapp is None else int(handoff_whatsapp)),
+        )
+    return cur.lastrowid
+
+
+def contar_interacoes(produto: str | None = None) -> int:
+    with conn() as c:
+        if produto:
+            return c.execute("SELECT COUNT(*) FROM interacoes WHERE produto=?", (produto,)).fetchone()[0]
+        return c.execute("SELECT COUNT(*) FROM interacoes").fetchone()[0]

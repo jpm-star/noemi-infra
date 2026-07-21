@@ -52,5 +52,19 @@ def _migrar(c: sqlite3.Connection) -> None:
           criado_em     TEXT NOT NULL,
           atualizado_em TEXT NOT NULL
         );
+        -- Log de interação REAL (não-mock): fundação honesta pra decidir tuning
+        -- no futuro (quando houver volume). NÃO é tuning — só guarda o histórico
+        -- pra não precisar reconstruir depois. Fica vazio enquanto tudo é mock.
+        CREATE TABLE IF NOT EXISTS interacoes (
+          id        INTEGER PRIMARY KEY AUTOINCREMENT,
+          ts        TEXT NOT NULL,
+          produto   TEXT NOT NULL,   -- 'motor-b-video' | 'assistente-virtual'
+          cliente   TEXT,            -- owner/tenant
+          segmento  TEXT,            -- vertical, quando aplicável
+          input     TEXT,            -- entrada recebida (JSON)
+          output    TEXT,            -- saída gerada (JSON)
+          modelo    TEXT,            -- provider/modelo real usado
+          handoff_whatsapp INTEGER   -- 1/0/NULL (só faz sentido no Assistente)
+        );
         """
     )

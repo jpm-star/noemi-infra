@@ -101,6 +101,21 @@ normalização é otimização, nunca condição de correção. Código: `media.
 
 Rodar manual: `.venv/bin/python apps/motor-b-video/retention.py`
 
+## Logging de interação real (fundação pra tuning futuro — NÃO é tuning)
+
+Tabela `interacoes` (SQLite `data/noemi.db`): `ts, produto, cliente, segmento,
+input, output, modelo, handoff_whatsapp`. `storage.registrar_interacao(...)` grava
+UMA interação **real**. O worker do Motor B só registra quando o modelo **não é
+mock** (`out["modelo"]` não começa com `mock`) — então a tabela fica **vazia até a
+1ª geração Higgsfield de verdade** (`MOCK_MODE=false`). É fire-and-forget: falha de
+log nunca reverte um job concluído. Objetivo único: quando houver volume pra decidir
+tuning, o histórico já existe — sem reconstruir.
+
+- **Motor B** loga na SQLite própria (não no Postgres de prod — CLAUDE.md proíbe tocá-lo).
+- **Assistente Virtual** (sdr-motor): quando integrar, loga no Postgres dele que já
+  existe, com o mesmo shape + `handoff_whatsapp` preenchido (Camada 2 segue adiada).
+- Sem ClickHouse, sem Langfuse (Camada 2 adiada, gatilhos documentados acima).
+
 ## Deploy / operação
 
 ```bash

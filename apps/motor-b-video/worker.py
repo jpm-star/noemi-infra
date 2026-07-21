@@ -55,6 +55,21 @@ async def processar(job: dict) -> None:
             storage.delete_asset(asset_video["id"])  # cancelado no meio: sem asset órfão
             return
         log_span("motor_b.job", job=jid, ok=True, asset_video=asset_video["id"])
+        # logging de interação REAL (não-mock): fundação honesta pro tuning futuro.
+        # Mock (modelo mock/*) NUNCA entra — a tabela fica vazia até a 1ª geração
+        # Higgsfield de verdade (MOCK_MODE=false). NÃO é tuning, só guarda histórico.
+        # Fire-and-forget: o job já está completed; falha aqui não pode reverter isso.
+        if not out["modelo"].startswith("mock"):
+            try:
+                cfg = job["config"] or {}
+                storage.registrar_interacao(
+                    produto=jobs.PRODUTO, cliente=origem.get("owner"),
+                    segmento=cfg.get("segmento"),
+                    input={"prompt": cfg.get("prompt"), "config": cfg},
+                    output={"asset_video": asset_video["id"], "meta": out.get("meta")},
+                    modelo=out["modelo"])
+            except Exception as e:
+                log_span("motor_b.interacao", job=jid, ok=False, erro=str(e))
     except Exception as e:
         tentativas = job["tentativas"] + 1
         if tentativas < jobs.MAX_TENTATIVAS:
