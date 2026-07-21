@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Motor B — Vídeo IA · Noemi</title>
+<style>
+  :root { --bg:#0b0f1a; --card:#131a2b; --borda:#232d45; --texto:#e6e9f0; --fraco:#8b93a7; --acento:#7c5cff; --ok:#2dd4a7; --erro:#ff6b6b; }
+  * { box-sizing:border-box; margin:0 }
+  body { font-family:system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--texto); min-height:100vh; display:grid; place-items:center; padding:24px }
+  main { width:min(560px,100%) }
+  h1 { font-size:1.5rem; margin-bottom:4px } h1 span{color:var(--acento)}
+  p.sub { color:var(--fraco); margin-bottom:24px; font-size:.92rem }
+  .card { background:var(--card); border:1px solid var(--borda); border-radius:14px; padding:20px; margin-bottom:16px }
+  label { display:block; font-size:.85rem; color:var(--fraco); margin:10px 0 6px }
+  input[type=text] { width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--borda); background:var(--bg); color:var(--texto) }
+  input[type=file] { width:100%; color:var(--fraco); font-size:.9rem }
+  button { margin-top:16px; width:100%; padding:12px; border:0; border-radius:10px; background:var(--acento); color:#fff; font-size:1rem; font-weight:600; cursor:pointer }
+  button:disabled { opacity:.45; cursor:default }
+  #timeline { display:none; gap:6px; flex-wrap:wrap }
+  .chip { padding:6px 12px; border-radius:999px; font-size:.78rem; border:1px solid var(--borda); color:var(--fraco) }
+  .chip.on { border-color:var(--acento); color:var(--texto); background:rgba(124,92,255,.15) }
+  .chip.done { border-color:var(--ok); color:var(--ok) }
+  .chip.bad { border-color:var(--erro); color:var(--erro) }
+  #resultado { display:none } video { width:100%; border-radius:10px; margin-top:8px }
+  #msg { margin-top:12px; font-size:.85rem; color:var(--fraco); min-height:1.2em }
+  a { color:var(--acento) }
+</style>
+</head>
+<body>
+<main>
+  <h1>🎥 Motor B — <span>Vídeo IA</span></h1>
+  <p class="sub">Envie fotos ou vídeo bruto do imóvel/produto e receba o vídeo pronto.</p>
+
+  <div class="card">
+    <label>Seu nome / cliente</label>
+    <input type="text" id="owner" placeholder="ex.: Rodrigo Imóveis" maxlength="120">
+    <label>Mídia de origem (imagem ou vídeo)</label>
+    <input type="file" id="arquivo" accept="image/*,video/*">
+    <button id="gerar">Gerar vídeo</button>
+    <div id="msg"></div>
+  </div>
+
+  <div class="card" id="painelStatus" style="display:none">
+    <label>Progresso do job <code id="jid"></code></label>
+    <div id="timeline" style="display:flex"></div>
+  </div>
+
+  <div class="card" id="resultado">
+    <label>Vídeo pronto ✓</label>
+    <video id="player" controls></video>
+    <p><a id="baixar" download>⬇ Baixar vídeo</a></p>
+  </div>
+</main>
+<script>
+const ESTADOS = ["queued","uploading","processing","completed"];
+const $ = id => document.getElementById(id);
+
+function pintarTimeline(estado) {
+  const t = $("timeline"); t.innerHTML = "";
+  const idx = ESTADOS.indexOf(estado);
+  for (const e of ESTADOS) {
+    const c = document.createElement("span");
+    c.className = "chip" + (e === estado ? " on" : ESTADOS.indexOf(e) < idx ? " done" : "");
+    if (estado === "completed") c.className = "chip done";
+    c.textContent = e; t.appendChild(c);
+  }
+  if (["failed","cancelled","retry"].includes(estado)) {
+    const c = document.createElement("span");
+    c.className = "chip " + (estado === "retry" ? "on" : "bad");
+    c.textContent = estado; t.appendChild(c);
+  }
+}
+
+async function acompanhar(jobId) {
+  $("painelStatus").style.display = "block"; $("jid").textContent = jobId.slice(0,8);
+  while (true) {
+    const r = await fetch(`/api/jobs/${jobId}`); const job = await r.json();
+    pintarTimeline(job.estado);
+    if (job.estado === "completed") {
+      $("resultado").style.display = "block";
+      $("player").src = job.video_url; $("baixar").href = job.video_url;
+      $("msg").textContent = ""; return;
+    }
+    if (["failed","cancelled"].includes(job.estado)) {
+      $("msg").textContent = job.estado === "failed" ? `Falhou: ${job.erro ?? "erro desconhecido"}` : "Cancelado.";
+      return;
+    }
+    await new Promise(ok => setTimeout(ok, 1500));
+  }
+}
+
+$("gerar").onclick = async () => {
+  const f = $("arquivo").files[0];
+  if (!f) { $("msg").textContent = "Escolha um arquivo primeiro."; return; }
+  $("gerar").disabled = true; $("resultado").style.display = "none";
+  $("msg").textContent = "Enviando mídia…";
+  try {
+    const fd = new FormData();
+    fd.append("file", f); fd.append("owner", $("owner").value || "cliente");
+    const up = await fetch("/api/upload", { method: "POST", body: fd });
+    if (!up.ok) throw new Error((await up.json()).detail);
+    const { asset_id } = await up.json();
+    $("msg").textContent = "Na fila de geração…";
+    const cj = await fetch("/api/jobs", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ asset_id }) });
+    if (!cj.ok) throw new Error((await cj.json()).detail);
+    const { job_id } = await cj.json();
+    await acompanhar(job_id);
+  } catch (e) { $("msg").textContent = "Erro: " + e.message; }
+  finally { $("gerar").disabled = false; }
+};
+</script>
+</body>
+</html>
