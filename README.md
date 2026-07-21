@@ -33,12 +33,21 @@ DNS existente aponta pra `2.24.120.204`. Escolhas dentro do que já existe, sem 
   placeholder do Caddy até o JP provisionar um subdomínio.
 - Intocados por serem de outros projetos: `garimp`, `n8n`, `painel`, `contabilidade`, `influia`.
 
-### Site Builder — ferramenta de teste interna
-`apps/motor-isca-sites/builder_web.py` (systemd `noemi-site-builder`, localhost:8020):
-formulário de briefing → dirige o pipeline REAL do motor-site (`stub→template→local`,
-sem LLM) → publica em `go.noemi.digital/<slug>/` e devolve o link. Acesso:
-`ssh -L 8020:127.0.0.1:8020 root@2.24.120.204` → `http://localhost:8020`. Screenshot do
-preview foi omitido de propósito (exige headless browser ~400MB — não "barato"); mostra o link.
+### Site Studio — ferramenta de produção do JP (com login)
+`apps/motor-isca-sites/builder_web.py` (systemd `noemi-site-builder`, 127.0.0.1:8020,
+exposto via Caddy). **URL: `https://go.noemi.digital/studio`** (HTTPS, autenticado).
+Formulário de briefing → pipeline REAL do motor-site (`stub→template→local`, sem LLM)
+→ publica em `go.noemi.digital/<slug>/`, com **preview em iframe + histórico** dos
+sites gerados (tabela `sites_gerados`). Frontend com identidade própria (dark/roxo),
+não admin genérico. Preview por screenshot foi omitido (headless browser ~400MB — o
+iframe do site real cobre melhor e de graça).
+
+**Auth** (`auth.py`, single-user, stdlib): senha `pbkdf2_hmac` + cookie de sessão
+`hmac`-assinado (30d, httponly/secure/samesite=lax). Só o hash mora em
+`data/builder_auth.json` (chmod 600) — nunca texto puro. Trocar a senha:
+`BUILDER_PASSWORD=nova .venv/bin/python apps/motor-isca-sites/auth.py set-password`.
+Usuário: `joaop`. Rotas todas sob `/studio` (Caddy encaminha o prefixo; app segue
+em localhost, Caddy é a borda TLS). `/studio` sem login → 303 pra `/studio/login`.
 
 Camadas compartilhadas em `packages/shared-core/`: `ai/` (interface fixa `video.generate(asset, config)` + cost tracking), `storage/` (Asset: id/owner/produto/bucket/mime/hash/metadata, SQLite + bucket em disco), `obs/` (`log_span()` fire-and-forget → `data/obs.jsonl`).
 

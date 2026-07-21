@@ -1,12 +1,12 @@
 [Unit]
-Description=Site Builder — frontend de teste interno do motor-isca (localhost:8020)
+Description=Site Studio — ferramenta de produção do JP (auth, via Caddy go.noemi.digital/studio)
 After=network.target
 
 [Service]
 WorkingDirectory=/root/noemi-infra
 EnvironmentFile=-/root/noemi-infra/.env
-# Ferramenta INTERNA: escuta só em 127.0.0.1 (sem auth). Acesso via túnel SSH:
-#   ssh -L 8020:127.0.0.1:8020 root@2.24.120.204  → http://localhost:8020
+# App em 127.0.0.1; o Caddy é a borda pública TLS (handle /studio/* → :8020) e a
+# auth (auth.py) protege as rotas. Seed da senha: BUILDER_PASSWORD=... auth.py set-password
 ExecStart=/root/noemi-infra/.venv/bin/uvicorn builder_web:app --app-dir apps/motor-isca-sites --host 127.0.0.1 --port 8020
 Restart=always
 RestartSec=3

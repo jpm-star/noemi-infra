@@ -66,5 +66,14 @@ def _migrar(c: sqlite3.Connection) -> None:
           modelo    TEXT,            -- provider/modelo real usado
           handoff_whatsapp INTEGER   -- 1/0/NULL (só faz sentido no Assistente)
         );
+        -- Histórico do Site Studio (motor-isca): cada site publicado pelo JP.
+        CREATE TABLE IF NOT EXISTS sites_gerados (
+          id        INTEGER PRIMARY KEY AUTOINCREMENT,
+          cliente   TEXT NOT NULL,
+          segmento  TEXT,
+          slug      TEXT NOT NULL,
+          url       TEXT NOT NULL,
+          criado_em TEXT NOT NULL
+        );
         """
     )
