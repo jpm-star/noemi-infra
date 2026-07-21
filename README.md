@@ -2,10 +2,30 @@
 
 | Produto | Onde | URL | Status |
 |---|---|---|---|
-| 🎥 Motor B — Vídeo IA | `apps/motor-b-video/` (porta **8010**) | video.noemi.digital | funcional em MOCK |
-| 🌐 Sites (motor-isca) | ponteiro → `/root/motor-site` | videoshiggs.noemi.digital (+ alias sites.) | ativo (fora do monorepo) |
-| 🖼️ Motor Imagem | `apps/motor-imagem/` (porta 8011 reservada) | imagem.noemi.digital | stub/placeholder |
+| 🎥 Motor B — Vídeo IA | `apps/motor-b-video/` (porta **8010**) | **videoshiggs.noemi.digital** (tem DNS) | funcional em MOCK, no ar |
+| 🌐 Sites (motor-isca) | ponteiro → `/root/motor-site` | **go.noemi.digital** (+ alias sites.) | ativo (fora do monorepo) |
+| 🧪 Site Builder (teste) | `apps/motor-isca-sites/builder_web.py` (porta **8020**) | localhost (túnel SSH) | ferramenta interna |
+| 🖼️ Motor Imagem | `apps/motor-imagem/` (porta 8011 reservada) | imagem.noemi.digital (sem DNS ainda) | stub/placeholder |
 | 👁️ Análise (Analista) | `apps/painel-operacoes/analista.py` | — | contrato mínimo (hardcoded Motor B) |
+
+### Subdomínios (decisão final 2026-07-21)
+DNS existente aponta pra `2.24.120.204`. Escolhas dentro do que já existe, sem pedir DNS novo:
+- **`videoshiggs` → Motor B** (o nome já casa com vídeo/Higgsfield). `video.noemi.digital`
+  fica no mesmo bloco Caddy, pronto pra quando/se ganhar DNS.
+- **`go` → motor-isca-sites** (único livre da lista). Isca migrou de videoshiggs pra cá;
+  os sites em `/var/www/sites` agora servem em `go.noemi.digital/<slug>/`.
+- **`motor` e `api` NÃO estão livres** — `motor`→motor-arbitragem (:8082), `api`→evolution
+  (:8080). Verificado com `curl -I`/`dig`; não tocados.
+- **Motor Imagem** ficou sem DNS dedicado (só `go` era livre, foi pro isca) — segue no
+  placeholder do Caddy até o JP provisionar um subdomínio.
+- Intocados por serem de outros projetos: `garimp`, `n8n`, `painel`, `contabilidade`, `influia`.
+
+### Site Builder — ferramenta de teste interna
+`apps/motor-isca-sites/builder_web.py` (systemd `noemi-site-builder`, localhost:8020):
+formulário de briefing → dirige o pipeline REAL do motor-site (`stub→template→local`,
+sem LLM) → publica em `go.noemi.digital/<slug>/` e devolve o link. Acesso:
+`ssh -L 8020:127.0.0.1:8020 root@2.24.120.204` → `http://localhost:8020`. Screenshot do
+preview foi omitido de propósito (exige headless browser ~400MB — não "barato"); mostra o link.
 
 Camadas compartilhadas em `packages/shared-core/`: `ai/` (interface fixa `video.generate(asset, config)` + cost tracking), `storage/` (Asset: id/owner/produto/bucket/mime/hash/metadata, SQLite + bucket em disco), `obs/` (`log_span()` fire-and-forget → `data/obs.jsonl`).
 
