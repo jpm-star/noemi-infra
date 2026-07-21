@@ -16,7 +16,7 @@ sys.path.insert(0, str(_AQUI.parents[1] / "packages"))  # shared_core (symlink)
 sys.path.insert(0, str(_AQUI))
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 import jobs
@@ -123,6 +123,51 @@ def baixar_asset(asset_id: str):
         raise HTTPException(410, "arquivo do asset não está mais no bucket")
     return FileResponse(caminho, media_type=asset["mime"],
                         filename=f"{asset['id']}.{asset['mime'].split('/')[-1]}")
+
+
+@app.post("/api/jobs/{job_id}/aprovar")
+def aprovar_job(job_id: str, corpo: dict | None = None) -> dict:
+    """Marca se o cliente aceitou o vídeo de primeira (taxa de aprovação)."""
+    aprovado = True if corpo is None else bool(corpo.get("aprovado", True))
+    if not jobs.marcar_aprovado(job_id, aprovado):
+        raise HTTPException(404, "job não encontrado ou ainda não concluído")
+    return {"job_id": job_id, "aprovado": aprovado}
+
+
+@app.get("/api/dashboard")
+def dashboard_dados() -> dict:
+    return jobs.metricas()
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+def dashboard_pagina() -> str:
+    return _DASHBOARD_HTML
+
+
+_DASHBOARD_HTML = """<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Motor B — Dashboard</title>
+<style>:root{color-scheme:dark}*{box-sizing:border-box;margin:0}body{font-family:system-ui,sans-serif;
+background:#0b0f1a;color:#e6e9f0;padding:32px;max-width:760px;margin:0 auto}h1{font-size:1.3rem;margin-bottom:4px}
+h1 span{color:#7c5cff}p.sub{color:#8b93a7;font-size:.9rem;margin-bottom:24px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px}
+.card{background:#131a2b;border:1px solid #232d45;border-radius:14px;padding:20px}
+.card .v{font-size:2rem;font-weight:800;color:#fff}.card .l{color:#8b93a7;font-size:.82rem;margin-top:4px}
+.na{color:#5b647d;font-size:1.1rem;font-weight:600}</style></head><body>
+<h1>🎥 Motor B — <span>Dashboard</span></h1><p class="sub">Indicadores de produção de vídeo.</p>
+<div class="grid" id="g"></div>
+<script>
+const fmt=(v,suf='')=>v===null||v===undefined?'<span class=na>—</span>':v+suf;
+fetch('/api/dashboard').then(r=>r.json()).then(d=>{
+  const cards=[
+    ['Vídeos produzidos',fmt(d.videos_produzidos)],
+    ['Tempo médio de geração',fmt(d.tempo_medio_s,'s')],
+    ['Custo médio',fmt(d.custo_medio_creditos,' cr')],
+    ['Taxa de aprovação',d.taxa_aprovacao===null?'<span class=na>sem avaliações</span>':(Math.round(d.taxa_aprovacao*100)+'%')],
+  ];
+  document.getElementById('g').innerHTML=cards.map(([l,v])=>
+    `<div class=card><div class=v>${v}</div><div class=l>${l}</div></div>`).join('');
+});
+</script></body></html>"""
 
 
 app.mount("/", StaticFiles(directory=_AQUI / "static", html=True))

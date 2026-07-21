@@ -85,6 +85,40 @@ def atualizar(job_id: str, estado: str, **campos) -> bool:
     return cur.rowcount > 0
 
 
+def marcar_aprovado(job_id: str, aprovado: bool) -> bool:
+    """Marca aprovação do vídeo (aceito de primeira). Só job completed; NÃO mexe
+    no estado — por isso não passa por atualizar() (que guarda terminais)."""
+    with conn() as c:
+        cur = c.execute(
+            "UPDATE jobs SET aprovado=?, atualizado_em=? WHERE id=? AND estado='completed'",
+            (1 if aprovado else 0, _agora(), job_id),
+        )
+    return cur.rowcount > 0
+
+
+def metricas() -> dict:
+    """4 indicadores do dashboard v1.1 (só motor-b)."""
+    with conn() as c:
+        r = c.execute(
+            """SELECT
+                 SUM(CASE WHEN estado='completed' THEN 1 ELSE 0 END) AS produzidos,
+                 AVG(CASE WHEN estado='completed' THEN duracao_s END) AS tempo,
+                 AVG(CASE WHEN estado='completed' THEN custo_creditos END) AS custo,
+                 SUM(CASE WHEN aprovado=1 THEN 1 ELSE 0 END) AS aprovados,
+                 SUM(CASE WHEN aprovado IS NOT NULL THEN 1 ELSE 0 END) AS avaliados
+               FROM jobs WHERE produto=?""",
+            (PRODUTO,),
+        ).fetchone()
+    avaliados = r["avaliados"] or 0
+    return {
+        "videos_produzidos": r["produzidos"] or 0,
+        "tempo_medio_s": round(r["tempo"], 1) if r["tempo"] is not None else None,
+        "custo_medio_creditos": round(r["custo"], 2) if r["custo"] is not None else None,
+        "taxa_aprovacao": round((r["aprovados"] or 0) / avaliados, 2) if avaliados else None,
+        "avaliados": avaliados,
+    }
+
+
 def _hidratar(row) -> dict | None:
     if not row:
         return None

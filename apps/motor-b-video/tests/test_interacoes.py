@@ -57,5 +57,6 @@ def test_geracao_real_registra(monkeypatch):
         row = c.execute("SELECT * FROM interacoes ORDER BY id DESC LIMIT 1").fetchone()
     assert row["produto"] == "motor-b-video" and row["cliente"] == "cliente-x"
     assert row["segmento"] == "imobiliaria" and row["modelo"] == "claude-opus-4-8"
-    assert json.loads(row["input"])["prompt"] == "casa na praia"
+    # v1.1: o prompt é CONSTRUÍDO pela classificação, não o cru do briefing
+    assert "Vídeo imobiliário" in json.loads(row["input"])["prompt"]
     assert row["handoff_whatsapp"] is None  # não aplicável ao vídeo

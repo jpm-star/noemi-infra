@@ -6,12 +6,16 @@ quando houver volume real de geração simultânea.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
+import time
 
 import jobs
 import media
+import prompt_builder
+import templates
 from shared_core import storage
-from shared_core.ai import video
+from shared_core.ai import classificacao, video
 from shared_core.obs import log_span
 
 
@@ -43,18 +47,25 @@ async def processar(job: dict) -> None:
         # bitrate consistentes). Best-effort — falha degrada pro original. Isto é o
         # que a Fase 2 (image-to-video real) enviará ao Higgsfield; hoje encolhe disco.
         origem = await asyncio.to_thread(_normalizar_origem, origem, jid)
-        if not jobs.atualizar(jid, "processing"):
+        # v1.1: classifica o imóvel → escolhe template → constrói o prompt específico,
+        # ANTES do Higgsfield. Substitui prompt genérico por prompt ajustado ao segmento.
+        cfg = await asyncio.to_thread(_planejar, origem, job)
+        if not jobs.atualizar(jid, "processing", config=json.dumps(cfg, ensure_ascii=False)):
             return
-        out = await asyncio.to_thread(video.generate, origem, job["config"])
+        t0 = time.monotonic()
+        out = await asyncio.to_thread(video.generate, origem, cfg)
+        duracao_s = round(time.monotonic() - t0, 2)
         asset_video = storage.create_asset(
             owner=origem["owner"], produto=jobs.PRODUTO, mime=out["mime"], dados=out["bytes"],
             metadata={"asset_origem": origem["id"], "job": jid,
                       "modelo": out["modelo"], **out.get("meta", {})},
         )
-        if not jobs.atualizar(jid, "completed", asset_video=asset_video["id"], erro=None):
+        if not jobs.atualizar(jid, "completed", asset_video=asset_video["id"], erro=None,
+                              duracao_s=duracao_s, custo_creditos=out.get("custo_creditos") or 0):
             storage.delete_asset(asset_video["id"])  # cancelado no meio: sem asset órfão
             return
-        log_span("motor_b.job", job=jid, ok=True, asset_video=asset_video["id"])
+        job = {**job, "config": cfg}  # o registro de interação usa o cfg enriquecido
+        log_span("motor_b.job", job=jid, ok=True, asset_video=asset_video["id"], dur_s=duracao_s)
         # logging de interação REAL (não-mock): fundação honesta pro tuning futuro.
         # Mock (modelo mock/*) NUNCA entra — a tabela fica vazia até a 1ª geração
         # Higgsfield de verdade (MOCK_MODE=false). NÃO é tuning, só guarda histórico.
@@ -77,6 +88,22 @@ async def processar(job: dict) -> None:
         else:
             jobs.atualizar(jid, "failed", tentativas=tentativas, erro=str(e))
         log_span("motor_b.job", job=jid, ok=False, tentativas=tentativas, erro=str(e))
+
+
+def _planejar(origem: dict, job: dict) -> dict:
+    """v1.1: classifica o imóvel → escolhe template → constrói o prompt específico.
+    Devolve o config ENRIQUECIDO (prompt ajustado ao segmento) que vai pro generate."""
+    base = dict(job.get("config") or {})
+    # _imagem_path só vai pra classificar (visão no modo real); NÃO entra no config
+    # persistido/logado (é interno) — o cfg de retorno usa `base`, não `entrada`.
+    entrada = {**base, "asset_origem": origem["id"], "owner": origem.get("owner"),
+               "_imagem_path": str(storage.asset_file(origem))}
+    clas = classificacao.classificar(entrada)
+    template = templates.escolher_template(clas, base.get("template"))
+    plano = prompt_builder.construir_prompt(clas, template, entrada)
+    return {**base, "prompt": plano["prompt"], "duration": plano["duration"],
+            "aspect_ratio": plano["aspect_ratio"], "template": template["id"],
+            "classificacao": clas, "segmento": base.get("segmento") or clas.get("padrao")}
 
 
 def _normalizar_origem(origem: dict, jid: str) -> dict:

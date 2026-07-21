@@ -77,3 +77,12 @@ def _migrar(c: sqlite3.Connection) -> None:
         );
         """
     )
+    # colunas do dashboard v1.1 (ALTER idempotente — CREATE não adiciona a tabela já existente)
+    for col, tipo in (("aprovado", "INTEGER"), ("duracao_s", "REAL"), ("custo_creditos", "REAL")):
+        _add_column(c, "jobs", col, tipo)
+
+
+def _add_column(c: sqlite3.Connection, tabela: str, col: str, tipo: str) -> None:
+    existentes = {r[1] for r in c.execute(f"PRAGMA table_info({tabela})")}
+    if col not in existentes:
+        c.execute(f"ALTER TABLE {tabela} ADD COLUMN {col} {tipo}")
