@@ -21,14 +21,21 @@ def generate(asset: dict, config: dict) -> dict:
     time.sleep(float(os.environ.get("MOCK_DELAY_S", "2")))
     with tempfile.TemporaryDirectory() as tmp:
         saida = Path(tmp) / "teste.mp4"
-        subprocess.run(
-            ["ffmpeg", "-y", "-loglevel", "error",
-             "-f", "lavfi", "-i", f"testsrc2=duration={duracao}:size=1280x720:rate=24",
-             "-f", "lavfi", "-i", f"sine=frequency=440:duration={duracao}",
-             "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac",
-             "-movflags", "+faststart", str(saida)],
-            check=True, capture_output=True, timeout=120,
-        )
+        try:
+            subprocess.run(
+                ["ffmpeg", "-y", "-loglevel", "error",
+                 "-f", "lavfi", "-i", f"testsrc2=duration={duracao}:size=1280x720:rate=24",
+                 "-f", "lavfi", "-i", f"sine=frequency=440:duration={duracao}",
+                 "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac",
+                 "-movflags", "+faststart", str(saida)],
+                check=True, capture_output=True, timeout=120,
+            )
+        except subprocess.CalledProcessError as e:
+            # N1: sem isto, o job registra só "exit status 1" — inútil pra debugar
+            linhas = (e.stderr or b"").decode("utf-8", "replace").strip().splitlines()
+            raise RuntimeError(f"ffmpeg falhou: {linhas[-1][:300] if linhas else 'sem stderr'}") from e
+        except subprocess.TimeoutExpired:
+            raise RuntimeError("ffmpeg passou de 120s gerando o mock")
         dados = saida.read_bytes()
     return {
         "bytes": dados,

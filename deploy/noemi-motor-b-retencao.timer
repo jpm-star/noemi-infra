@@ -1,0 +1,9 @@
+[Unit]
+Description=Roda a retenção do Motor B uma vez por dia
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target
