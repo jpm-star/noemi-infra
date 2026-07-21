@@ -19,6 +19,9 @@ import re
 import sys
 from pathlib import Path
 
+_PACOTES = str(Path(__file__).resolve().parents[2] / "packages")  # shared_core
+if _PACOTES not in sys.path:
+    sys.path.insert(0, _PACOTES)
 _MOTOR_SITE = os.environ.get("MOTOR_SITE_DIR", "/root/motor-site")
 if _MOTOR_SITE not in sys.path:
     sys.path.insert(0, _MOTOR_SITE)

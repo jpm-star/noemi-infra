@@ -15,8 +15,13 @@ import hmac
 import json
 import os
 import secrets
+import sys
 import time
 from pathlib import Path
+
+_PACOTES = str(Path(__file__).resolve().parents[2] / "packages")  # shared_core standalone
+if _PACOTES not in sys.path:
+    sys.path.insert(0, _PACOTES)
 
 USUARIO = "joaop"
 _ITERACOES = 240_000
