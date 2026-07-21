@@ -46,7 +46,6 @@ def test_fluxo_completo_upload_ate_video():
         assert r.headers["content-type"].startswith("video/mp4")
         assert r.content[4:8] == b"ftyp", "resposta não é mp4 de verdade"
 
-        assert any(j["id"] == job_id for j in c.get("/api/jobs").json())
         assert c.get("/").status_code == 200  # front no ar
 
 
@@ -65,6 +64,27 @@ def test_upload_recusa_vazio():
 def test_job_para_asset_inexistente_da_404():
     with TestClient(app) as c:
         assert c.post("/api/jobs", json={"asset_id": "nao-existe"}).status_code == 404
+
+
+def test_config_invalida_recusada_na_borda():
+    with TestClient(app) as c:
+        asset_id = _upload(c)
+        assert c.post("/api/jobs", json={"asset_id": asset_id, "config": "x"}).status_code == 422
+        assert c.post("/api/jobs", json={"asset_id": asset_id,
+                                         "config": {"duration": "abc"}}).status_code == 422
+        # duration fora da faixa é clampada, não recusada
+        r = c.post("/api/jobs", json={"asset_id": asset_id, "config": {"duration": 999999}})
+        assert r.status_code == 200
+        assert jobs.obter(r.json()["job_id"])["config"]["duration"] == 15
+
+
+def test_requeue_de_orfaos_no_startup():
+    asset = storage.create_asset("t", jobs.PRODUTO, "image/png", PNG_1PX)
+    job = jobs.criar(asset["id"])
+    jobs.atualizar(job["id"], "processing")  # simula processo morto no meio
+    assert jobs.proximo_na_fila() is None or jobs.proximo_na_fila()["id"] != job["id"]
+    assert jobs.requeue_orfaos() >= 1
+    assert jobs.obter(job["id"])["estado"] == "retry"
 
 
 def test_cancelamento_e_guarda_de_estado_terminal():

@@ -43,6 +43,11 @@ systemctl restart noemi-motor-b
 ```
 Nenhum arquivo de app muda. Front, fila, storage e painel não sabem qual provider roda.
 
+**Limite honesto da Fase 1:** o modo real é **prompt-only** — gera vídeo a partir da
+descrição (`config.prompt`), mas a mídia enviada pelo cliente ainda NÃO é anexada à
+geração. Image-to-video de verdade (foto do imóvel → vídeo) é a Fase 2:
+`media_upload`/`media_import_url` do MCP antes do `generate_video` (PENDENCIAS §4).
+
 ## Deploy / operação
 
 ```bash

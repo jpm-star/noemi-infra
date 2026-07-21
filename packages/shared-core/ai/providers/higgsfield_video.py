@@ -10,6 +10,11 @@ Pré-requisitos no .env (conta do OPERADOR, nunca do cliente final):
 
 ESTA é a função que entra no lugar do mock quando MOCK_MODE=false.
 Nenhum outro arquivo do monorepo muda.
+
+LIMITE HONESTO (Fase 1): o modo real é PROMPT-ONLY — a mídia enviada pelo
+cliente ainda NÃO é anexada à geração (só produto/metadata viram texto no
+prompt). Image-to-video de verdade = Fase 2: media_upload/media_import_url
+do MCP antes do generate_video (ver deploy/PENDENCIAS.md §4).
 """
 from __future__ import annotations
 
@@ -56,6 +61,8 @@ def generate(asset: dict, config: dict) -> dict:
         url = _extrair_url(resp)
         with urllib.request.urlopen(url, timeout=300) as r:  # baixa pro bucket local
             dados = r.read()
+        if dados[4:8] != b"ftyp":  # fallback de URL pode pegar página de status
+            raise RuntimeError(f"download de {url[:120]} não é mp4 — URL errada extraída da resposta")
         return {
             "bytes": dados,
             "mime": "video/mp4",

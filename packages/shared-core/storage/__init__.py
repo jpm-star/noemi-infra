@@ -57,3 +57,12 @@ def get_asset(asset_id: str) -> dict | None:
 
 def asset_file(asset: dict) -> Path:
     return data_dir() / "buckets" / asset["bucket"] / asset["id"]
+
+
+def delete_asset(asset_id: str) -> None:
+    asset = get_asset(asset_id)
+    if not asset:
+        return
+    asset_file(asset).unlink(missing_ok=True)
+    with conn() as c:
+        c.execute("DELETE FROM assets WHERE id=?", (asset_id,))

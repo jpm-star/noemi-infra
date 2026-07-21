@@ -74,17 +74,27 @@ function pintarTimeline(estado) {
 
 async function acompanhar(jobId) {
   $("painelStatus").style.display = "block"; $("jid").textContent = jobId.slice(0,8);
+  let falhas = 0;
   while (true) {
-    const r = await fetch(`/api/jobs/${jobId}`); const job = await r.json();
-    pintarTimeline(job.estado);
-    if (job.estado === "completed") {
-      $("resultado").style.display = "block";
-      $("player").src = job.video_url; $("baixar").href = job.video_url;
-      $("msg").textContent = ""; return;
-    }
-    if (["failed","cancelled"].includes(job.estado)) {
-      $("msg").textContent = job.estado === "failed" ? `Falhou: ${job.erro ?? "erro desconhecido"}` : "Cancelado.";
-      return;
+    try {
+      const r = await fetch(`/api/jobs/${jobId}`);
+      if (r.status === 404) { $("msg").textContent = "Job não encontrado no servidor."; return; }
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      falhas = 0;
+      const job = await r.json();
+      pintarTimeline(job.estado);
+      if (job.estado === "completed") {
+        $("resultado").style.display = "block";
+        $("player").src = job.video_url; $("baixar").href = job.video_url;
+        $("msg").textContent = ""; return;
+      }
+      if (["failed","cancelled"].includes(job.estado)) {
+        $("msg").textContent = job.estado === "failed" ? `Falhou: ${job.erro ?? "erro desconhecido"}` : "Cancelado.";
+        return;
+      }
+    } catch (e) {  // 502 de restart do serviço / rede: tolera e re-tenta
+      if (++falhas > 20) { $("msg").textContent = "Servidor não responde — recarregue a página em instantes."; return; }
+      $("msg").textContent = "Reconectando…";
     }
     await new Promise(ok => setTimeout(ok, 1500));
   }

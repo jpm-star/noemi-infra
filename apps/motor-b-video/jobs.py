@@ -52,18 +52,23 @@ def obter(job_id: str) -> dict | None:
     return _hidratar(row)
 
 
-def listar(limite: int = 50) -> list[dict]:
-    with conn() as c:
-        rows = c.execute("SELECT * FROM jobs ORDER BY criado_em DESC LIMIT ?", (limite,)).fetchall()
-    return [_hidratar(r) for r in rows]
-
-
 def proximo_na_fila() -> dict | None:
     with conn() as c:
         row = c.execute(
             "SELECT * FROM jobs WHERE estado IN ('queued','retry') ORDER BY criado_em LIMIT 1"
         ).fetchone()
     return _hidratar(row)
+
+
+def requeue_orfaos() -> int:
+    """Recuperação de startup: job que ficou em uploading/processing quando o
+    processo morreu voltaria pra fila nunca — requeued como retry aqui."""
+    with conn() as c:
+        cur = c.execute(
+            "UPDATE jobs SET estado='retry', atualizado_em=? WHERE estado IN ('uploading','processing')",
+            (_agora(),),
+        )
+    return cur.rowcount
 
 
 def atualizar(job_id: str, estado: str, **campos) -> bool:

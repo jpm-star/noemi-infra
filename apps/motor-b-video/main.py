@@ -31,11 +31,16 @@ MIMES_ACEITOS = {
 
 
 def _max_bytes() -> int:
-    return int(os.environ.get("MAX_UPLOAD_MB", "200")) * 1024 * 1024
+    # ponytail: 25MB default e upload inteiro em RAM; streaming pra disco quando
+    # vídeo bruto grande virar caso real (aí sobe o teto junto com o Caddy)
+    return int(os.environ.get("MAX_UPLOAD_MB", "25")) * 1024 * 1024
 
 
 @asynccontextmanager
 async def _vida(app: FastAPI):
+    requeued = jobs.requeue_orfaos()  # jobs em voo quando o processo morreu
+    if requeued:
+        print(f"[motor-b] {requeued} job(s) órfão(s) devolvidos à fila como retry")
     tarefa = asyncio.create_task(worker.loop())
     yield
     tarefa.cancel()
@@ -71,13 +76,20 @@ def criar_job(corpo: dict) -> dict:
     asset_id = corpo.get("asset_id", "")
     if not storage.get_asset(asset_id):
         raise HTTPException(404, "asset não encontrado — faça o upload primeiro")
-    job = jobs.criar(asset_id, corpo.get("config") or {})
+    config = corpo.get("config") or {}
+    if not isinstance(config, dict):
+        raise HTTPException(422, "config deve ser um objeto")
+    if "duration" in config:  # fronteira: duration ilimitada = ffmpeg/crédito bomb
+        try:
+            config["duration"] = max(1, min(15, int(config["duration"])))
+        except (TypeError, ValueError):
+            raise HTTPException(422, "duration deve ser número de segundos")
+    job = jobs.criar(asset_id, config)
     return {"job_id": job["id"], "estado": job["estado"]}
 
 
-@app.get("/api/jobs")
-def listar_jobs(limite: int = 20) -> list[dict]:
-    return jobs.listar(min(limite, 100))
+# (sem GET /api/jobs de listagem: público vazaria jobs/assets de todos os
+#  clientes; histórico fica no DB e entra no painel do operador COM auth)
 
 
 @app.get("/api/jobs/{job_id}")
@@ -87,6 +99,8 @@ def status_job(job_id: str) -> dict:
         raise HTTPException(404, "job não encontrado")
     if job["estado"] == "completed" and job["asset_video"]:
         job["video_url"] = f"/api/assets/{job['asset_video']}/file"
+    if job.get("erro"):  # detalhe cru só no obs.jsonl; público recebe genérico
+        job["erro"] = "falha na geração — detalhes no log do operador"
     return job
 
 

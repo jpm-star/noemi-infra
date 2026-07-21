@@ -27,7 +27,7 @@ def generate(asset: dict, config: dict) -> dict:
              "-f", "lavfi", "-i", f"sine=frequency=440:duration={duracao}",
              "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac",
              "-movflags", "+faststart", str(saida)],
-            check=True, capture_output=True,
+            check=True, capture_output=True, timeout=120,
         )
         dados = saida.read_bytes()
     return {
