@@ -48,13 +48,36 @@ descrição (`config.prompt`), mas a mídia enviada pelo cliente ainda NÃO é a
 geração. Image-to-video de verdade (foto do imóvel → vídeo) é a Fase 2:
 `media_upload`/`media_import_url` do MCP antes do `generate_video` (PENDENCIAS §4).
 
+## Normalização da mídia de entrada
+
+No estado `uploading`, o worker normaliza a mídia de origem **in-place** (mesmo
+asset id/URL) via FFmpeg: imagem → JPEG ≤1080px (lado maior), vídeo → H.264 720p
+/ AAC / faststart. Encolhe disco desde já e é o que a Fase 2 (image-to-video)
+enviará ao Higgsfield. **Best-effort**: se o FFmpeg não decodifica o formato, o
+job segue com o original (`metadata.normalizado=false` + erro estruturado) —
+normalização é otimização, nunca condição de correção. Código: `media.py` +
+`worker._normalizar_origem`.
+
+## Política de retenção de disco
+
+`apps/motor-b-video/retention.py` (systemd timer diário):
+- Asset de **ORIGEM** de job terminal (completed/failed/cancelled) mais velho que
+  `RETENTION_DIAS` (default **30**) tem o **arquivo** purgado; o **vídeo final é
+  preservado**. A linha do asset fica (proveniência + FK `jobs.asset_origem`).
+- `data/obs.jsonl` acima de `OBS_MAX_MB` (default **50**) rotaciona pra `obs.jsonl.1`.
+
+Rodar manual: `.venv/bin/python apps/motor-b-video/retention.py`
+
 ## Deploy / operação
 
 ```bash
 uv venv .venv && uv pip install -p .venv/bin/python -r requirements.txt
 cp deploy/noemi-motor-b.service /etc/systemd/system/ && systemctl daemon-reload
 systemctl enable --now noemi-motor-b        # sobe na 127.0.0.1:8010 (Caddy → video.noemi.digital)
-.venv/bin/python -m pytest apps/motor-b-video/tests/ -q   # suíte (6 testes)
+# retenção diária:
+cp deploy/noemi-motor-b-retencao.{service,timer} /etc/systemd/system/ && systemctl daemon-reload
+systemctl enable --now noemi-motor-b-retencao.timer
+.venv/bin/python -m pytest apps/motor-b-video/tests/ -q   # suíte (15 testes)
 ```
 
 Pendência externa: DNS A de `video.` / `imagem.` / `sites.noemi.digital` → 2.24.120.204

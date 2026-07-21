@@ -9,6 +9,7 @@ import asyncio
 import os
 
 import jobs
+import media
 from shared_core import storage
 from shared_core.ai import video
 from shared_core.obs import log_span
@@ -38,8 +39,10 @@ async def processar(job: dict) -> None:
         if origem is None:
             jobs.atualizar(jid, "failed", erro="asset de origem sumiu do storage")
             return
-        # estado uploading: mock não envia nada; modo real hoje é prompt-only
-        # (upload da mídia pro provider = Fase 2, ver PENDENCIAS.md)
+        # estado uploading: normaliza a mídia de entrada in-place (resolução/codec/
+        # bitrate consistentes). Best-effort — falha degrada pro original. Isto é o
+        # que a Fase 2 (image-to-video real) enviará ao Higgsfield; hoje encolhe disco.
+        origem = await asyncio.to_thread(_normalizar_origem, origem, jid)
         if not jobs.atualizar(jid, "processing"):
             return
         out = await asyncio.to_thread(video.generate, origem, job["config"])
@@ -59,3 +62,25 @@ async def processar(job: dict) -> None:
         else:
             jobs.atualizar(jid, "failed", tentativas=tentativas, erro=str(e))
         log_span("motor_b.job", job=jid, ok=False, tentativas=tentativas, erro=str(e))
+
+
+def _normalizar_origem(origem: dict, jid: str) -> dict:
+    """Normaliza a mídia de origem in-place (mesmo asset id). Idempotente: retry
+    não re-normaliza. Best-effort: erro de ffmpeg segue com o original, marcado."""
+    if origem["metadata"].get("normalizado") is not None:
+        return origem  # já passou pela normalização (sucesso ou degradação)
+    dados = storage.asset_file(origem).read_bytes()
+    try:
+        novos, novo_mime = media.normalizar(dados, origem["mime"])
+    except media.NormalizacaoErro as e:
+        # degradação: NÃO reescreve os bytes (podem ser 25MB) — só marca metadata
+        log_span("motor_b.normalizacao", job=jid, ok=False, nivel=e.nivel, erro=e.mensagem)
+        return storage.update_asset_meta(
+            origem["id"],
+            {"normalizado": False, "normalizacao_erro": e.mensagem}) or origem
+    log_span("motor_b.normalizacao", job=jid, ok=True, asset=origem["id"],
+             de=len(dados), para=len(novos), mime=novo_mime)
+    return storage.replace_asset_bytes(
+        origem["id"], novos, novo_mime,
+        extra_meta={"normalizado": True, "mime_original": origem["mime"],
+                    "bytes_original": len(dados), "bytes_norm": len(novos)}) or origem

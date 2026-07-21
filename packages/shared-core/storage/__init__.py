@@ -66,3 +66,50 @@ def delete_asset(asset_id: str) -> None:
     asset_file(asset).unlink(missing_ok=True)
     with conn() as c:
         c.execute("DELETE FROM assets WHERE id=?", (asset_id,))
+
+
+def update_asset_meta(asset_id: str, extra_meta: dict) -> dict | None:
+    """Mescla extra_meta na metadata do asset, sem tocar nos bytes/arquivo."""
+    asset = get_asset(asset_id)
+    if not asset:
+        return None
+    with conn() as c:
+        c.execute(
+            "UPDATE assets SET metadata=? WHERE id=?",
+            (json.dumps({**asset["metadata"], **extra_meta}, ensure_ascii=False), asset_id),
+        )
+    return get_asset(asset_id)
+
+
+def replace_asset_bytes(asset_id: str, dados: bytes, mime: str,
+                        extra_meta: dict | None = None) -> dict | None:
+    """Sobrescreve os bytes de um asset mantendo o MESMO id (e portanto a URL e
+    a FK jobs.asset_origem). Atualiza mime/hash e mescla extra_meta. É a base
+    da normalização in-place da mídia de entrada."""
+    asset = get_asset(asset_id)
+    if not asset:
+        return None
+    asset_file(asset).write_bytes(dados)
+    meta = {**asset["metadata"], **(extra_meta or {})}
+    with conn() as c:
+        c.execute(
+            "UPDATE assets SET mime=?, hash=?, metadata=? WHERE id=?",
+            (mime, hashlib.sha256(dados).hexdigest(),
+             json.dumps(meta, ensure_ascii=False), asset_id),
+        )
+    return get_asset(asset_id)
+
+
+def purge_asset_file(asset_id: str) -> bool:
+    """Apaga só o ARQUIVO do asset (libera disco), preservando a linha no DB —
+    a FK jobs.asset_origem e a proveniência ficam intactas. Marca metadata.
+    Usado pela retenção; delete_asset (linha+arquivo) é pra órfão sem FK."""
+    asset = get_asset(asset_id)
+    if not asset:
+        return False
+    f = asset_file(asset)
+    if not f.exists():
+        return False
+    f.unlink()
+    update_asset_meta(asset_id, {"arquivo_removido": True})
+    return True
