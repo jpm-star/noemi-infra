@@ -8,6 +8,19 @@
 | 🖼️ Motor Imagem | `apps/motor-imagem/` (porta 8011 reservada) | imagem.noemi.digital (sem DNS ainda) | stub/placeholder |
 | 👁️ Análise (Analista) | `apps/painel-operacoes/analista.py` | — | contrato mínimo (hardcoded Motor B) |
 
+### Camada 2 (LiteLLM + Langfuse) — ADIADA de propósito (2026-07-21)
+Gateway LLM único + observabilidade **não** foram construídos: a premissa ("2 produtos já
+chamam Groq") é falsa aqui — `motor-b-video` usa Anthropic (vídeo, não Groq) e o orquestrador
+do `motor-isca` é stub sem chamada real. Rotear "os 2 apps" hoje = rotear nada; Langfuse (4+
+contêineres, vários GB) observaria zero chamadas. Fica no mapa (Core AI §Camada 2), fora do
+backlog ativo. **Ligar quando UMA destas acontecer de verdade — não antes:**
+1. o orquestrador do motor-isca sair de stub e fazer a 1ª chamada real a qualquer LLM;
+2. o Motor B ganhar um 2º provider real (hoje só Anthropic);
+3. existir chamada de LLM em produção em 2 lugares diferentes do monorepo ao mesmo tempo.
+Quando ligar: LiteLLM (leve, ~200MB) primeiro como gateway; Langfuse (pesado) só se custo/
+latência real virar dor. Nota: o que já chama Groq em prod (`sdr-motor`, `radar-reels`) vive
+FORA deste monorepo — talvez o alvo certo da Camada 2 nem seja aqui.
+
 ### Subdomínios (decisão final 2026-07-21)
 DNS existente aponta pra `2.24.120.204`. Escolhas dentro do que já existe, sem pedir DNS novo:
 - **`videoshiggs` → Motor B** (o nome já casa com vídeo/Higgsfield). `video.noemi.digital`
