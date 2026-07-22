@@ -10,8 +10,10 @@ import json
 import os
 import time
 
+import brand
 import jobs
 import media
+import pos
 import prompt_builder
 import templates
 from shared_core import storage
@@ -55,10 +57,13 @@ async def processar(job: dict) -> None:
         t0 = time.monotonic()
         out = await asyncio.to_thread(video.generate, origem, cfg)
         duracao_s = round(time.monotonic() - t0, 2)
+        # Onda 1: acabamento de marca (reframe/watermark/legenda) — best-effort,
+        # falha degrada pro vídeo cru, nunca derruba o job.
+        pos_meta = await asyncio.to_thread(_finalizar, out, cfg, jid)
         asset_video = storage.create_asset(
             owner=origem["owner"], produto=jobs.PRODUTO, mime=out["mime"], dados=out["bytes"],
             metadata={"asset_origem": origem["id"], "job": jid,
-                      "modelo": out["modelo"], **out.get("meta", {})},
+                      "modelo": out["modelo"], "pos": pos_meta, **out.get("meta", {})},
         )
         if not jobs.atualizar(jid, "completed", asset_video=asset_video["id"], erro=None,
                               duracao_s=duracao_s, custo_creditos=out.get("custo_creditos") or 0):
@@ -100,10 +105,30 @@ def _planejar(origem: dict, job: dict) -> dict:
                "_imagem_path": str(storage.asset_file(origem))}
     clas = classificacao.classificar(entrada)
     template = templates.escolher_template(clas, base.get("template"))
-    plano = prompt_builder.construir_prompt(clas, template, entrada)
+    kit = brand.brand_kit(origem.get("owner"), base)  # Brand Kit automático
+    plano = prompt_builder.construir_prompt(clas, template, entrada, brand=kit)
     return {**base, "prompt": plano["prompt"], "duration": plano["duration"],
             "aspect_ratio": plano["aspect_ratio"], "template": template["id"],
-            "classificacao": clas, "segmento": base.get("segmento") or clas.get("padrao")}
+            "movimento": plano["movimento"], "brand": kit, "classificacao": clas,
+            "segmento": base.get("segmento") or clas.get("padrao")}
+
+
+def _finalizar(out: dict, cfg: dict, jid: str) -> dict:
+    """Pós-processa o vídeo pronto (marca + reframe + legenda). Muta out['bytes']/
+    out['mime'] in-place. Best-effort: PosErro degrada pro vídeo cru. Devolve o
+    meta do que foi aplicado (entra na metadata do asset)."""
+    kit = cfg.get("brand") or {}
+    legenda = kit.get("cta_texto") if (cfg.get("classificacao") or {}).get("cta", True) else None
+    try:
+        novos, novo_mime, meta = pos.pos_processar(
+            out["bytes"], out["mime"], aspect=cfg.get("aspect_ratio"),
+            brand=kit, legenda=legenda)
+    except pos.PosErro as e:
+        log_span("motor_b.pos", job=jid, ok=False, nivel=e.nivel, erro=e.mensagem)
+        return {"aplicado": [], "erro": e.mensagem}
+    out["bytes"], out["mime"] = novos, novo_mime
+    log_span("motor_b.pos", job=jid, ok=True, aplicado=meta["aplicado"])
+    return meta
 
 
 def _normalizar_origem(origem: dict, jid: str) -> dict:
