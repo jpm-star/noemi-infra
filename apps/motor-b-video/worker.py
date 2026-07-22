@@ -69,7 +69,7 @@ async def processar(job: dict) -> None:
         pos_meta = await asyncio.to_thread(_finalizar, out, cfg, jid)
         asset_video = storage.create_asset(
             owner=origem["owner"], produto=jobs.PRODUTO, mime=out["mime"], dados=out["bytes"],
-            metadata={"asset_origem": origem["id"], "job": jid,
+            metadata={"asset_origem": origem["id"], "job": jid, "brand": cfg.get("brand"),
                       "modelo": out["modelo"], "pos": pos_meta, **out.get("meta", {})},
         )
         if not jobs.atualizar(jid, "completed", asset_video=asset_video["id"], erro=None,

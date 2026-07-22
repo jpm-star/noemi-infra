@@ -19,7 +19,9 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
+import derivados
 import jobs
+import pos
 import worker
 from shared_core import storage
 
@@ -123,6 +125,32 @@ def baixar_asset(asset_id: str):
         raise HTTPException(410, "arquivo do asset não está mais no bucket")
     return FileResponse(caminho, media_type=asset["mime"],
                         filename=f"{asset['id']}.{asset['mime'].split('/')[-1]}")
+
+
+@app.post("/api/assets/{asset_id}/derivar")
+def derivar_asset(asset_id: str, corpo: dict) -> dict:
+    """Onda 1.5: gera um derivado (proporção/ficha/capa/teaser/silenciosa/loop) do
+    vídeo pronto. Cada derivado vira um asset novo ligado ao original — sem inchar
+    o job. A marca vem da metadata do vídeo (do job) ou do corpo."""
+    asset = storage.get_asset(asset_id)
+    if not asset or not asset["mime"].startswith("video/"):
+        raise HTTPException(404, "vídeo não encontrado")
+    tipo = (corpo or {}).get("tipo")
+    if tipo not in derivados.TIPOS:
+        raise HTTPException(422, f"tipo inválido — use um de {list(derivados.TIPOS)}")
+    caminho = storage.asset_file(asset)
+    if not caminho.exists():
+        raise HTTPException(410, "arquivo do vídeo não está mais no bucket")
+    brand = asset["metadata"].get("brand") or corpo.get("brand")
+    try:
+        dados, mime = derivados.derivar(tipo, caminho.read_bytes(), corpo, brand)
+    except pos.PosErro as e:
+        raise HTTPException(422, f"não deu pra gerar o derivado: {e.mensagem}")
+    novo = storage.create_asset(
+        owner=asset["owner"], produto=jobs.PRODUTO, mime=mime, dados=dados,
+        metadata={"derivado_de": asset_id, "tipo": tipo})
+    return {"asset_id": novo["id"], "tipo": tipo, "mime": mime,
+            "url": f"/api/assets/{novo['id']}/file"}
 
 
 @app.post("/api/jobs/{job_id}/aprovar")
