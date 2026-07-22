@@ -98,6 +98,48 @@ def pos_processar(dados: bytes, mime: str, *, aspect: str | None = None,
         return saida.read_bytes(), "video/mp4", {"aplicado": aplicado}
 
 
+def extrair_frame(dados_video: bytes, *, fim: bool = True) -> bytes:
+    """PNG do último (fim=True) ou primeiro frame do vídeo. É o elo do
+    storyboard: o último frame de uma cena vira o START da próxima. Lança
+    PosErro se o ffmpeg falhar."""
+    with tempfile.TemporaryDirectory() as tmp:
+        entrada = Path(tmp) / "in.mp4"
+        saida = Path(tmp) / "frame.png"
+        entrada.write_bytes(dados_video)
+        # -sseof -0.2 posiciona perto do fim; -update 1 sobrescreve até o último
+        pos_args = ["-sseof", "-0.2", "-i", str(entrada)] if fim else ["-i", str(entrada), "-ss", "0"]
+        _ffmpeg([*pos_args, "-update", "1", "-frames:v", "1", str(saida)])
+        return saida.read_bytes()
+
+
+def concatenar(clips: list[bytes], largura: int, altura: int) -> bytes:
+    """Concatena os clipes das cenas num walkthrough único (corte seco — o frame
+    encadeado já dá continuidade). Cada clipe é escalado/cropado pra largura×altura
+    comum (concat exige mesma geometria). Sem áudio (walkthrough silencioso; trilha
+    é outra etapa). Lança PosErro."""
+    if not clips:
+        raise PosErro("ffmpeg", "sem clipes pra concatenar")
+    if len(clips) == 1:
+        return clips[0]
+    with tempfile.TemporaryDirectory() as tmp:
+        entradas: list[str] = []
+        partes: list[str] = []
+        for i, c in enumerate(clips):
+            p = Path(tmp) / f"c{i}.mp4"
+            p.write_bytes(c)
+            entradas += ["-i", str(p)]
+            partes.append(
+                f"[{i}:v]scale={largura}:{altura}:force_original_aspect_ratio=increase,"
+                f"crop={largura}:{altura},setsar=1,fps=24[v{i}]")
+        cadeia = "".join(f"[v{i}]" for i in range(len(clips)))
+        filtro = ";".join(partes) + f";{cadeia}concat=n={len(clips)}:v=1:a=0[out]"
+        saida = Path(tmp) / "walkthrough.mp4"
+        _ffmpeg([*entradas, "-filter_complex", filtro, "-map", "[out]",
+                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                 "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(saida)])
+        return saida.read_bytes()
+
+
 def _ffmpeg(args: list[str]) -> None:
     try:
         subprocess.run(["ffmpeg", "-y", "-loglevel", "error", *args],

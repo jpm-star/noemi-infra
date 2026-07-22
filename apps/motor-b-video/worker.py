@@ -15,6 +15,7 @@ import jobs
 import media
 import pos
 import prompt_builder
+import storyboard
 import templates
 from shared_core import storage
 from shared_core.ai import classificacao, video
@@ -55,7 +56,13 @@ async def processar(job: dict) -> None:
         if not jobs.atualizar(jid, "processing", config=json.dumps(cfg, ensure_ascii=False)):
             return
         t0 = time.monotonic()
-        out = await asyncio.to_thread(video.generate, origem, cfg)
+        # item 4: storyboard = várias cenas encadeadas num walkthrough; senão, 1 clipe.
+        if storyboard.eh_storyboard(cfg):
+            out = await asyncio.to_thread(
+                storyboard.gerar_walkthrough, origem, cfg, cfg.get("brand") or {}, jid,
+                get_asset=storage.get_asset, asset_file=storage.asset_file)
+        else:
+            out = await asyncio.to_thread(video.generate, origem, cfg)
         duracao_s = round(time.monotonic() - t0, 2)
         # Onda 1: acabamento de marca (reframe/watermark/legenda) — best-effort,
         # falha degrada pro vídeo cru, nunca derruba o job.
