@@ -62,7 +62,7 @@ async def upload(file: UploadFile = File(...), owner: str = Form("cliente")) -> 
         raise HTTPException(415, f"tipo não aceito: {file.content_type} (aceitos: imagem ou vídeo)")
     dados = await file.read(_max_bytes() + 1)
     if len(dados) > _max_bytes():
-        raise HTTPException(413, f"arquivo acima de {os.environ.get('MAX_UPLOAD_MB', '200')}MB")
+        raise HTTPException(413, f"arquivo acima de {os.environ.get('MAX_UPLOAD_MB', '25')}MB")
     if not dados:
         raise HTTPException(400, "arquivo vazio")
     asset = storage.create_asset(
@@ -189,7 +189,7 @@ fetch('/api/dashboard').then(r=>r.json()).then(d=>{
   const cards=[
     ['Vídeos produzidos',fmt(d.videos_produzidos)],
     ['Tempo médio de geração',fmt(d.tempo_medio_s,'s')],
-    ['Custo médio',fmt(d.custo_medio_creditos,' cr')],
+    ['Custo médio',d.custo_medio_creditos?fmt(d.custo_medio_creditos,' cr'):'<span class=na>—</span>'],
     ['Taxa de aprovação',d.taxa_aprovacao===null?'<span class=na>sem avaliações</span>':(Math.round(d.taxa_aprovacao*100)+'%')],
   ];
   document.getElementById('g').innerHTML=cards.map(([l,v])=>

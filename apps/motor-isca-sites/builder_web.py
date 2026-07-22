@@ -41,6 +41,8 @@ os.environ.setdefault("SITE_BASE_URL", "https://go.noemi.digital")
 
 from app.pipeline import montar_site  # noqa: E402
 
+import og  # banner OG (preview no WhatsApp) — best-effort
+
 _SECURE = os.environ.get("STUDIO_INSECURE_COOKIE") != "1"  # tests usam http
 app = FastAPI(title="Site Studio")
 
@@ -207,11 +209,12 @@ def gerar(request: Request, nome: str = Form(...), nicho: str = Form(...), whats
     try:
         r = montar_site(briefing)
     except Exception as e:
-        bloco = f"<div class='res err'>Falhou na geração: {_esc(type(e).__name__)}: {_esc(str(e))}</div>"
+        bloco = "<div class='res err'>Não deu pra gerar o site agora. Confira os campos e tente de novo.</div>"
         return HTMLResponse(_tela_principal(bloco))
     url = r.deploy.url
     slug = re.sub(r".*/([^/]+)/?$", r"\1", url.rstrip("/"))
     _registrar_site(nome.strip(), nicho.strip(), slug, url)
+    _aplicar_og(r, nicho.strip(), slug)
     bloco = (f"<div class='res'>✅ <b>Publicado.</b><br>"
              f"<a href='{_esc(url)}' target='_blank' rel='noopener'>{_esc(url)}</a>"
              f"<iframe src='{_esc(url)}' title='preview'></iframe></div>")
@@ -259,10 +262,13 @@ def _tela_combo(passo: str, nome: str = "", servico: str = "") -> str:
     ocultos += (f"<input type='hidden' name='servico' value='{_esc(servico)}'>" if passo == "whatsapp" else "")
     voltar = ("" if passo == "nome" else
               "<a class='voltar' href='/studio/combo'>← começar de novo</a>")
+    # último passo dispara montar_site (segundos): trava o botão e avisa que está criando
+    onsubmit = ("onsubmit=\"var b=this.querySelector('button');b.disabled=true;"
+                "b.textContent='Criando seu site... leva alguns segundos'\"" if proximo == "pronto" else "")
     corpo = f"""{_COMBO_CSS}<div class='combo'>
 <div class='passo'>PASSO {idx + 1} DE 3</div>
 <div class='pergunta'>{pergunta}</div><div class='dica'>{dica}</div>
-<form method='post' action='/studio/combo'>
+<form method='post' action='/studio/combo' {onsubmit}>
 <input type='hidden' name='passo' value='{proximo}'>{ocultos}
 <input name='{campo}' type='{tipo}' required autofocus placeholder='{ph}'>
 <button>{'Criar meu site' if proximo == 'pronto' else 'Continuar'}</button>
@@ -294,6 +300,17 @@ def _cartucho_basica(nome: str, servico: str, whatsapp: str, slug: str) -> Path:
     return caminho
 
 
+def _aplicar_og(r, nicho: str, slug: str) -> None:
+    """Gera o banner OG + injeta a meta no site recém-publicado. Best-effort:
+    OG é preview, nunca bloqueia a publicação."""
+    try:
+        og.aplicar(r.brief.nome_empresa, r.brief.subheadline, nicho, slug,
+                   os.environ.get("SITE_OUT_DIR", "/var/www/sites"),
+                   os.environ.get("SITE_BASE_URL", "https://go.noemi.digital"))
+    except Exception:
+        pass
+
+
 def _combo_gerar(nome: str, servico: str, whatsapp: str) -> HTMLResponse:
     briefing = {"nome_empresa": nome, "nicho": servico, "whatsapp": whatsapp,
                 "diferenciais": [], "publico": "", "cor_primaria": None}
@@ -308,6 +325,7 @@ def _combo_gerar(nome: str, servico: str, whatsapp: str) -> HTMLResponse:
     slug = re.sub(r".*/([^/]+)/?$", r"\1", url.rstrip("/"))
     _registrar_site(nome, servico, slug, url)
     _cartucho_basica(nome, servico, whatsapp, slug)
+    _aplicar_og(r, servico, slug)
     corpo = f"""{_COMBO_CSS}<div class='pronto'><div class='ok'>🎉</div>
 <h1>Pronto, {_esc(nome)}!</h1>
 <p>Seu site já está no ar e a Noemi já está pronta pra responder seus clientes no WhatsApp.</p>
