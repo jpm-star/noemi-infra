@@ -50,12 +50,31 @@ def escolher_movimento(classificacao: dict, entrada: dict) -> str:
     return _MOVIMENTO_POR_PADRAO.get(classificacao.get("padrao"), _MOVIMENTO_POR_PADRAO["economico"])
 
 
+# Hook (item 3): abertura que prende nos 2 primeiros segundos, por padrão do imóvel.
+# Estende o Auto Director — decide especificamente a CENA DE ABERTURA.
+_HOOK_POR_PADRAO = {
+    "luxo": "Abertura de impacto: reveal aéreo/dolly amplo do destaque mais impressionante, com luz de realce.",
+    "economico": "Abertura acolhedora: já entra no ambiente mais convidativo, sensação de lar nos primeiros segundos.",
+    "lancamento": "Abertura estilo trailer: texto/contagem de impacto e movimento crescente prendendo em 2s.",
+    "rural": "Abertura panorâmica: plano aéreo amplo do terreno e da paisagem ao redor.",
+    "comercial": "Abertura corporativa: fachada/letreiro em plano firme, transmitindo solidez.",
+}
+
+
+def escolher_hook(classificacao: dict) -> str:
+    """Direção da cena de abertura (hook), por padrão do imóvel."""
+    return _HOOK_POR_PADRAO.get(classificacao.get("padrao"), _HOOK_POR_PADRAO["economico"])
+
+
 def construir_prompt(classificacao: dict, template: dict, entrada: dict,
-                     brand: dict | None = None) -> dict:
+                     brand: dict | None = None, papel: str = "completo") -> dict:
+    """`papel` posiciona a cena no vídeo: 'completo' (clipe único), 'abertura'
+    (1ª cena do storyboard → ganha o hook), 'meio', 'encerramento' (última → CTA)."""
     tipo = classificacao.get("tipo", "imóvel")
     padrao = classificacao.get("padrao", "economico")
     desc = (entrada.get("descricao") or "").strip()
     movimento = escolher_movimento(classificacao, entrada)  # Auto Director
+    hook = escolher_hook(classificacao)
     partes = [
         f"Vídeo imobiliário de {tipo} — padrão {padrao}.",
         f"Câmera: {template['camera']}.",
@@ -68,6 +87,8 @@ def construir_prompt(classificacao: dict, template: dict, entrada: dict,
     ]
     if desc:
         partes.insert(1, f"Destaques do imóvel: {desc}.")
+    if papel in ("completo", "abertura"):  # hook só na abertura (ou clipe único)
+        partes.insert(1, hook)
 
     # iluminação/ambiente detectados (classificação vision-capable) refinam a cena —
     # o vídeo respeita a luz e o espaço reais do imóvel, não um genérico do template.
@@ -100,5 +121,7 @@ def construir_prompt(classificacao: dict, template: dict, entrada: dict,
         "aspect_ratio": aspect,
         "template_id": template["id"],
         "movimento": movimento,
+        "hook": hook,
+        "papel": papel,
         "classificacao": classificacao,
     }

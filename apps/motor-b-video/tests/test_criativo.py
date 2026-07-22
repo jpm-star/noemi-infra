@@ -50,3 +50,21 @@ def test_hashtags_relevantes_8_a_10_sem_repetir():
 def test_hashtags_sem_dados_ainda_da_minimo():
     h = metadados.hashtags({"tipo": "casa", "padrao": "economico"}, {})
     assert len(h) >= 8 and "#casa" in h
+
+
+# -- item 3: hook automático (cena de abertura) -----------------------------
+def test_hook_por_padrao():
+    assert "impacto" in prompt_builder.escolher_hook({"padrao": "luxo"}).lower()
+    assert "trailer" in prompt_builder.escolher_hook({"padrao": "lancamento"}).lower()
+
+
+def test_hook_entra_na_abertura_nao_no_meio():
+    clas = {"padrao": "luxo", "tipo": "apartamento"}
+    tpl = templates.escolher_template(clas)
+    p_abre = prompt_builder.construir_prompt(clas, tpl, {}, papel="abertura")
+    p_meio = prompt_builder.construir_prompt(clas, tpl, {}, papel="meio")
+    assert p_abre["hook"] in p_abre["prompt"]
+    assert p_abre["hook"] not in p_meio["prompt"]  # meio não leva hook
+    # clipe único (completo) também abre com hook
+    assert prompt_builder.construir_prompt(clas, tpl, {})["hook"] in \
+        prompt_builder.construir_prompt(clas, tpl, {})["prompt"]
