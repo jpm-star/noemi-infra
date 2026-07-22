@@ -60,13 +60,42 @@ tr:last-child td{border:0}
 .empty{color:var(--mut);font-size:.8rem;padding:6px 2px}
 .mono{font-family:var(--mono)}
 .off{opacity:.5}
+/* cabine de operação */
+.operar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;
+  background:linear-gradient(180deg,rgba(52,226,255,.06),rgba(52,226,255,.02));
+  border:1px solid rgba(52,226,255,.22);border-radius:14px;padding:12px 14px}
+.op-lab{font-size:.68rem;letter-spacing:.2em;color:var(--cy);font-weight:700;margin-right:4px}
+.op{text-decoration:none;font-weight:700;font-size:.92rem;padding:11px 18px;border-radius:11px;
+  color:#04121a;background:linear-gradient(135deg,var(--cy),#20b8d8);
+  box-shadow:0 6px 18px -6px rgba(52,226,255,.5);transition:transform .12s,box-shadow .12s}
+.op:hover{transform:translateY(-1px);box-shadow:0 10px 22px -6px rgba(52,226,255,.6)}
+.op-site{background:linear-gradient(135deg,var(--ok),#1fb37a);box-shadow:0 6px 18px -6px rgba(47,230,160,.5)}
+.op-ghost{background:transparent;color:var(--txt);border:1px solid var(--line);box-shadow:none;font-weight:600}
+.op-ghost:hover{border-color:var(--cy);color:var(--cy)}
+a.mot{text-decoration:none;color:inherit;position:relative}
+a.mot.abrir{cursor:pointer;transition:transform .12s,border-color .12s,box-shadow .12s}
+a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0 8px 22px -8px rgba(52,226,255,.45)}
+.diag{margin-bottom:12px;border-color:rgba(255,209,102,.25);
+  background:linear-gradient(180deg,rgba(255,209,102,.05),var(--panel))}
+.diag .dica{font-size:.86rem;color:var(--txt);padding:5px 0;border-bottom:1px solid rgba(27,41,66,.5);line-height:1.4}
+.diag .dica:last-child{border:0}
+@media(max-width:640px){.op{flex:1;text-align:center}}
 </style>
 </head>
 <body>
 <div class="top">
-  <div class="brand"><span class="dot"></span><div><b>NOEMI OS</b><small>OBSERVABILIDADE</small></div></div>
+  <div class="brand"><span class="dot"></span><div><b>NOEMI OS</b><small>CABINE DE OPERAÇÃO</small></div></div>
   <div class="meta"><span id="saude"></span><br><span id="upd">—</span></div>
 </div>
+
+<div class="operar">
+  <span class="op-lab">OPERAR</span>
+  <a class="op op-vid" href="https://videoshiggs.noemi.digital/" target="_blank" rel="noopener">🎬 Fazer um vídeo</a>
+  <a class="op op-site" href="https://go.noemi.digital/studio/" target="_blank" rel="noopener">🌐 Fazer um site</a>
+  <a class="op op-ghost" href="https://go.noemi.digital/studio/combo" target="_blank" rel="noopener">⚡ Onboarding em 3 perguntas</a>
+</div>
+
+<div class="card diag"><h3>💡 Diagnóstico da operação · IA</h3><div id="diag-body" class="empty">analisando…</div></div>
 
 <div class="grid row-mot" id="motores" style="margin-bottom:12px"></div>
 
@@ -96,10 +125,14 @@ function render(d){
     :`<span style="color:var(--bad)">● ${down} serviço(s) fora</span>`;
   $("upd").textContent = "atualizado "+new Date(d.ts).toLocaleTimeString('pt-BR');
 
-  // motores
-  $("motores").innerHTML = d.motores.map(m=>`<div class="card mot">
-    <div><div class="n">${m.nome}</div><div class="s">${m.ping_ms!=null?m.ping_ms+'ms':'sem resposta'}</div></div>
-    ${pill(m.status==='up',m.status.toUpperCase())}</div>`).join('');
+  // motores — os operáveis viram cards CLICÁVEIS que abrem a ferramenta
+  const ABRIR={"Motor Vídeo":"https://videoshiggs.noemi.digital/","Motor Site":"https://go.noemi.digital/studio/"};
+  $("motores").innerHTML = d.motores.map(m=>{
+    const url=ABRIR[m.nome];
+    const inner=`<div><div class="n">${m.nome}</div><div class="s">${m.ping_ms!=null?m.ping_ms+'ms':'sem resposta'}${url?' · <b style="color:var(--cy)">abrir ↗</b>':''}</div></div>${pill(m.status==='up',m.status.toUpperCase())}`;
+    return url?`<a class="card mot abrir" href="${url}" target="_blank" rel="noopener">${inner}</a>`
+              :`<div class="card mot">${inner}</div>`;
+  }).join('');
 
   // KPIs
   const L=d.llm, V=d.vps;
@@ -164,7 +197,15 @@ async function tick(){
   try{const r=await fetch('api/painel');render(await r.json());}
   catch(e){$("saude").innerHTML='<span style="color:var(--bad)">● painel sem conexão</span>';}
 }
+async function diag(){
+  try{const r=await fetch('api/diagnostico');const d=await r.json();
+    $("diag-body").innerHTML=(d.dicas&&d.dicas.length)
+      ? d.dicas.map(t=>`<div class="dica">→ ${t}</div>`).join('')
+      : '<div class="empty">sem alertas</div>';
+  }catch(e){$("diag-body").innerHTML='<div class="empty off">IA indisponível</div>';}
+}
 tick(); setInterval(tick, 4000);
+diag(); setInterval(diag, 90000);
 </script>
 </body>
 </html>
