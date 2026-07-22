@@ -33,3 +33,11 @@ Quando a branch estabilizar, o card é pequeno (nav é config-driven pelo cartuc
 Mitigado no código: sem listagem pública de jobs, ids uuid4 não-adivinháveis,
 erro genérico, upload 25MB + cap 30MB no Caddy, duration clampada. Um token
 simples por cliente entra quando houver 2º cliente de verdade.
+
+## 6. Watermark de marca é TEXTO, não overlay do logo PNG (Onda 1 — follow-up)
+`apps/motor-b-video/pos.py` desenha o NOME da marca via `drawtext` como watermark.
+O `logo_url` do cartucho é uma URL e o pipeline não busca imagem externa. Quando
+um cliente subir um ARQUIVO de logo de verdade, trocar por overlay de PNG
+(`ffmpeg -i vídeo -i logo.png -filter_complex overlay=...`) — ~15 linhas, o
+brand_kit já carrega o campo. Não é bug; é acabamento adiado por não haver logo
+real ainda. Marcado com `ponytail:` no próprio pos.py.
