@@ -1,0 +1,49 @@
+# Camada única de LLM do noemi-infra (Bloco 2).
+# LiteLLM Proxy roteia Anthropic (Motor B) / Groq (atendente/análise) / Ollama
+# (fallback local) por uma única interface OpenAI-compatível, com fallback nativo
+# e logging de custo/latência/modelo/erro no dashboard próprio (/ui).
+# Cada container com limite de memória explícito (regra da sessão).
+services:
+  litellm-db:
+    image: postgres:16-alpine
+    container_name: noemi-litellm-db
+    restart: unless-stopped
+    mem_limit: 256m
+    environment:
+      POSTGRES_DB: litellm
+      POSTGRES_USER: litellm
+      POSTGRES_PASSWORD: ${LITELLM_DB_PASSWORD}
+    volumes:
+      - litellm_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litellm"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  litellm:
+    image: ghcr.io/berriai/litellm-database:main-stable
+    container_name: noemi-litellm
+    restart: unless-stopped
+    mem_limit: 1g
+    depends_on:
+      litellm-db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:4000:4000"   # só localhost; Caddy expõe se precisar
+    extra_hosts:
+      - "host-ollama:172.16.0.1"  # alcança o Ollama do host (systemd)
+    environment:
+      DATABASE_URL: postgresql://litellm:${LITELLM_DB_PASSWORD}@litellm-db:5432/litellm
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      STORE_MODEL_IN_DB: "True"
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      UI_USERNAME: ${UI_USERNAME:-noemi}
+      UI_PASSWORD: ${UI_PASSWORD}
+    volumes:
+      - ./litellm-config.yaml:/app/config.yaml:ro
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+
+volumes:
+  litellm_pgdata:

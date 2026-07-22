@@ -1,40 +1,52 @@
-"""Bloco 1: fallback local (Ollama) na cascata Anthropic → Ollama → regras."""
+"""Cascata de LLM: proxy LiteLLM (cloud) → Ollama local → regras determinísticas."""
 import pytest
 
 from shared_core.ai import classificacao as c
-from shared_core.ai import local_llm
+from shared_core.ai import llm_proxy, local_llm
 
 
 def test_local_llm_offline_devolve_none(monkeypatch):
-    # Ollama inacessível → completar() não crasha, devolve None (chamador degrada)
     monkeypatch.setenv("OLLAMA_URL", "http://127.0.0.1:59999")  # porta morta
     assert local_llm.completar("oi", max_tokens=5) is None
     assert local_llm.disponivel() is False
 
 
-def test_cascata_anthropic_falha_usa_ollama(monkeypatch):
-    # Anthropic falha (sem SDK/key no _texto_do_llm) e Ollama responde um JSON
-    monkeypatch.setattr(local_llm, "completar", lambda *a, **k: '{"padrao":"luxo","tipo":"casa"}')
+def test_proxy_offline_devolve_none(monkeypatch):
+    monkeypatch.setenv("LITELLM_URL", "http://127.0.0.1:59998")
+    assert llm_proxy.completar("oi", max_tokens=5) is None
+    assert llm_proxy.disponivel() is False
+
+
+def test_proxy_ok_e_a_camada_1(monkeypatch):
+    monkeypatch.setattr(llm_proxy, "completar", lambda *a, **k: '{"padrao":"luxo","tipo":"casa"}')
     texto, fonte = c._texto_do_llm({"descricao": "cobertura"}, "classifique")
-    # com ANTHROPIC_API_KEY ausente o primário falha e cai no local
-    assert fonte == "ollama-fallback" and "luxo" in texto
+    assert fonte == "proxy" and "luxo" in texto
 
 
-def test_cascata_ambos_fora_cai_nas_regras(monkeypatch):
-    monkeypatch.setattr(local_llm, "completar", lambda *a, **k: None)  # Ollama fora também
+def test_proxy_fora_cai_no_ollama(monkeypatch):
+    monkeypatch.setattr(llm_proxy, "completar", lambda *a, **k: None)                    # proxy fora
+    monkeypatch.setattr(local_llm, "completar", lambda *a, **k: '{"padrao":"rural"}')    # ollama responde
+    texto, fonte = c._texto_do_llm({"descricao": "sítio"}, "classifique")
+    assert fonte == "ollama-fallback" and "rural" in texto
+
+
+def test_ambos_fora_cai_nas_regras(monkeypatch):
+    monkeypatch.setattr(llm_proxy, "completar", lambda *a, **k: None)
+    monkeypatch.setattr(local_llm, "completar", lambda *a, **k: None)
     r = c._anthropic({"descricao": "apartamento simples", "preco": "200000"})
-    assert r["fonte"] == "regras"
-    assert r["padrao"] in c.PADROES and r["tipo"] in c.TIPOS  # regras sempre válidas
+    assert r["fonte"] == "regras" and r["padrao"] in c.PADROES and r["tipo"] in c.TIPOS
 
 
-def test_ollama_saida_ilegivel_cai_nas_regras(monkeypatch):
-    monkeypatch.setattr(local_llm, "completar", lambda *a, **k: "desculpe, não sei responder")
+def test_saida_ilegivel_cai_nas_regras(monkeypatch):
+    monkeypatch.setattr(llm_proxy, "completar", lambda *a, **k: "desculpe, não sei")
     r = c._anthropic({"descricao": "casa de campo"})
-    assert r["fonte"] == "ollama-fallback-ilegivel"
-    assert r["padrao"] in c.PADROES
+    assert r["fonte"] == "proxy-ilegivel" and r["padrao"] in c.PADROES
 
 
-@pytest.mark.skipif(not local_llm.disponivel(), reason="Ollama não está rodando")
-def test_integracao_ollama_real():
-    t = local_llm.completar('Responda só JSON: {"padrao":"luxo"}', max_tokens=30)
+@pytest.mark.skipif(not llm_proxy.disponivel(), reason="LiteLLM proxy fora")
+def test_integracao_proxy_real():
+    import os
+    if not os.environ.get("LITELLM_MASTER_KEY"):
+        pytest.skip("sem LITELLM_MASTER_KEY no ambiente")
+    t = llm_proxy.completar('Responda só JSON: {"padrao":"luxo"}', model="analise", max_tokens=30)
     assert t and "{" in t

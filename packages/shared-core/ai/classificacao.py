@@ -114,22 +114,16 @@ def _instrucao(entrada: dict) -> str:
 
 
 def _texto_do_llm(entrada: dict, instrucao: str) -> tuple[str | None, str]:
-    """(texto, fonte). Primário Anthropic (com visão); se falhar, fallback Ollama
-    local (texto-only). None se ambos fora → chamador cai nas regras."""
-    try:
-        import anthropic  # tardio: mock roda sem o SDK
-        client = anthropic.Anthropic()
-        modelo = os.environ.get("HIGGSFIELD_ANTHROPIC_MODEL", "claude-opus-4-8")
-        conteudo = [{"type": "text", "text": instrucao}] + _bloco_imagem(entrada.get("_imagem_path"))
-        resp = client.messages.create(
-            model=modelo, max_tokens=400, temperature=0,  # determinística, não criativa
-            messages=[{"role": "user", "content": conteudo}])
-        texto = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
-        if texto.strip():
-            return texto, "anthropic"
-    except Exception as e:  # timeout/erro/sem chave → tenta o local
-        log_span("motor_b.classificacao", ok=False, motivo="anthropic_falhou", erro=str(e)[:200])
-    from shared_core.ai import local_llm  # fallback local (Ollama 3B, CPU)
+    """(texto, fonte). Cascata: camada 1 = proxy LiteLLM (cloud Anthropic/Groq, com
+    fallback e logging de custo nativos); camada 2 = Ollama local direto (offline,
+    loopback); senão None → chamador cai nas regras. A rota cloud passa TODA pelo
+    proxy (Bloco 2). Visão (imagem) via proxy = follow-up (hoje texto-only)."""
+    from shared_core.ai import llm_proxy
+    texto = llm_proxy.completar(instrucao, model="motor-b", max_tokens=400, temperature=0)
+    if texto:
+        return texto, "proxy"
+    log_span("motor_b.classificacao", ok=False, motivo="proxy_fora")
+    from shared_core.ai import local_llm  # fallback offline (Ollama 3B, CPU, loopback)
     texto = local_llm.completar(instrucao, max_tokens=400, temperature=0)
     return (texto, "ollama-fallback") if texto else (None, "regras")
 
