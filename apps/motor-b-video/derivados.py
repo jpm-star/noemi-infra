@@ -54,7 +54,7 @@ def ficha(video: bytes, ficha: dict, brand: dict | None = None) -> tuple[bytes, 
               if ficha.get(k) and str(ficha[k]).strip()]
     if not linhas:
         raise pos.PosErro("ffmpeg", "ficha vazia — nada pra sobrepor")
-    acento = pos._cor_ffmpeg((brand or {}).get("cor_acento"))
+    acento = pos._cor_ffmpeg(brand.get("cor_acento"))
     with tempfile.TemporaryDirectory() as t:
         tdir = Path(t)
         entrada = _tmp_video(video, tdir)
