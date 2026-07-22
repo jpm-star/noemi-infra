@@ -101,13 +101,9 @@ def _mock(entrada: dict) -> dict:
     return resultado
 
 
-# -- real (Anthropic, mesmo provider do vídeo) -----------------------------
-def _anthropic(entrada: dict) -> dict:
-    import anthropic  # tardio: mock roda sem o SDK
-
-    client = anthropic.Anthropic()
-    modelo = os.environ.get("HIGGSFIELD_ANTHROPIC_MODEL", "claude-opus-4-8")
-    instrucao = (
+# -- real (cascata de providers: Anthropic → Ollama local → regras) --------
+def _instrucao(entrada: dict) -> str:
+    return (
         "Classifique este imóvel para gerar um vídeo promocional. Responda APENAS um JSON "
         f'com as chaves: padrao (um de {list(PADROES)}), tipo (um de {list(TIPOS)}), '
         'tom (frase curta), duracao (segundos, 8-15), cta (true/false), '
@@ -115,18 +111,40 @@ def _anthropic(entrada: dict) -> dict:
         'ambiente (interno/externo/misto). Use a FOTO pra iluminacao/ambiente quando houver.\n\n'
         f"Dados: {json.dumps({k: entrada.get(k) for k in ('descricao', 'preco', 'localizacao')}, ensure_ascii=False)}"
     )
-    conteudo: list = [{"type": "text", "text": instrucao}]
-    conteudo += _bloco_imagem(entrada.get("_imagem_path"))  # analisa a FOTO, não só o texto
-    resp = client.messages.create(
-        model=modelo, max_tokens=400, temperature=0,  # tarefa determinística, não criativa
-        messages=[{"role": "user", "content": conteudo}],
-    )
-    texto = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
+
+
+def _texto_do_llm(entrada: dict, instrucao: str) -> tuple[str | None, str]:
+    """(texto, fonte). Primário Anthropic (com visão); se falhar, fallback Ollama
+    local (texto-only). None se ambos fora → chamador cai nas regras."""
+    try:
+        import anthropic  # tardio: mock roda sem o SDK
+        client = anthropic.Anthropic()
+        modelo = os.environ.get("HIGGSFIELD_ANTHROPIC_MODEL", "claude-opus-4-8")
+        conteudo = [{"type": "text", "text": instrucao}] + _bloco_imagem(entrada.get("_imagem_path"))
+        resp = client.messages.create(
+            model=modelo, max_tokens=400, temperature=0,  # determinística, não criativa
+            messages=[{"role": "user", "content": conteudo}])
+        texto = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
+        if texto.strip():
+            return texto, "anthropic"
+    except Exception as e:  # timeout/erro/sem chave → tenta o local
+        log_span("motor_b.classificacao", ok=False, motivo="anthropic_falhou", erro=str(e)[:200])
+    from shared_core.ai import local_llm  # fallback local (Ollama 3B, CPU)
+    texto = local_llm.completar(instrucao, max_tokens=400, temperature=0)
+    return (texto, "ollama-fallback") if texto else (None, "regras")
+
+
+def _anthropic(entrada: dict) -> dict:
+    texto, fonte = _texto_do_llm(entrada, _instrucao(entrada))
+    if texto is None:  # todos os providers fora → regras determinísticas
+        log_span("motor_b.classificacao", ok=False, motivo="todos_providers_fora", fonte="regras")
+        return {**_regras(entrada), "fonte": "regras"}
     bruto = _extrair_json(texto)
-    if bruto is None:  # LLM sem JSON legível → fallback determinístico, nunca crasha
-        log_span("motor_b.classificacao", ok=False, motivo="saida_llm_ilegivel", fonte="anthropic-fallback")
-        return {**_regras(entrada), "fonte": "anthropic-fallback"}
+    if bruto is None:  # LLM sem JSON legível → regras, nunca crasha
+        log_span("motor_b.classificacao", ok=False, motivo="saida_llm_ilegivel", fonte=fonte)
+        return {**_regras(entrada), "fonte": f"{fonte}-ilegivel"}
     dados = _validar(bruto, entrada)  # valida enum/faixa; campo inválido cai na regra
+    dados["fonte"] = fonte
     log_span("motor_b.classificacao", **dados)
     return dados
 
