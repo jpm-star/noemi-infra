@@ -1,8 +1,18 @@
 """Motor B refinamento criativo (Bloco C): itens que estendem classificação/prompt."""
+import base64
+import time
+
 import metadados
 import prompt_builder
+import qa
 import templates
+from fastapi.testclient import TestClient
+from main import app
+from shared_core import storage
 from shared_core.ai import classificacao
+
+_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
 
 
 # -- item 5: detecção de iluminação e ambiente ------------------------------
@@ -85,3 +95,25 @@ def test_encerramento_e_cta_so_no_fim():
     # cena do meio: nem encerramento nem CTA
     assert p_fim["encerramento"] not in p_meio["prompt"]
     assert "chamada para ação" not in p_meio["prompt"]
+
+
+# -- item 6: Auto QA técnico -------------------------------------------------
+def test_qa_reprova_lixo_aprova_video():
+    assert not qa.verificar_video(b"")[0]
+    assert not qa.verificar_video(b"x" * 5000)[0]  # não é vídeo
+
+
+def test_qa_roda_no_job_e_marca_metadata():
+    with TestClient(app) as c:
+        a = c.post("/api/upload", files={"file": ("i.png", _PNG, "image/png")},
+                   data={"owner": "qa-test"}).json()["asset_id"]
+        j = c.post("/api/jobs", json={"asset_id": a, "config": {"duration": 1}}).json()["job_id"]
+        prazo = time.time() + 40
+        while time.time() < prazo:
+            job = c.get(f"/api/jobs/{j}").json()
+            if job["estado"] in ("completed", "failed"):
+                break
+            time.sleep(0.3)
+        assert job["estado"] == "completed", job
+        md = storage.get_asset(job["asset_video"])["metadata"]
+        assert md["qa"].startswith("ok"), md["qa"]  # QA passou e registrou

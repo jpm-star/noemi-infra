@@ -16,6 +16,7 @@ import media
 import metadados
 import pos
 import prompt_builder
+import qa
 import storyboard
 import templates
 from shared_core import storage
@@ -68,11 +69,19 @@ async def processar(job: dict) -> None:
         # Onda 1: acabamento de marca (reframe/watermark/legenda) — best-effort,
         # falha degrada pro vídeo cru, nunca derruba o job.
         pos_meta = await asyncio.to_thread(_finalizar, out, cfg, jid)
+        # item 6: Auto QA técnico — não publica vídeo corrompido/truncado. Reprovou
+        # → levanta e cai no retry/failed; nunca entrega lixo ao cliente.
+        ok_qa, motivo_qa = await asyncio.to_thread(
+            qa.verificar_video, out["bytes"], duracao_esperada=_dur_esperada(cfg, out))
+        if not ok_qa:
+            log_span("motor_b.qa", job=jid, ok=False, motivo=motivo_qa)
+            raise RuntimeError(f"QA reprovou o vídeo: {motivo_qa}")
         asset_video = storage.create_asset(
             owner=origem["owner"], produto=jobs.PRODUTO, mime=out["mime"], dados=out["bytes"],
             metadata={"asset_origem": origem["id"], "job": jid, "brand": cfg.get("brand"),
                       "titulo": cfg.get("titulo"), "hashtags": cfg.get("hashtags"),
-                      "modelo": out["modelo"], "pos": pos_meta, **out.get("meta", {})},
+                      "qa": motivo_qa, "modelo": out["modelo"], "pos": pos_meta,
+                      **out.get("meta", {})},
         )
         if not jobs.atualizar(jid, "completed", asset_video=asset_video["id"], erro=None,
                               duracao_s=duracao_s, custo_creditos=out.get("custo_creditos") or 0):
@@ -122,6 +131,18 @@ def _planejar(origem: dict, job: dict) -> dict:
             "titulo": metadados.titulo(clas, base),  # metadado de publicação
             "hashtags": metadados.hashtags(clas, base),
             "segmento": base.get("segmento") or clas.get("padrao")}
+
+
+def _dur_esperada(cfg: dict, out: dict) -> float | None:
+    """Duração esperada pro Auto QA: storyboard = nº cenas × duração/cena; senão
+    a duração do clipe. None se indeterminado (QA pula a checagem de duração)."""
+    meta = out.get("meta") or {}
+    if meta.get("storyboard"):
+        return meta.get("n_cenas", 1) * int(cfg.get("duracao_cena") or storyboard.DUR_CENA)
+    try:
+        return float(cfg.get("duration"))
+    except (TypeError, ValueError):
+        return None
 
 
 def _finalizar(out: dict, cfg: dict, jid: str) -> dict:
