@@ -13,6 +13,7 @@ import time
 import brand
 import jobs
 import media
+import metadados
 import pos
 import prompt_builder
 import storyboard
@@ -70,6 +71,7 @@ async def processar(job: dict) -> None:
         asset_video = storage.create_asset(
             owner=origem["owner"], produto=jobs.PRODUTO, mime=out["mime"], dados=out["bytes"],
             metadata={"asset_origem": origem["id"], "job": jid, "brand": cfg.get("brand"),
+                      "titulo": cfg.get("titulo"),
                       "modelo": out["modelo"], "pos": pos_meta, **out.get("meta", {})},
         )
         if not jobs.atualizar(jid, "completed", asset_video=asset_video["id"], erro=None,
@@ -117,6 +119,7 @@ def _planejar(origem: dict, job: dict) -> dict:
     return {**base, "prompt": plano["prompt"], "duration": plano["duration"],
             "aspect_ratio": plano["aspect_ratio"], "template": template["id"],
             "movimento": plano["movimento"], "brand": kit, "classificacao": clas,
+            "titulo": metadados.titulo(clas, base),  # metadado de publicação
             "segmento": base.get("segmento") or clas.get("padrao")}
 
 

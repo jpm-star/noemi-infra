@@ -1,4 +1,5 @@
 """Motor B refinamento criativo (Bloco C): itens que estendem classificação/prompt."""
+import metadados
 import prompt_builder
 import templates
 from shared_core.ai import classificacao
@@ -23,3 +24,15 @@ def test_prompt_usa_iluminacao_e_ambiente():
                                         {"descricao": "Casa com quintal e churrasqueira à noite"})
     assert "iluminação real do imóvel" in p["prompt"]
     assert "Ambiente predominante" in p["prompt"]
+
+
+# -- item 1: título automático ----------------------------------------------
+def test_titulo_compoe_partes_reais():
+    t = metadados.titulo({"tipo": "apartamento", "padrao": "luxo"},
+                         {"descricao": "3 quartos com vista pro mar", "localizacao": "Balneário Camboriú"})
+    assert t == "Apartamento 3 quartos - Balneário Camboriú - Vista Mar - Alto Padrão"
+
+
+def test_titulo_nao_inventa_dado_faltando():
+    # sem quartos/local/destaque/padrão econômico → só o tipo, nada inventado
+    assert metadados.titulo({"tipo": "casa", "padrao": "economico"}, {"descricao": "casa"}) == "Casa"
