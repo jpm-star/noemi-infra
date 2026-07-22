@@ -64,7 +64,8 @@ def _plano_da_cena(asset: dict, cena: dict, base: dict, brand: dict,
         entrada["_start_frame_path"] = start_frame_path
     clas = classificacao.classificar(entrada)
     template = templates.escolher_template(clas, base.get("template"))
-    plano = prompt_builder.construir_prompt(clas, template, entrada, brand=brand)
+    plano = prompt_builder.construir_prompt(clas, template, entrada, brand=brand,
+                                            papel=cena.get("papel", "meio"))
     dur = int(base.get("duracao_cena") or DUR_CENA)
     return {**{k: v for k, v in base.items() if not k.startswith("_")},
             "prompt": plano["prompt"], "duration": dur,
@@ -90,7 +91,11 @@ def gerar_walkthrough(origem: dict, cfg: dict, brand: dict, jid: str,
     modelos: list[str] = []
     with tempfile.TemporaryDirectory() as tmp:
         start_frame_path: str | None = None  # 1ª cena usa a própria foto
-        for cena in cenas:
+        ult = len(cenas) - 1
+        for i, cena in enumerate(cenas):
+            # papel da cena: 1ª ganha hook, última ganha encerramento+CTA (item 3/4)
+            cena["papel"] = ("completo" if len(cenas) == 1 else
+                             "abertura" if i == 0 else "encerramento" if i == ult else "meio")
             asset = get_asset(cena["asset_id"]) or origem
             plano = _plano_da_cena(asset, cena, cfg, brand, start_frame_path, asset_file)
             out = video.generate(asset, plano)

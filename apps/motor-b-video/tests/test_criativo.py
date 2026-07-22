@@ -68,3 +68,20 @@ def test_hook_entra_na_abertura_nao_no_meio():
     # clipe único (completo) também abre com hook
     assert prompt_builder.construir_prompt(clas, tpl, {})["hook"] in \
         prompt_builder.construir_prompt(clas, tpl, {})["prompt"]
+
+
+# -- item 4: sugestão de encerramento ---------------------------------------
+def test_encerramento_por_padrao():
+    assert "premium" in prompt_builder.escolher_encerramento({"padrao": "luxo"}).lower()
+    assert "pôr do sol" in prompt_builder.escolher_encerramento({"padrao": "rural"}).lower()
+
+
+def test_encerramento_e_cta_so_no_fim():
+    clas = {"padrao": "luxo", "tipo": "apartamento", "cta": True}
+    tpl = templates.escolher_template(clas)
+    p_fim = prompt_builder.construir_prompt(clas, tpl, {}, papel="encerramento")
+    p_meio = prompt_builder.construir_prompt(clas, tpl, {}, papel="meio")
+    assert p_fim["encerramento"] in p_fim["prompt"] and "chamada para ação" in p_fim["prompt"]
+    # cena do meio: nem encerramento nem CTA
+    assert p_fim["encerramento"] not in p_meio["prompt"]
+    assert "chamada para ação" not in p_meio["prompt"]

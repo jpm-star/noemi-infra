@@ -66,6 +66,21 @@ def escolher_hook(classificacao: dict) -> str:
     return _HOOK_POR_PADRAO.get(classificacao.get("padrao"), _HOOK_POR_PADRAO["economico"])
 
 
+# Encerramento (item 4): última cena antes do CTA, por padrão do imóvel.
+_ENCERRAMENTO_POR_PADRAO = {
+    "luxo": "Encerramento: plano contemplativo e amplo do ambiente premium, luz suave, antes do CTA.",
+    "economico": "Encerramento: fecha no clima de lar realizado, aconchego, antes do CTA.",
+    "lancamento": "Encerramento: logo/nome do empreendimento em destaque com o slogan, antes do CTA.",
+    "rural": "Encerramento: pôr do sol / paisagem ampla do terreno, antes do CTA.",
+    "comercial": "Encerramento: plano limpo e firme da fachada/marca, transmitindo solidez, antes do CTA.",
+}
+
+
+def escolher_encerramento(classificacao: dict) -> str:
+    """Direção da cena de fechamento (antes do CTA), por padrão do imóvel."""
+    return _ENCERRAMENTO_POR_PADRAO.get(classificacao.get("padrao"), _ENCERRAMENTO_POR_PADRAO["economico"])
+
+
 def construir_prompt(classificacao: dict, template: dict, entrada: dict,
                      brand: dict | None = None, papel: str = "completo") -> dict:
     """`papel` posiciona a cena no vídeo: 'completo' (clipe único), 'abertura'
@@ -97,13 +112,20 @@ def construir_prompt(classificacao: dict, template: dict, entrada: dict,
     if classificacao.get("ambiente"):
         partes.append(f"Ambiente predominante: {classificacao['ambiente']}.")
 
+    # encerramento (item 4): direção da última cena, só no fechamento (ou clipe único)
+    encerramento = escolher_encerramento(classificacao)
+    no_fim = papel in ("completo", "encerramento")
+    if no_fim:
+        partes.append(encerramento)
+
     # Brand Kit: cor de acento entra como direção de arte; CTA de encerramento
-    # usa o nome da marca (nunca genérico quando a marca é conhecida).
+    # usa o nome da marca (nunca genérico quando a marca é conhecida). CTA só no
+    # fechamento — no storyboard, cenas do meio não levam CTA.
     marca_nome = (brand or {}).get("nome")
     tem_marca = bool(marca_nome) and marca_nome != "Noemi"
     if brand and brand.get("cor_acento"):
         partes.append(f"Paleta com acento da marca {brand['cor_acento']} em detalhes e textos na tela.")
-    if template.get("cta") or classificacao.get("cta"):
+    if no_fim and (template.get("cta") or classificacao.get("cta")):
         if tem_marca:
             partes.append(f"Encerrar com cartela da marca \"{marca_nome}\" e chamada para ação "
                           "clara (fale no WhatsApp / agende visita).")
@@ -122,6 +144,7 @@ def construir_prompt(classificacao: dict, template: dict, entrada: dict,
         "template_id": template["id"],
         "movimento": movimento,
         "hook": hook,
+        "encerramento": encerramento,
         "papel": papel,
         "classificacao": classificacao,
     }
