@@ -54,6 +54,9 @@
 </main>
 <script>
 const ESTADOS = ["queued","uploading","processing","completed"];
+const ROTULO = {queued:"na fila",uploading:"enviando",processing:"gerando",completed:"pronto",
+                failed:"falhou",cancelled:"cancelado",retry:"tentando de novo"};
+const rot = e => ROTULO[e] || e;
 const $ = id => document.getElementById(id);
 
 function pintarTimeline(estado) {
@@ -63,12 +66,12 @@ function pintarTimeline(estado) {
     const c = document.createElement("span");
     c.className = "chip" + (e === estado ? " on" : ESTADOS.indexOf(e) < idx ? " done" : "");
     if (estado === "completed") c.className = "chip done";
-    c.textContent = e; t.appendChild(c);
+    c.textContent = rot(e); t.appendChild(c);
   }
   if (["failed","cancelled","retry"].includes(estado)) {
     const c = document.createElement("span");
     c.className = "chip " + (estado === "retry" ? "on" : "bad");
-    c.textContent = estado; t.appendChild(c);
+    c.textContent = rot(estado); t.appendChild(c);
   }
 }
 

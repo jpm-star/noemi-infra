@@ -262,10 +262,13 @@ def _tela_combo(passo: str, nome: str = "", servico: str = "") -> str:
     ocultos += (f"<input type='hidden' name='servico' value='{_esc(servico)}'>" if passo == "whatsapp" else "")
     voltar = ("" if passo == "nome" else
               "<a class='voltar' href='/studio/combo'>← começar de novo</a>")
+    # último passo dispara montar_site (segundos): trava o botão e avisa que está criando
+    onsubmit = ("onsubmit=\"var b=this.querySelector('button');b.disabled=true;"
+                "b.textContent='Criando seu site... leva alguns segundos'\"" if proximo == "pronto" else "")
     corpo = f"""{_COMBO_CSS}<div class='combo'>
 <div class='passo'>PASSO {idx + 1} DE 3</div>
 <div class='pergunta'>{pergunta}</div><div class='dica'>{dica}</div>
-<form method='post' action='/studio/combo'>
+<form method='post' action='/studio/combo' {onsubmit}>
 <input type='hidden' name='passo' value='{proximo}'>{ocultos}
 <input name='{campo}' type='{tipo}' required autofocus placeholder='{ph}'>
 <button>{'Criar meu site' if proximo == 'pronto' else 'Continuar'}</button>
