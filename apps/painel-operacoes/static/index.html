@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Noemi OS · Observabilidade</title>
+<style>
+:root{
+  --bg:#060a12; --panel:#0c1422; --panel2:#0f1a2c; --line:#1b2942;
+  --txt:#d3e6f7; --mut:#6d84a2; --cy:#34e2ff; --ok:#2fe6a0; --warn:#ffd166; --bad:#ff5b78;
+  --mono:"SFMono-Regular",ui-monospace,"JetBrains Mono",Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0}
+body{background:
+  radial-gradient(900px 500px at 85% -10%,rgba(52,226,255,.08),transparent 60%),
+  radial-gradient(700px 400px at 0% 110%,rgba(47,230,160,.06),transparent 55%),var(--bg);
+  color:var(--txt);font-family:system-ui,-apple-system,Segoe UI,sans-serif;min-height:100vh;padding:18px 20px 40px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:11px}
+.brand .dot{width:11px;height:11px;border-radius:50%;background:var(--cy);box-shadow:0 0 14px var(--cy);animation:pulse 2s infinite}
+@keyframes pulse{50%{opacity:.35}}
+.brand b{font-size:1.05rem;letter-spacing:.5px}.brand small{color:var(--mut);font-size:.72rem;display:block;letter-spacing:2px}
+.meta{color:var(--mut);font-size:.76rem;font-family:var(--mono);text-align:right}
+.grid{display:grid;gap:12px}
+.row-mot{grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
+.row-kpi{grid-template-columns:repeat(auto-fit,minmax(120px,1fr))}
+.row2{grid-template-columns:1.4fr 1fr;align-items:start}
+.row3{grid-template-columns:1fr 1fr 1fr}
+@media(max-width:900px){.row2,.row3{grid-template-columns:1fr}}
+.card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);
+  border-radius:14px;padding:14px 15px}
+.card h3{font-size:.7rem;text-transform:uppercase;letter-spacing:.16em;color:var(--mut);margin-bottom:11px;font-weight:600}
+.mot{display:flex;align-items:center;justify-content:space-between}
+.mot .n{font-weight:600;font-size:.95rem}
+.mot .s{font-family:var(--mono);font-size:.74rem;color:var(--mut)}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-family:var(--mono);padding:3px 9px;border-radius:99px}
+.b-ok{color:var(--ok);background:rgba(47,230,160,.1);border:1px solid rgba(47,230,160,.3)}
+.b-bad{color:var(--bad);background:rgba(255,91,120,.1);border:1px solid rgba(255,91,120,.3)}
+.b-warn{color:var(--warn);background:rgba(255,209,102,.1);border:1px solid rgba(255,209,102,.3)}
+.kpi .v{font-family:var(--mono);font-size:1.7rem;font-weight:700;color:#fff;letter-spacing:-.5px}
+.kpi .v small{font-size:.9rem;color:var(--mut);font-weight:400}
+.kpi .l{color:var(--mut);font-size:.72rem;margin-top:3px}
+.gauge{height:6px;background:#0a1220;border-radius:99px;overflow:hidden;margin-top:8px}
+.gauge i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--cy),var(--ok));transition:width .5s}
+table{width:100%;border-collapse:collapse;font-size:.78rem}
+th{text-align:left;color:var(--mut);font-weight:500;font-size:.66rem;text-transform:uppercase;letter-spacing:.08em;padding:5px 8px;border-bottom:1px solid var(--line)}
+td{padding:6px 8px;border-bottom:1px solid rgba(27,41,66,.5);font-family:var(--mono);font-size:.76rem}
+tr:last-child td{border:0}
+.tag{font-size:.62rem;padding:1px 6px;border-radius:5px;font-family:var(--mono)}
+.tp{background:rgba(52,226,255,.12);color:var(--cy)}
+.tc{background:rgba(47,230,160,.12);color:var(--ok)}
+.bar-row{display:flex;align-items:center;gap:8px;margin-bottom:7px;font-size:.76rem}
+.bar-row .lab{width:120px;color:var(--mut);font-family:var(--mono);font-size:.72rem}
+.bar-row .bar{flex:1;height:16px;background:#0a1220;border-radius:5px;overflow:hidden}
+.bar-row .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--cy),rgba(52,226,255,.4))}
+.bar-row .num{width:34px;text-align:right;font-family:var(--mono);color:var(--txt)}
+.err{display:flex;gap:8px;padding:7px 0;border-bottom:1px solid rgba(27,41,66,.5);font-size:.76rem;align-items:baseline}
+.err .t{color:var(--mut);font-family:var(--mono);font-size:.68rem;min-width:56px}
+.err .m{color:var(--txt);opacity:.85;word-break:break-word}
+.empty{color:var(--mut);font-size:.8rem;padding:6px 2px}
+.mono{font-family:var(--mono)}
+.off{opacity:.5}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="brand"><span class="dot"></span><div><b>NOEMI OS</b><small>OBSERVABILIDADE</small></div></div>
+  <div class="meta"><span id="saude"></span><br><span id="upd">—</span></div>
+</div>
+
+<div class="grid row-mot" id="motores" style="margin-bottom:12px"></div>
+
+<div class="grid row-kpi" id="kpis" style="margin-bottom:12px"></div>
+
+<div class="grid row2" style="margin-bottom:12px">
+  <div class="card"><h3>Últimas chamadas — LiteLLM</h3><div id="chamadas"></div></div>
+  <div class="card"><h3>Ranking por modelo</h3><div id="ranking"></div></div>
+</div>
+
+<div class="grid row3">
+  <div class="card"><h3>Fila viva</h3><div id="fila"></div></div>
+  <div class="card"><h3>Cascata de fallback</h3><div id="fallback"></div></div>
+  <div class="card"><h3>Falhas agrupadas</h3><div id="erros"></div></div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const money=v=>"$"+(v||0).toFixed(v<0.01?6:4);
+const pill=(up,txt)=>`<span class="pill ${up?'b-ok':'b-bad'}">${up?'🟢':'🔴'} ${txt}</span>`;
+function corPct(p){return p>=90?'var(--bad)':p>=70?'var(--warn)':'var(--ok)'}
+
+function render(d){
+  // saúde geral
+  const down=d.motores.filter(m=>m.status!=='up').length;
+  $("saude").innerHTML = down===0?'<span style="color:var(--ok)">● todos os sistemas operacionais</span>'
+    :`<span style="color:var(--bad)">● ${down} serviço(s) fora</span>`;
+  $("upd").textContent = "atualizado "+new Date(d.ts).toLocaleTimeString('pt-BR');
+
+  // motores
+  $("motores").innerHTML = d.motores.map(m=>`<div class="card mot">
+    <div><div class="n">${m.nome}</div><div class="s">${m.ping_ms!=null?m.ping_ms+'ms':'sem resposta'}</div></div>
+    ${pill(m.status==='up',m.status.toUpperCase())}</div>`).join('');
+
+  // KPIs
+  const L=d.llm, V=d.vps;
+  const kpi=(v,l)=>`<div class="card kpi"><div class="v">${v}</div><div class="l">${l}</div></div>`;
+  const gauge=(v,l,pct)=>`<div class="card kpi"><div class="v">${v}</div><div class="l">${l}</div>
+    <div class="gauge"><i style="width:${Math.min(pct,100)}%;background:${corPct(pct)}"></i></div></div>`;
+  $("kpis").innerHTML = [
+    kpi(L.online?money(L.custo.hoje):'—',"custo hoje"),
+    kpi(L.online?money(L.custo.mes):'—',"custo mês"),
+    kpi(L.online?L.latencia.media+'<small>ms</small>':'—',"latência média"),
+    kpi(L.online?L.latencia.p95+'<small>ms</small>':'—',"P95"),
+    kpi(L.online?L.cache.hit_rate+'<small>%</small>':'—',"cache hit"),
+    gauge((V.cpu_pct||0)+'<small>%</small>',"CPU · load "+(V.load1||0),V.cpu_pct||0),
+    gauge((V.ram_pct||0)+'<small>%</small>',"RAM "+(V.ram_gb||0)+"GB",V.ram_pct||0),
+    gauge((V.disco_pct||0)+'<small>%</small>',"disco",V.disco_pct||0),
+  ].join('');
+
+  // chamadas
+  if(!L.online){$("chamadas").innerHTML='<div class="empty off">LiteLLM offline</div>';}
+  else if(!L.recentes.length){$("chamadas").innerHTML='<div class="empty">sem chamadas ainda</div>';}
+  else $("chamadas").innerHTML=`<table><tr><th>hora</th><th>modelo</th><th>prov</th><th>ms</th><th>tok</th><th>custo</th><th></th></tr>
+    ${L.recentes.map(c=>`<tr><td>${c.ts}</td><td>${(c.model||'?').split('/').pop()}</td>
+     <td>${c.provider||'-'}</td><td>${c.dur_ms}</td><td>${c.tokens||0}</td><td>${money(c.spend)}</td>
+     <td>${c.cache?'<span class="tag tc">cache</span>':(c.status!=='success'?'<span class="tag" style="color:var(--bad)">'+c.status+'</span>':'')}</td></tr>`).join('')}</table>`;
+
+  // ranking
+  $("ranking").innerHTML = (L.por_modelo&&L.por_modelo.length)?`<table><tr><th>modelo</th><th>n</th><th>ms</th><th>ok</th><th>custo</th></tr>
+    ${L.por_modelo.map(r=>`<tr><td>${r.model.split('/').pop()}</td><td>${r.n}</td><td>${r.dur_medio}</td>
+     <td style="color:${r.sucesso>=99?'var(--ok)':'var(--warn)'}">${r.sucesso}%</td><td>${money(r.custo)}</td></tr>`).join('')}</table>`
+    :'<div class="empty">—</div>';
+
+  // fila
+  const F=d.fila;
+  if(!F.online){$("fila").innerHTML='<div class="empty off">banco indisponível</div>';}
+  else{
+    const c=F.contagem;
+    $("fila").innerHTML=`<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px;font-family:var(--mono);font-size:.8rem">
+      <span style="color:var(--cy)">▶ ${F.em_andamento} rodando</span>
+      <span style="color:var(--ok)">✓ ${c.completed} ok</span>
+      <span style="color:var(--bad)">✗ ${c.failed} falhou</span></div>`+
+      (F.ativos.length?`<table><tr><th>job</th><th>motor</th><th>estado</th><th>tent</th></tr>
+      ${F.ativos.map(a=>`<tr><td>${a.id}</td><td>${(a.produto||'').replace('motor-','')}</td>
+       <td style="color:var(--cy)">${a.estado}</td><td>${a.tentativas}</td></tr>`).join('')}</table>`
+      :'<div class="empty">fila vazia</div>');
+  }
+
+  // fallback bars
+  const fb=d.fallback, tot=Object.values(fb).reduce((a,b)=>a+b,0)||1;
+  const lbl={proxy:'proxy (cloud)','ollama-fallback':'ollama (local)',regras:'regras',mock:'mock',outros:'outros'};
+  $("fallback").innerHTML=Object.keys(lbl).map(k=>`<div class="bar-row">
+    <span class="lab">${lbl[k]}</span><span class="bar"><i style="width:${100*(fb[k]||0)/tot}%"></i></span>
+    <span class="num">${fb[k]||0}</span></div>`).join('');
+
+  // erros
+  const E=d.erros, g=Object.entries(E.agrupados);
+  $("erros").innerHTML = (g.length?`<div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:9px">
+    ${g.map(([t,n])=>`<span class="pill b-warn">${t}: ${n}</span>`).join('')}</div>`:'<div class="empty" style="color:var(--ok)">✓ nenhuma falha recente</div>')+
+    E.recentes.map(e=>`<div class="err"><span class="t">${e.ts}</span><span class="m"><b style="color:var(--bad)">${e.tipo}</b> · ${e.fonte} — ${e.motivo}</span></div>`).join('');
+}
+
+async function tick(){
+  try{const r=await fetch('/api/painel');render(await r.json());}
+  catch(e){$("saude").innerHTML='<span style="color:var(--bad)">● painel sem conexão</span>';}
+}
+tick(); setInterval(tick, 4000);
+</script>
+</body>
+</html>

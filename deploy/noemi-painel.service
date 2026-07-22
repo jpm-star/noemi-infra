@@ -1,0 +1,17 @@
+[Unit]
+Description=Noemi OS - Painel de observabilidade (read-only)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/noemi-infra
+# LITELLM_MASTER_KEY vem do .env da infra; DB/OBS apontam pros dados do monorepo
+EnvironmentFile=/root/noemi-infra/infra/.env
+Environment=NOEMI_DB=/root/noemi-infra/data/noemi.db
+Environment=NOEMI_OBS=/root/noemi-infra/data/obs.jsonl
+ExecStart=/root/noemi-infra/.venv/bin/uvicorn main:app --app-dir apps/painel-operacoes --host 127.0.0.1 --port 8030
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
