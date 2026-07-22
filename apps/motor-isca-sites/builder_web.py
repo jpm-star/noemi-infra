@@ -14,6 +14,7 @@ browser ~400MB não é 'barato') — mostro <iframe> do site real + link.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import sys
@@ -131,7 +132,11 @@ def _tela_principal(resultado_html: str = "") -> str:
             for i in itens)
     else:
         linhas = "<div class='vazio'>Nenhum site gerado ainda.</div>"
-    form = f"""<div class='card'><h2>Novo site</h2>
+    form = f"""<div class='card'>
+<a href='/studio/combo' style='display:block;text-align:center;margin-bottom:16px;padding:12px;
+border-radius:12px;text-decoration:none;color:#fff;font-weight:700;
+background:linear-gradient(135deg,var(--roxo),#5b7cff)'>⚡ Onboarding rápido (3 perguntas)</a>
+<h2>Novo site</h2>
 <div class='sub'>Briefing → site publicado em go.noemi.digital, na hora.</div>
 <form method='post' action='/studio/gerar'>
 <label>Nome do negócio *</label><input name='nome' required placeholder='Escritório Contábil Silva'>
@@ -211,6 +216,126 @@ def gerar(request: Request, nome: str = Form(...), nicho: str = Form(...), whats
              f"<a href='{_esc(url)}' target='_blank' rel='noopener'>{_esc(url)}</a>"
              f"<iframe src='{_esc(url)}' title='preview'></iframe></div>")
     return HTMLResponse(_tela_principal(bloco))
+
+
+# == Combo Prestador de Serviço: onboarding ultra-simples =====================
+# 3 perguntas, UMA por tela (conversa, não cadastro), zero jargão. Ao final:
+# site publicado + config da Noemi Básica salva. Reusa o MESMO montar_site.
+_COMBO_CSS = """<style>
+.combo{max-width:440px;margin:9vh auto;padding:0 20px;text-align:center}
+.combo .passo{color:var(--fraco);font-size:.8rem;letter-spacing:.5px;margin-bottom:10px}
+.combo .pergunta{font-size:1.5rem;font-weight:700;margin-bottom:6px;line-height:1.25}
+.combo .dica{color:var(--fraco);font-size:.9rem;margin-bottom:22px}
+.combo input{font-size:1.15rem;padding:15px 16px;text-align:center}
+.combo .pts{display:flex;gap:7px;justify-content:center;margin-top:22px}
+.combo .pts i{width:9px;height:9px;border-radius:99px;background:var(--linha)}
+.combo .pts i.on{background:var(--roxo)}
+.combo .voltar{display:inline-block;margin-top:16px;color:var(--fraco);font-size:.82rem;text-decoration:none}
+.pronto{max-width:460px;margin:8vh auto;text-align:center;padding:0 20px}
+.pronto .ok{font-size:2.6rem}.pronto h1{font-size:1.6rem;margin:8px 0 6px}
+.pronto p{color:var(--fraco);margin-bottom:18px}
+.pronto .link{display:block;background:var(--card);border:1px solid var(--roxo);border-radius:12px;
+padding:14px;color:var(--roxo2);word-break:break-all;text-decoration:none;margin-bottom:8px}
+.pronto iframe{width:100%;height:300px;border:1px solid var(--linha);border-radius:12px;background:#fff}
+</style>"""
+
+_PASSOS = ["nome", "servico", "whatsapp"]
+_PERGUNTA = {
+    "nome": ("Como chama o seu negócio?", "Pode ser seu nome mesmo, ex: Eletricista do João",
+             "nome", "text", "Eletricista do João"),
+    "servico": ("O que você faz?", "Do jeito que o cliente procura, ex: eletricista, encanador, diarista",
+                "servico", "text", "eletricista"),
+    "whatsapp": ("Qual o seu WhatsApp?", "Com DDD — é pra onde o cliente vai te chamar",
+                 "whatsapp", "tel", "66 99999-9999"),
+}
+
+
+def _tela_combo(passo: str, nome: str = "", servico: str = "") -> str:
+    pergunta, dica, campo, tipo, ph = _PERGUNTA[passo]
+    idx = _PASSOS.index(passo)
+    proximo = _PASSOS[idx + 1] if idx + 1 < len(_PASSOS) else "pronto"
+    pts = "".join(f"<i class='{'on' if i <= idx else ''}'></i>" for i in range(len(_PASSOS)))
+    ocultos = (f"<input type='hidden' name='nome' value='{_esc(nome)}'>" if passo != "nome" else "")
+    ocultos += (f"<input type='hidden' name='servico' value='{_esc(servico)}'>" if passo == "whatsapp" else "")
+    voltar = ("" if passo == "nome" else
+              "<a class='voltar' href='/studio/combo'>← começar de novo</a>")
+    corpo = f"""{_COMBO_CSS}<div class='combo'>
+<div class='passo'>PASSO {idx + 1} DE 3</div>
+<div class='pergunta'>{pergunta}</div><div class='dica'>{dica}</div>
+<form method='post' action='/studio/combo'>
+<input type='hidden' name='passo' value='{proximo}'>{ocultos}
+<input name='{campo}' type='{tipo}' required autofocus placeholder='{ph}'>
+<button>{'Criar meu site' if proximo == 'pronto' else 'Continuar'}</button>
+</form><div class='pts'>{pts}</div>{voltar}</div>"""
+    return _pagina(_topo(com_sair=False) + corpo, "Começar — Noemi")
+
+
+def _meta_dir() -> Path:
+    return Path(os.environ.get("SITE_META_DIR") or (Path(os.environ["SITE_OUT_DIR"]).parent / "sites-meta"))
+
+
+def _cartucho_basica(nome: str, servico: str, whatsapp: str, slug: str) -> Path:
+    """Salva a config da Noemi Básica do prestador (o cliente nunca vê 'cartucho').
+    Fica pronta pra conectar a um número — plugar no WhatsApp é passo do JP."""
+    dest = _meta_dir() / slug
+    dest.mkdir(parents=True, exist_ok=True)
+    cart = {
+        "plano": "noemi_basica",
+        "nome_empresa": nome, "vertical": servico, "whatsapp_dono": whatsapp,
+        "tom": "simples, direto e cordial",
+        "persona": (f"Você é a assistente virtual de {nome} ({servico}). Responda os clientes de "
+                    f"forma curta e clara, confirme pedidos de orçamento ou visita, informe horário "
+                    f"e região quando perguntarem e, quando não souber algo, diga que vai passar o "
+                    f"recado pro {nome}."),
+        "escopo": "atendimento básico: o que faz, horário, região, orçamento simples, recado",
+    }
+    caminho = dest / "cartucho.json"
+    caminho.write_text(json.dumps(cart, ensure_ascii=False, indent=1), encoding="utf-8")
+    return caminho
+
+
+def _combo_gerar(nome: str, servico: str, whatsapp: str) -> HTMLResponse:
+    briefing = {"nome_empresa": nome, "nicho": servico, "whatsapp": whatsapp,
+                "diferenciais": [], "publico": "", "cor_primaria": None}
+    try:
+        r = montar_site(briefing)
+    except Exception as e:  # mostra recado simples, sem stack técnico
+        corpo = (f"{_COMBO_CSS}<div class='pronto'><div class='ok'>😕</div>"
+                 f"<h1>Deu um probleminha</h1><p>Tenta de novo em instantes.</p>"
+                 f"<a class='link' href='/studio/combo'>Recomeçar</a></div>")
+        return HTMLResponse(_pagina(_topo(com_sair=False) + corpo), status_code=500)
+    url = r.deploy.url
+    slug = re.sub(r".*/([^/]+)/?$", r"\1", url.rstrip("/"))
+    _registrar_site(nome, servico, slug, url)
+    _cartucho_basica(nome, servico, whatsapp, slug)
+    corpo = f"""{_COMBO_CSS}<div class='pronto'><div class='ok'>🎉</div>
+<h1>Pronto, {_esc(nome)}!</h1>
+<p>Seu site já está no ar e a Noemi já está pronta pra responder seus clientes no WhatsApp.</p>
+<a class='link' href='{_esc(url)}' target='_blank' rel='noopener'>{_esc(url)}</a>
+<iframe src='{_esc(url)}' title='seu site'></iframe></div>"""
+    return HTMLResponse(_pagina(_topo(com_sair=False) + corpo, "Tudo pronto — Noemi"))
+
+
+@app.get("/studio/combo", response_class=HTMLResponse)
+def combo_inicio(request: Request):
+    if not _logado(request):
+        return _para_login()
+    return HTMLResponse(_tela_combo("nome"))
+
+
+@app.post("/studio/combo", response_class=HTMLResponse)
+def combo_passo(request: Request, passo: str = Form(...), nome: str = Form(""),
+                servico: str = Form(""), whatsapp: str = Form("")):
+    if not _logado(request):
+        return _para_login()
+    nome, servico, whatsapp = nome.strip()[:120], servico.strip()[:80], whatsapp.strip()[:40]
+    if passo == "servico" and nome:
+        return HTMLResponse(_tela_combo("servico", nome))
+    if passo == "whatsapp" and nome and servico:
+        return HTMLResponse(_tela_combo("whatsapp", nome, servico))
+    if passo == "pronto" and nome and servico and whatsapp:
+        return _combo_gerar(nome, servico, whatsapp)
+    return HTMLResponse(_tela_combo("nome"))  # dado faltando → recomeça limpo
 
 
 @app.get("/studio/health")
