@@ -63,12 +63,18 @@ def _tipo(desc: str) -> str:
     return "apartamento"
 
 
-def _mock(entrada: dict) -> dict:
+def _regras(entrada: dict) -> dict:
+    """Classificação determinística por regras (sem log) — base do mock E do
+    fallback do modo real (sempre devolve saída válida)."""
     desc = (entrada.get("descricao") or "").lower()
     padrao = _padrao(desc, _num(entrada.get("preco")))
     p = _PERFIL[padrao]
-    resultado = {"padrao": padrao, "tipo": _tipo(desc), "tom": p["tom"],
-                 "duracao": p["duracao"], "cta": p["cta"], "fonte": "mock"}
+    return {"padrao": padrao, "tipo": _tipo(desc), "tom": p["tom"],
+            "duracao": p["duracao"], "cta": p["cta"], "fonte": "mock"}
+
+
+def _mock(entrada: dict) -> dict:
+    resultado = _regras(entrada)
     log_span("motor_b.classificacao", **resultado)
     return resultado
 
@@ -88,16 +94,49 @@ def _anthropic(entrada: dict) -> dict:
     conteudo: list = [{"type": "text", "text": instrucao}]
     conteudo += _bloco_imagem(entrada.get("_imagem_path"))  # analisa a FOTO, não só o texto
     resp = client.messages.create(
-        model=modelo, max_tokens=400,
+        model=modelo, max_tokens=400, temperature=0,  # tarefa determinística, não criativa
         messages=[{"role": "user", "content": conteudo}],
     )
     texto = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
-    dados = json.loads(re.search(r"\{.*\}", texto, re.S).group(0))
-    dados["fonte"] = "anthropic"
-    dados.setdefault("padrao", "economico")
-    dados.setdefault("tipo", "apartamento")
+    bruto = _extrair_json(texto)
+    if bruto is None:  # LLM sem JSON legível → fallback determinístico, nunca crasha
+        log_span("motor_b.classificacao", ok=False, motivo="saida_llm_ilegivel", fonte="anthropic-fallback")
+        return {**_regras(entrada), "fonte": "anthropic-fallback"}
+    dados = _validar(bruto, entrada)  # valida enum/faixa; campo inválido cai na regra
     log_span("motor_b.classificacao", **dados)
     return dados
+
+
+def _extrair_json(texto: str | None) -> dict | None:
+    """Extrai o 1º objeto JSON do texto do LLM. None se não houver bloco {...} ou
+    o JSON for malformado — o chamador cai no fallback."""
+    m = re.search(r"\{.*\}", texto or "", re.S)
+    if not m:
+        return None
+    try:
+        d = json.loads(m.group(0))
+        return d if isinstance(d, dict) else None
+    except (ValueError, TypeError):
+        return None
+
+
+def _validar(bruto: dict, entrada: dict) -> dict:
+    """Valida a saída do LLM contra os domínios; qualquer campo inválido/ausente
+    cai na classificação por regras. Garante saída sempre consistente."""
+    d = {**_regras(entrada), "fonte": "anthropic"}
+    if bruto.get("padrao") in PADROES:
+        d["padrao"] = bruto["padrao"]
+    if bruto.get("tipo") in TIPOS:
+        d["tipo"] = bruto["tipo"]
+    if isinstance(bruto.get("tom"), str) and bruto["tom"].strip():
+        d["tom"] = bruto["tom"].strip()[:120]
+    try:
+        d["duracao"] = max(8, min(15, int(bruto["duracao"])))
+    except (KeyError, TypeError, ValueError):
+        pass
+    if isinstance(bruto.get("cta"), bool):
+        d["cta"] = bruto["cta"]
+    return d
 
 
 def _bloco_imagem(caminho: str | None) -> list:
