@@ -58,10 +58,64 @@ def titulo(classificacao: dict, entrada: dict) -> str:
     return " - ".join(p for p in partes if p)
 
 
+# -- hashtags ---------------------------------------------------------------
+_HT_TIPO = {"apartamento": ["#apartamento", "#apartamentoavenda"],
+            "casa": ["#casa", "#casaavenda"],
+            "condominio": ["#casaemcondominio", "#condominiofechado"]}
+_HT_PADRAO = {
+    "luxo": ["#imoveisdeluxo", "#altopadrao", "#luxo"],
+    "lancamento": ["#lancamento", "#naplanta", "#imovelnovo"],
+    "rural": ["#imovelrural", "#chacara", "#sitio"],
+    "comercial": ["#salacomercial", "#pontocomercial", "#imovelcomercial"],
+    "economico": ["#primeiroimovel", "#minhacasaminhavida", "#imovelacessivel"],
+}
+_HT_DESTAQUE = [(("vista mar", "vista pro mar", "frente mar", "beira mar"), "#vistamar"),
+                (("piscina",), "#piscina"),
+                (("mobiliado", "mobiliada"), "#mobiliado"),
+                (("vista", "panorâmica", "panoramica"), "#vistapanoramica")]
+_HT_BASE = ["#imoveis", "#imovelavenda", "#realestate", "#corretordeimoveis"]
+
+
+def _slug_tag(texto: str) -> str:
+    s = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode()
+    s = re.sub(r"[^a-z0-9]+", "", s.lower())
+    return f"#{s}" if s else ""
+
+
+def hashtags(classificacao: dict, entrada: dict, minimo: int = 8, maximo: int = 10) -> list[str]:
+    """8-10 hashtags relevantes por classificação/segmento. Dedup preservando
+    ordem (mais específica primeiro), completa com base até o mínimo."""
+    desc = (entrada.get("descricao") or "").lower()
+    tags: list[str] = []
+    tags += _HT_TIPO.get(classificacao.get("tipo"), [])
+    tags += _HT_PADRAO.get(classificacao.get("padrao"), [])
+    for chaves, tag in _HT_DESTAQUE:
+        if any(k in desc for k in chaves):
+            tags.append(tag)
+    local = (entrada.get("localizacao") or "").strip()
+    if local:
+        t = _slug_tag(local)
+        if t:
+            tags.append(t)
+    tags += _HT_BASE  # completa
+    vistos, saida = set(), []
+    for t in tags:
+        if t and t not in vistos:
+            vistos.add(t)
+            saida.append(t)
+        if len(saida) >= maximo:
+            break
+    return saida[:maximo] if len(saida) >= minimo else saida
+
+
 if __name__ == "__main__":  # self-check
     t = titulo({"tipo": "apartamento", "padrao": "luxo"},
                {"descricao": "3 quartos com vista pro mar", "localizacao": "Balneário Camboriú"})
     assert t == "Apartamento 3 quartos - Balneário Camboriú - Vista Mar - Alto Padrão", t
     t2 = titulo({"tipo": "casa", "padrao": "economico"}, {"descricao": "casa simples"})
     assert t2 == "Casa", t2  # sem quartos/local/destaque/padrão → só o tipo
-    print("metadados.titulo OK —", t)
+    h = hashtags({"tipo": "apartamento", "padrao": "luxo"},
+                 {"descricao": "vista pro mar com piscina", "localizacao": "Balneário Camboriú"})
+    assert 8 <= len(h) <= 10 and len(set(h)) == len(h), h
+    assert "#apartamento" in h and "#imoveisdeluxo" in h and "#vistamar" in h
+    print("metadados OK — título:", t, "| hashtags:", " ".join(h))

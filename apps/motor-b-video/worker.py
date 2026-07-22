@@ -71,7 +71,7 @@ async def processar(job: dict) -> None:
         asset_video = storage.create_asset(
             owner=origem["owner"], produto=jobs.PRODUTO, mime=out["mime"], dados=out["bytes"],
             metadata={"asset_origem": origem["id"], "job": jid, "brand": cfg.get("brand"),
-                      "titulo": cfg.get("titulo"),
+                      "titulo": cfg.get("titulo"), "hashtags": cfg.get("hashtags"),
                       "modelo": out["modelo"], "pos": pos_meta, **out.get("meta", {})},
         )
         if not jobs.atualizar(jid, "completed", asset_video=asset_video["id"], erro=None,
@@ -120,6 +120,7 @@ def _planejar(origem: dict, job: dict) -> dict:
             "aspect_ratio": plano["aspect_ratio"], "template": template["id"],
             "movimento": plano["movimento"], "brand": kit, "classificacao": clas,
             "titulo": metadados.titulo(clas, base),  # metadado de publicação
+            "hashtags": metadados.hashtags(clas, base),
             "segmento": base.get("segmento") or clas.get("padrao")}
 
 

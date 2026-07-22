@@ -36,3 +36,17 @@ def test_titulo_compoe_partes_reais():
 def test_titulo_nao_inventa_dado_faltando():
     # sem quartos/local/destaque/padrão econômico → só o tipo, nada inventado
     assert metadados.titulo({"tipo": "casa", "padrao": "economico"}, {"descricao": "casa"}) == "Casa"
+
+
+# -- item 2: hashtags automáticas -------------------------------------------
+def test_hashtags_relevantes_8_a_10_sem_repetir():
+    h = metadados.hashtags({"tipo": "apartamento", "padrao": "luxo"},
+                           {"descricao": "vista mar com piscina", "localizacao": "Balneário Camboriú"})
+    assert 8 <= len(h) <= 10 and len(set(h)) == len(h)
+    assert "#apartamento" in h and "#imoveisdeluxo" in h and "#vistamar" in h
+    assert "#balneariocamboriu" in h and all(t.startswith("#") for t in h)
+
+
+def test_hashtags_sem_dados_ainda_da_minimo():
+    h = metadados.hashtags({"tipo": "casa", "padrao": "economico"}, {})
+    assert len(h) >= 8 and "#casa" in h
