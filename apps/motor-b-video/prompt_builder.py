@@ -69,6 +69,13 @@ def construir_prompt(classificacao: dict, template: dict, entrada: dict,
     if desc:
         partes.insert(1, f"Destaques do imóvel: {desc}.")
 
+    # iluminação/ambiente detectados (classificação vision-capable) refinam a cena —
+    # o vídeo respeita a luz e o espaço reais do imóvel, não um genérico do template.
+    if classificacao.get("iluminacao"):
+        partes.append(f"Respeite a iluminação real do imóvel: {classificacao['iluminacao']}.")
+    if classificacao.get("ambiente"):
+        partes.append(f"Ambiente predominante: {classificacao['ambiente']}.")
+
     # Brand Kit: cor de acento entra como direção de arte; CTA de encerramento
     # usa o nome da marca (nunca genérico quando a marca é conhecida).
     marca_nome = (brand or {}).get("nome")

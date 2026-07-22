@@ -63,12 +63,34 @@ def _tipo(desc: str) -> str:
     return "apartamento"
 
 
+def _iluminacao(desc: str) -> str:
+    """Iluminação detectada: fonte (natural/artificial) + período (diurna/noturna).
+    Refina o prompt pra o vídeo respeitar a luz real do imóvel."""
+    noturna = any(k in desc for k in ("noite", "noturn", "pôr do sol", "por do sol",
+                                      "entardecer", "anoitecer", "luzes acesas"))
+    artificial = any(k in desc for k in ("artificial", "led", "spot", "embutida", "luminária", "luminaria"))
+    periodo = "noturna" if noturna else "diurna"
+    fonte = "artificial" if (artificial or noturna) else "natural"
+    return f"{fonte} {periodo}"
+
+
+def _ambiente(desc: str) -> str:
+    """Ambiente predominante: interno / externo / misto."""
+    externo = any(k in desc for k in ("piscina", "quintal", "jardim", "varanda", "área externa",
+                                      "area externa", "fachada", "churrasqueira", "gramado", "terraço", "terraco"))
+    interno = any(k in desc for k in ("sala", "quarto", "cozinha", "suíte", "suite", "banheiro", "closet"))
+    if externo and interno:
+        return "misto"
+    return "externo" if externo else "interno"
+
+
 def _mock(entrada: dict) -> dict:
     desc = (entrada.get("descricao") or "").lower()
     padrao = _padrao(desc, _num(entrada.get("preco")))
     p = _PERFIL[padrao]
     resultado = {"padrao": padrao, "tipo": _tipo(desc), "tom": p["tom"],
-                 "duracao": p["duracao"], "cta": p["cta"], "fonte": "mock"}
+                 "duracao": p["duracao"], "cta": p["cta"],
+                 "iluminacao": _iluminacao(desc), "ambiente": _ambiente(desc), "fonte": "mock"}
     log_span("motor_b.classificacao", **resultado)
     return resultado
 
@@ -82,7 +104,9 @@ def _anthropic(entrada: dict) -> dict:
     instrucao = (
         "Classifique este imóvel para gerar um vídeo promocional. Responda APENAS um JSON "
         f'com as chaves: padrao (um de {list(PADROES)}), tipo (um de {list(TIPOS)}), '
-        'tom (frase curta), duracao (segundos, 8-15), cta (true/false).\n\n'
+        'tom (frase curta), duracao (segundos, 8-15), cta (true/false), '
+        'iluminacao (fonte natural/artificial + período diurna/noturna, ex: "natural diurna"), '
+        'ambiente (interno/externo/misto). Use a FOTO pra iluminacao/ambiente quando houver.\n\n'
         f"Dados: {json.dumps({k: entrada.get(k) for k in ('descricao', 'preco', 'localizacao')}, ensure_ascii=False)}"
     )
     conteudo: list = [{"type": "text", "text": instrucao}]
@@ -96,6 +120,8 @@ def _anthropic(entrada: dict) -> dict:
     dados["fonte"] = "anthropic"
     dados.setdefault("padrao", "economico")
     dados.setdefault("tipo", "apartamento")
+    dados.setdefault("iluminacao", "natural diurna")
+    dados.setdefault("ambiente", "interno")
     log_span("motor_b.classificacao", **dados)
     return dados
 
