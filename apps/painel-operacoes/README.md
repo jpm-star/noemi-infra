@@ -9,7 +9,7 @@ Tela única do estado real dos 3 motores da Noemi OS, sem terminal. Agrega 4 fon
 - `static/index.html`: dashboard (status, custo/latência/P95, cache, ranking, fila,
   cascata de fallback, falhas agrupadas, CPU/RAM/disco).
 
-Subir: `systemctl enable --now noemi-painel` (unit em `deploy/noemi-painel.service`).
+Subir: `systemctl enable --now noemi-painel-obs` (unit em `deploy/noemi-painel-obs.service`).
 Env: `LITELLM_MASTER_KEY` (do `infra/.env`), `NOEMI_DB`, `NOEMI_OBS`.
 Acesso remoto: atrás do Caddy com basicauth (interno). Localhost por padrão.
 
