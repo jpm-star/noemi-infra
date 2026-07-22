@@ -161,7 +161,7 @@ function render(d){
 }
 
 async function tick(){
-  try{const r=await fetch('/api/painel');render(await r.json());}
+  try{const r=await fetch('api/painel');render(await r.json());}
   catch(e){$("saude").innerHTML='<span style="color:var(--bad)">● painel sem conexão</span>';}
 }
 tick(); setInterval(tick, 4000);
