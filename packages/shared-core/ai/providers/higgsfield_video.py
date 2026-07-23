@@ -11,10 +11,12 @@ Pré-requisitos no .env (conta do OPERADOR, nunca do cliente final):
 ESTA é a função que entra no lugar do mock quando MOCK_MODE=false.
 Nenhum outro arquivo do monorepo muda.
 
-LIMITE HONESTO (Fase 1): o modo real é PROMPT-ONLY — a mídia enviada pelo
-cliente ainda NÃO é anexada à geração (só produto/metadata viram texto no
-prompt). Image-to-video de verdade = Fase 2: media_upload/media_import_url
-do MCP antes do generate_video (ver deploy/PENDENCIAS.md §4).
+IMAGE-TO-VIDEO (Fase A, 2026-07-23): quando config['imagem_url'] vem preenchida
+(URL pública do asset, montada pelo worker), a foto REAL do imóvel é o frame de
+origem e a instrução proíbe inventar cenário — corrige o "texto→vídeo" que
+alucinava um imóvel fictício. Sem imagem_url, cai no fallback texto→vídeo antigo.
+Requer o Motor B publicamente acessível (videoshiggs.noemi.digital) pro MCP
+buscar a imagem via URL.
 """
 from __future__ import annotations
 
@@ -68,21 +70,46 @@ def generate(asset: dict, config: dict) -> dict:
             "mime": "video/mp4",
             "modelo": modelo,
             "custo_creditos": config.get("custo_estimado", None),
-            "meta": {"url_provider": url, "job_id": resp.id, "asset_origem": asset["id"]},
+            "meta": {"url_provider": url, "job_id": resp.id, "asset_origem": asset["id"],
+                     "modelo_video": config.get("model") or _MODELO_VIDEO,
+                     "image_to_video": bool(config.get("imagem_url"))},
         }
     raise TimeoutError(f"Higgsfield MCP não terminou em {_MAX_CONTINUACOES} continuações (pause_turn)")
 
 
+# Modelo default: Kling é o melhor para image-to-video imobiliário (movimento
+# realista + física). Override por config.model ou env.
+_MODELO_VIDEO = os.environ.get("MOTOR_B_VIDEO_MODEL", "kling")
+
+
 def _instrucao(asset: dict, config: dict) -> str:
-    partes = [
-        "Gere UM vídeo usando as ferramentas do servidor MCP da Higgsfield e aguarde até ficar pronto.",
-        f"Descrição do vídeo: {config.get('prompt', 'vídeo promocional do material enviado')}",
-        f"Contexto do material de origem: produto={asset['produto']}, metadata={asset['metadata']}",
-    ]
+    imagem_url = config.get("imagem_url")
+    modelo = config.get("model") or _MODELO_VIDEO
+    if imagem_url:
+        # IMAGE-TO-VIDEO: a foto REAL do imóvel é o frame de origem. Instrução
+        # anti-alucinação é o núcleo da correção — sem isto o modelo inventa um
+        # imóvel fictício (o bug do "texto→vídeo"). Regra do mercado imobiliário:
+        # nunca inventar features que não estão na foto.
+        partes = [
+            f"Gere UM vídeo IMAGE-TO-VIDEO com o modelo {modelo} usando as ferramentas do "
+            "servidor MCP da Higgsfield, e aguarde até ficar pronto.",
+            f"IMAGEM DE ORIGEM (frame inicial obrigatório): {imagem_url}",
+            "Anime ESTA foto do imóvel real com movimento de câmera — NÃO gere um imóvel "
+            "novo, NÃO invente cômodos, móveis ou acabamentos que não aparecem na foto. "
+            "O vídeo deve ser fiel ao imóvel da imagem.",
+            f"Direção de câmera/ritmo/luz: {config.get('prompt', 'movimento sutil e cinematográfico')}",
+        ]
+    else:
+        # fallback texto→vídeo (sem foto disponível) — mantém o comportamento antigo,
+        # honestamente pior. Só cai aqui se imagem_url não vier.
+        partes = [
+            f"Gere UM vídeo com o modelo {modelo} usando as ferramentas do servidor MCP da "
+            "Higgsfield e aguarde até ficar pronto.",
+            f"Descrição do vídeo: {config.get('prompt', 'vídeo promocional do material enviado')}",
+            f"Contexto do material de origem: produto={asset['produto']}, metadata={asset['metadata']}",
+        ]
     if config.get("duration"):
         partes.append(f"Duração alvo: {config['duration']}s.")
-    if config.get("model"):
-        partes.append(f"Preferência de modelo de geração: {config['model']}.")
     partes.append("Ao final, responda com APENAS a URL do vídeo pronto na última linha.")
     return "\n".join(partes)
 

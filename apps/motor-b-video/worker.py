@@ -27,6 +27,17 @@ from shared_core.obs import log_span
 # por template. O feed roda vertical; sair em 16:9 é entregar barra preta.
 ASPECT_TRAVADO = os.environ.get("MOTOR_B_ASPECT", "9:16")
 
+# URL pública do Motor B: o MCP da Higgsfield busca a foto do imóvel por aqui
+# (image-to-video). Sem isto, cai no fallback texto→vídeo. Domínio com DNS A hoje.
+MOTOR_B_PUBLIC_URL = os.environ.get("MOTOR_B_PUBLIC_URL", "https://videoshiggs.noemi.digital").rstrip("/")
+
+
+def _imagem_url(origem: dict) -> str | None:
+    """URL pública do asset de origem, se for imagem (frame p/ image-to-video)."""
+    if not (origem.get("mime") or "").startswith("image/"):
+        return None  # vídeo de origem: o Higgsfield não usa como frame único
+    return f"{MOTOR_B_PUBLIC_URL}/api/assets/{origem['id']}/file"
+
 
 async def loop() -> None:
     while True:
@@ -134,6 +145,7 @@ def _planejar(origem: dict, job: dict) -> dict:
     plano = prompt_builder.construir_prompt(clas, template, entrada, brand=kit)
     return {**base, "prompt": plano["prompt"], "duration": plano["duration"],
             "aspect_ratio": plano["aspect_ratio"], "template": template["id"],
+            "imagem_url": _imagem_url(origem),  # Fase A: foto real → image-to-video
             "movimento": plano["movimento"], "brand": kit, "classificacao": clas,
             "titulo": metadados.titulo(clas, base),  # metadado de publicação
             "hashtags": metadados.hashtags(clas, base),

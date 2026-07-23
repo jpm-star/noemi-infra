@@ -9,11 +9,15 @@ sozinhos quando o DNS propagar. Até lá, o Motor B responde local na :8010.
 Único item que falta pra `MOCK_MODE=false` (ver README, "Ponto de troca").
 O OAuth Higgsfield já está concluído (2026-07-21, plano plus, 1010 créditos).
 
-## 3. Modo real é prompt-only — image-to-video é a Fase 2 (build futuro)
-`higgsfield_video.generate` já gera vídeo real por prompt, mas NÃO anexa a mídia
-enviada pelo cliente (foto do imóvel). Fase 2 = subir o asset via
-`media_upload`/`media_import_url` do MCP e passar o `media_id` no `generate_video`
-(image-to-video). Até lá o pipeline completo upload→vídeo só é fiel em MOCK.
+## 3. Image-to-video — FEITO no código (Fase A, 2026-07-23), falta provar ao vivo
+`higgsfield_video.generate` agora anexa a foto REAL do imóvel como frame de origem
+(`config['imagem_url']` = URL pública do asset) e proíbe inventar cenário — corrige
+o "texto→vídeo" que alucinava um imóvel fictício. Kling fixado como modelo default.
+Passa em MOCK (70 testes). **Para provar ao vivo, 3 gates de ativação (ação JP):**
+  1. `MOCK_MODE=false` + `ANTHROPIC_API_KEY` + `HIGGSFIELD_MCP_TOKEN` no `.env` (item 2).
+  2. Motor B publicamente acessível — DNS de `videoshiggs.noemi.digital` (item 1),
+     senão o MCP não busca a foto. Override via env `MOTOR_B_PUBLIC_URL`.
+  3. Subir 1 job real com foto de imóvel e conferir o vídeo (o teste-fim é o olho).
 
 ## 4. Card "Produtos" no painel de produção — ADIADO de propósito
 O painel (:3000, `noemi-painel.service`, checkout `/root/sdr-motor/web`) está
