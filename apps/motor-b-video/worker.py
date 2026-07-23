@@ -156,10 +156,11 @@ def _finalizar(out: dict, cfg: dict, jid: str) -> dict:
     meta do que foi aplicado (entra na metadata do asset)."""
     kit = cfg.get("brand") or {}
     legenda = kit.get("cta_texto") if (cfg.get("classificacao") or {}).get("cta", True) else None
+    ficha = cartucho.ficha_imovel(cfg)  # preço/local/medidas/código do imóvel, se vierem
     try:
         novos, novo_mime, meta = pos.pos_processar(
             out["bytes"], out["mime"], aspect=cfg.get("aspect_ratio"),
-            brand=kit, legenda=legenda)
+            brand=kit, legenda=legenda, ficha=ficha)
     except pos.PosErro as e:
         log_span("motor_b.pos", job=jid, ok=False, nivel=e.nivel, erro=e.mensagem)
         return {"aplicado": [], "erro": e.mensagem}

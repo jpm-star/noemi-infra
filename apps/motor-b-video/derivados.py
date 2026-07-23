@@ -50,8 +50,7 @@ def ficha(video: bytes, ficha: dict, brand: dict | None = None) -> tuple[bytes, 
     """Queima os dados da ficha (preço, endereço, código) como texto animado
     (fade-in escalonado) no topo do vídeo. Só entram os campos que vierem."""
     brand = brand or {}
-    linhas = [(k, str(ficha[k]).strip()) for k in ("preco", "endereco", "codigo")
-              if ficha.get(k) and str(ficha[k]).strip()]
+    linhas = pos.ficha_linhas(ficha)  # seleção/ordem única (preço/local/medidas/código)
     if not linhas:
         raise pos.PosErro("ffmpeg", "ficha vazia — nada pra sobrepor")
     acento = pos._cor_ffmpeg(brand.get("cor_acento"))

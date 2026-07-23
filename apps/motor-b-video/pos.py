@@ -42,10 +42,30 @@ def _cor_ffmpeg(hex_cor: str | None, fallback: str = "0x7c5cff") -> str:
     return fallback
 
 
+def ficha_linhas(ficha: dict | None) -> list[tuple[str, str]]:
+    """Dados do imóvel → linhas ordenadas (campo, texto) pro overlay. `campo` é só
+    o rótulo de estilo (preço ganha caixa de acento). Combina metragem+dormitórios
+    numa linha. Fonte única da ordem/seleção — usada na entrega e no derivado ficha."""
+    ficha = ficha or {}
+    linhas: list[tuple[str, str]] = []
+    if v := str(ficha.get("preco") or "").strip():
+        linhas.append(("preco", v))
+    if v := str(ficha.get("bairro") or ficha.get("endereco") or "").strip():
+        linhas.append(("local", v))
+    if tam := " · ".join(x for x in (str(ficha.get("metragem") or "").strip(),
+                                     str(ficha.get("dormitorios") or "").strip()) if x):
+        linhas.append(("medidas", tam))
+    if v := str(ficha.get("codigo") or "").strip():
+        linhas.append(("codigo", f"cód {v}"))
+    return linhas
+
+
 def pos_processar(dados: bytes, mime: str, *, aspect: str | None = None,
-                  brand: dict | None = None, legenda: str | None = None) -> tuple[bytes, str, dict]:
+                  brand: dict | None = None, legenda: str | None = None,
+                  ficha: dict | None = None) -> tuple[bytes, str, dict]:
     """(bytes, mime, meta) pós-processados. meta['aplicado'] lista o que rodou.
-    Lança PosErro se o ffmpeg falhar. No-op (retorna original) se nada se aplica."""
+    Lança PosErro se o ffmpeg falhar. No-op (retorna original) se nada se aplica.
+    `ficha` = dados do imóvel (preço/local/medidas/código) queimados no topo."""
     if not mime.startswith("video/"):
         return dados, mime, {"aplicado": []}
 
@@ -62,6 +82,21 @@ def pos_processar(dados: bytes, mime: str, *, aspect: str | None = None,
             aplicado.append(f"reframe:{aspect}")
 
         acento = _cor_ffmpeg(brand.get("cor_acento"))
+
+        # 1b) ficha do imóvel no topo (fade-in escalonado) — MESMA passada de ffmpeg
+        linhas_ficha = ficha_linhas(ficha)
+        for i, (campo, valor) in enumerate(linhas_ficha):
+            arq = tdir / f"ficha{i}.txt"
+            arq.write_text(valor[:60], encoding="utf-8")
+            atraso = 0.3 + i * 0.35
+            box = acento if campo == "preco" else "black@0.5"
+            filtros.append(
+                f"drawtext=fontfile={_FONT}:textfile={arq}:fontcolor=white:fontsize=h/26:"
+                f"x=(w-tw)/2:y=h/12+{i}*(h/13):box=1:boxcolor={box}:boxborderw=12:"
+                f"alpha='if(lt(t,{atraso:.2f}),0,if(lt(t,{atraso + 0.5:.2f}),(t-{atraso:.2f})/0.5,1))'"
+            )
+        if linhas_ficha:
+            aplicado.append("ficha")
 
         # 2) legenda animada (fade-in nos primeiros 0.6s), faixa inferior central
         legenda = (legenda or "").strip()
