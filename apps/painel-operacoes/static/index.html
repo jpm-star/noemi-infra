@@ -99,6 +99,11 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
 
 <div class="grid row-mot" id="motores" style="margin-bottom:12px"></div>
 
+<div class="card" style="margin-bottom:12px">
+  <h3>🎯 Prospecção — demos de site <span id="prosp-contador" style="color:var(--mut);font-weight:400"></span></h3>
+  <div class="grid" id="prospeccao" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px"></div>
+</div>
+
 <div class="grid row-kpi" id="kpis" style="margin-bottom:12px"></div>
 
 <div class="grid row2" style="margin-bottom:12px">
@@ -204,8 +209,25 @@ async function diag(){
       : '<div class="empty">sem alertas</div>';
   }catch(e){$("diag-body").innerHTML='<div class="empty off">IA indisponível</div>';}
 }
+// Prospecção: cada demo vira um card clicável com status colorido (funil de venda).
+const ST={gerada:['b-warn','gerada'],enviada:['b-ok','enviada'],respondida:['b-ok','respondida'],fechada:['b-ok','✓ fechada']};
+async function prospeccao(){
+  try{const r=await fetch('api/prospeccao');const d=await r.json();const P=d.prospects||[];
+    const porStatus=P.reduce((a,p)=>{a[p.status]=(a[p.status]||0)+1;return a},{});
+    $("prosp-contador").textContent = P.length? `· ${P.length} demos · `+Object.entries(porStatus).map(([k,v])=>`${v} ${k}`).join(' · ') : '';
+    $("prospeccao").innerHTML = P.length ? P.map(p=>{
+      const [cls,lab]=ST[p.status]||['b-warn',p.status];
+      const ph=p.whatsapp_placeholder?' <span title="número placeholder — trocar por real" style="color:var(--warn)">⚠</span>':'';
+      return `<a class="card mot abrir" href="${p.link}" target="_blank" rel="noopener" style="flex-direction:column;align-items:stretch;gap:6px">
+        <div style="display:flex;justify-content:space-between;align-items:center"><b>${p.empresa}</b>${pill(p.status!=='gerada',lab)}</div>
+        <div class="s" style="color:var(--mut)">${p.nicho} · ${p.cidade}${ph}</div>
+        <div class="s" style="color:var(--cy)">abrir site ↗</div></a>`;
+    }).join('') : '<div class="empty">sem demos — rode o lote batch_demos</div>';
+  }catch(e){$("prospeccao").innerHTML='<div class="empty off">prospecção indisponível</div>';}
+}
 tick(); setInterval(tick, 4000);
 diag(); setInterval(diag, 90000);
+prospeccao(); setInterval(prospeccao, 30000);
 </script>
 </body>
 </html>

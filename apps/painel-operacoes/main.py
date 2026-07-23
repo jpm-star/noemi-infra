@@ -80,6 +80,20 @@ def diagnostico_dados() -> JSONResponse:
     return JSONResponse(_diagnostico())
 
 
+# Fila de prospecção: demos de site gerados p/ prospects (status manual do JP).
+# Fonte = data/prospeccao.json (escrito pelo lote batch_demos + edição à mão).
+_PROSPECCAO = _AQUI.parents[1] / "data" / "prospeccao.json"
+
+
+@app.get("/api/prospeccao")
+def prospeccao_dados() -> JSONResponse:
+    import json
+    try:
+        return JSONResponse(json.loads(_PROSPECCAO.read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        return JSONResponse({"prospects": [], "tenant": None})
+
+
 @app.get("/painel", response_class=HTMLResponse)
 @app.get("/", response_class=HTMLResponse)
 def painel_pagina() -> str:
