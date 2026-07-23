@@ -21,6 +21,7 @@ from fastapi.staticfiles import StaticFiles
 
 import derivados
 import jobs
+import metadados
 import pos
 import worker
 from shared_core import storage
@@ -151,6 +152,28 @@ def derivar_asset(asset_id: str, corpo: dict) -> dict:
         metadata={"derivado_de": asset_id, "tipo": tipo})
     return {"asset_id": novo["id"], "tipo": tipo, "mime": mime,
             "url": f"/api/assets/{novo['id']}/file"}
+
+
+@app.get("/api/assets/{asset_id}/pacote")
+def pacote_asset(asset_id: str) -> dict:
+    """Item 8: pacote de entrega num payload só — MP4 + copy pronta + hashtags +
+    CTA WhatsApp. O corretor pega tudo aqui e publica sem escrever nada."""
+    asset = storage.get_asset(asset_id)
+    if not asset or not asset["mime"].startswith("video/"):
+        raise HTTPException(404, "vídeo não encontrado")
+    md = asset["metadata"]
+    titulo = md.get("titulo") or ""
+    hashtags = md.get("hashtags") or []
+    cta = md.get("cta") or metadados.cta_whatsapp(md.get("brand"), md.get("ficha"))
+    return {
+        "asset_id": asset_id,
+        "video_url": f"/api/assets/{asset_id}/file",
+        "titulo": titulo,
+        "hashtags": hashtags,
+        "cta": cta,
+        "copy": metadados.copy_publicacao(titulo, hashtags, cta),
+        "ficha": md.get("ficha") or {},
+    }
 
 
 @app.post("/api/jobs/{job_id}/aprovar")
