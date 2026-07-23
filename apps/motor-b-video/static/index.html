@@ -37,6 +37,17 @@
     <input type="text" id="owner" placeholder="ex.: Rodrigo Imóveis" maxlength="120">
     <label>Mídia de origem (imagem ou vídeo)</label>
     <input type="file" id="arquivo" accept="image/*,video/*">
+
+    <details id="dadosImovel">
+      <summary>Dados do imóvel (opcional — aparecem no vídeo)</summary>
+      <input type="text" id="im-codigo" placeholder="Código/ref (ex.: AP-12)" maxlength="30">
+      <input type="text" id="im-preco" placeholder="Preço (ex.: R$ 850 mil)" maxlength="40">
+      <input type="text" id="im-bairro" placeholder="Bairro / cidade" maxlength="60">
+      <input type="text" id="im-metragem" placeholder="Metragem (ex.: 72m²)" maxlength="30">
+      <input type="text" id="im-dormitorios" placeholder="Dormitórios (ex.: 3 quartos)" maxlength="30">
+      <input type="text" id="im-descricao" placeholder="Descrição curta (ex.: 3 quartos, vista mar)" maxlength="200">
+    </details>
+
     <button id="gerar">Gerar vídeo</button>
     <div id="msg"></div>
   </div>
@@ -115,9 +126,16 @@ $("gerar").onclick = async () => {
     if (!up.ok) throw new Error((await up.json()).detail);
     const { asset_id } = await up.json();
     $("msg").textContent = "Na fila de geração…";
+    // dados do imóvel (só os preenchidos) → viram overlay/caption/CTA no vídeo
+    const campos = {codigo:"im-codigo", preco:"im-preco", bairro:"im-bairro",
+                    metragem:"im-metragem", dormitorios:"im-dormitorios", descricao:"im-descricao"};
+    const config = {};
+    for (const [chave, id] of Object.entries(campos)) {
+      const v = ($(id)?.value || "").trim(); if (v) config[chave] = v;
+    }
     const cj = await fetch("/api/jobs", { method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ asset_id }) });
+      body: JSON.stringify({ asset_id, config }) });
     if (!cj.ok) throw new Error((await cj.json()).detail);
     const { job_id } = await cj.json();
     await acompanhar(job_id);
