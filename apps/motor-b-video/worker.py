@@ -19,9 +19,13 @@ import prompt_builder
 import qa
 import storyboard
 import templates
-from shared_core import storage
+from shared_core import cartucho, storage
 from shared_core.ai import classificacao, video
 from shared_core.obs import log_span
+
+# Saída travada em 9:16 (1080x1920) nativo do feed — override só via env, nunca
+# por template. O feed roda vertical; sair em 16:9 é entregar barra preta.
+ASPECT_TRAVADO = os.environ.get("MOTOR_B_ASPECT", "9:16")
 
 
 async def loop() -> None:
@@ -117,6 +121,7 @@ def _planejar(origem: dict, job: dict) -> dict:
     """v1.1: classifica o imóvel → escolhe template → constrói o prompt específico.
     Devolve o config ENRIQUECIDO (prompt ajustado ao segmento) que vai pro generate."""
     base = dict(job.get("config") or {})
+    base["aspect_ratio"] = ASPECT_TRAVADO  # trava 9:16: vence template e config do caller
     # _imagem_path só vai pra classificar (visão no modo real); NÃO entra no config
     # persistido/logado (é interno) — o cfg de retorno usa `base`, não `entrada`.
     entrada = {**base, "asset_origem": origem["id"], "owner": origem.get("owner"),

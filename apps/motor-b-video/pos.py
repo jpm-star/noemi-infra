@@ -23,7 +23,8 @@ from pathlib import Path
 TIMEOUT_S = 180
 _FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 # aspect alvo → (largura, altura) par (divisível por 2, exigência do H.264)
-_ALVO = {"9:16": (720, 1280), "16:9": (1280, 720), "1:1": (1080, 1080), "4:5": (864, 1080)}
+# 9:16 nativo do feed = 1080x1920 (sem barras, crop-to-fill). Demais mantidos.
+_ALVO = {"9:16": (1080, 1920), "16:9": (1280, 720), "1:1": (1080, 1080), "4:5": (864, 1080)}
 
 
 class PosErro(RuntimeError):

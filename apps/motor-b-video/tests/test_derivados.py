@@ -74,8 +74,8 @@ def test_derivar_todos_os_tipos():
         # 3) capa (imagem jpeg)
         capa = _derivar(c, vid, {"tipo": "capa", "titulo": "Apartamento 3 quartos"})
         assert capa[:2] == b"\xff\xd8", "capa não é JPEG"
-        # 4) teaser 15s vertical
-        assert _dim(_derivar(c, vid, {"tipo": "teaser", "segundos": 15})) == "720,1280"
+        # 4) teaser 15s vertical (9:16 nativo = 1080x1920)
+        assert _dim(_derivar(c, vid, {"tipo": "teaser", "segundos": 15})) == "1080,1920"
         # 5) versão silenciosa (sem áudio)
         assert not _tem_audio(_derivar(c, vid, {"tipo": "silenciosa", "legenda": "Agende sua visita"}))
         # 6) loop curto
