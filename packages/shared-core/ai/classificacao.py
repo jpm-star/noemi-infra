@@ -16,7 +16,7 @@ import re
 
 from shared_core.obs import log_span
 
-PADROES = ("luxo", "economico", "lancamento", "rural", "comercial")
+PADROES = ("luxo", "economico", "lancamento", "rural", "comercial", "obra")
 TIPOS = ("apartamento", "casa", "condominio")
 
 # perfil de vídeo por padrão (tom / duração / CTA) — base do template depois
@@ -26,6 +26,7 @@ _PERFIL = {
     "lancamento": {"tom": "empolgante, estilo trailer", "duracao": 15, "cta": True},
     "rural": {"tom": "amplo e natural", "duracao": 12, "cta": False},
     "comercial": {"tom": "profissional e minimalista", "duracao": 10, "cta": False},
+    "obra": {"tom": "sólido e impactante, prova de execução", "duracao": 12, "cta": True},
 }
 
 
@@ -44,6 +45,10 @@ def _num(v) -> float:
 
 
 def _padrao(desc: str, preco: float) -> str:
+    if any(k in desc for k in ("obra", "construção", "construcao", "reforma", "engenharia",
+                               "canteiro", "estrutural", "concretagem", "fundação", "fundacao",
+                               "empreiteira", "construtora", "andamento da obra")):
+        return "obra"
     if any(k in desc for k in ("lançamento", "lancamento", "na planta", "pré-lançamento", "pre-lancamento")):
         return "lancamento"
     if any(k in desc for k in ("sala comercial", "loja", "galpão", "galpao", "escritório", "escritorio", "comercial", "corporativ")):

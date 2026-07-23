@@ -53,6 +53,17 @@ TEMPLATES: dict[str, dict] = {
         "duracao": 10,
         "cta": False,
     },
+    "obra": {
+        "rotulo": "Obra / engenharia (canteiro, progresso, entrega)",
+        "camera": "aéreo de drone estabelecendo o canteiro + push-in firme nos detalhes construtivos",
+        "ritmo": "progressivo e confiante, montagem de evolução da obra",
+        "iluminacao": "luz de dia limpa, contraste que valoriza estrutura e concreto",
+        "estilo": "corporativo e sólido, tipografia sem-serifa forte, selo de marca da construtora",
+        "transicoes": "cortes limpos com wipe de progresso (antes→depois)",
+        "aspect_ratio": "9:16",
+        "duracao": 12,
+        "cta": True,
+    },
 }
 
 # padrão do imóvel (classificação) → template automático
@@ -62,6 +73,7 @@ _POR_PADRAO = {
     "economico": "economico",
     "lancamento": "lancamento",
     "comercial": "comercial",
+    "obra": "obra",           # engenharia/construção: câmera de canteiro + tipografia corporativa
 }
 
 

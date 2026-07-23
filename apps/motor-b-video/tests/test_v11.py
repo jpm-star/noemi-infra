@@ -29,7 +29,7 @@ def test_classificacao_por_padrao_e_tipo():
 
 # --- 2. templates + escolha automática/manual ---
 def test_quatro_templates_e_escolha():
-    assert set(templates.TEMPLATES) == {"alto_padrao", "economico", "lancamento", "comercial"}
+    assert set(templates.TEMPLATES) == {"alto_padrao", "economico", "lancamento", "comercial", "obra"}
     assert templates.escolher_template({"padrao": "luxo"})["id"] == "alto_padrao"
     assert templates.escolher_template({"padrao": "comercial"})["id"] == "comercial"
     # troca manual vence a classificação
