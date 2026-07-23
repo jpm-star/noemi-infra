@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from urllib.parse import quote
 
 _TIPO_LABEL = {"apartamento": "Apartamento", "casa": "Casa", "condominio": "Casa em condomínio"}
 _PADRAO_LABEL = {"luxo": "Alto Padrão", "lancamento": "Lançamento",
@@ -108,7 +109,46 @@ def hashtags(classificacao: dict, entrada: dict, minimo: int = 8, maximo: int = 
     return saida[:maximo] if len(saida) >= minimo else saida
 
 
+# -- CTA WhatsApp (item 4) --------------------------------------------------
+def _zap(brand: dict | None) -> str:
+    return "".join(c for c in str((brand or {}).get("cta_contato") or "") if c.isdigit())
+
+
+def cta_whatsapp(brand: dict | None, ficha: dict | None) -> str:
+    """CTA de encerramento: link WhatsApp pré-preenchido citando o CÓDIGO do imóvel.
+    Sem contato no kit → texto simples (sem link). Sem código → interesse genérico."""
+    codigo = str((ficha or {}).get("codigo") or "").strip()
+    ref = f"o imóvel cód {codigo}" if codigo else "este imóvel"
+    zap = _zap(brand)
+    if not zap:
+        return f"📲 Chame no WhatsApp e pergunte sobre {ref}."
+    msg = quote(f"Olá! Tenho interesse em {ref}.")
+    return f"📲 Fale no WhatsApp: https://wa.me/{zap}?text={msg}"
+
+
+def legenda_cta(brand: dict | None, ficha: dict | None) -> str:
+    """Legenda CURTA queimada no vídeo (sem link — pixel não clica): CTA de marca
+    + código do imóvel quando houver ('Fale no WhatsApp • cód AP-12')."""
+    base = str((brand or {}).get("cta_texto") or "Fale no WhatsApp").strip()
+    codigo = str((ficha or {}).get("codigo") or "").strip()
+    return f"{base} • cód {codigo}" if codigo else base
+
+
+def copy_publicacao(titulo_: str, hashtags_: list[str], cta: str) -> str:
+    """Caption pronta pro post: título + CTA (WhatsApp/código) + hashtags. É o
+    texto único que o corretor cola no feed, sem escrever nada."""
+    linhas = [titulo_.strip(), "", cta.strip()]
+    if hashtags_:
+        linhas += ["", " ".join(hashtags_)]
+    return "\n".join(linhas).strip()
+
+
 if __name__ == "__main__":  # self-check
+    assert cta_whatsapp({"cta_contato": "55 (19) 99888-7777"}, {"codigo": "AP-12"}) == \
+        "📲 Fale no WhatsApp: https://wa.me/5519998887777?text=Ol%C3%A1%21%20Tenho%20interesse%20em%20o%20im%C3%B3vel%20c%C3%B3d%20AP-12."
+    assert cta_whatsapp(None, None).startswith("📲 Chame no WhatsApp")  # sem zap → sem link
+    assert legenda_cta({"cta_texto": "Agende visita"}, {"codigo": "AP-12"}) == "Agende visita • cód AP-12"
+    assert legenda_cta(None, None) == "Fale no WhatsApp"
     t = titulo({"tipo": "apartamento", "padrao": "luxo"},
                {"descricao": "3 quartos com vista pro mar", "localizacao": "Balneário Camboriú"})
     assert t == "Apartamento 3 quartos - Balneário Camboriú - Vista Mar - Alto Padrão", t

@@ -80,10 +80,12 @@ async def processar(job: dict) -> None:
         if not ok_qa:
             log_span("motor_b.qa", job=jid, ok=False, motivo=motivo_qa)
             raise RuntimeError(f"QA reprovou o vídeo: {motivo_qa}")
+        ficha = cartucho.ficha_imovel(cfg)  # dados do imóvel pro pacote de entrega
         asset_video = storage.create_asset(
             owner=origem["owner"], produto=jobs.PRODUTO, mime=out["mime"], dados=out["bytes"],
             metadata={"asset_origem": origem["id"], "job": jid, "brand": cfg.get("brand"),
                       "titulo": cfg.get("titulo"), "hashtags": cfg.get("hashtags"),
+                      "ficha": ficha, "cta": metadados.cta_whatsapp(cfg.get("brand"), ficha),
                       "qa": motivo_qa, "modelo": out["modelo"], "pos": pos_meta,
                       **out.get("meta", {})},
         )
@@ -155,8 +157,9 @@ def _finalizar(out: dict, cfg: dict, jid: str) -> dict:
     out['mime'] in-place. Best-effort: PosErro degrada pro vídeo cru. Devolve o
     meta do que foi aplicado (entra na metadata do asset)."""
     kit = cfg.get("brand") or {}
-    legenda = kit.get("cta_texto") if (cfg.get("classificacao") or {}).get("cta", True) else None
     ficha = cartucho.ficha_imovel(cfg)  # preço/local/medidas/código do imóvel, se vierem
+    # CTA queimado no vídeo referencia o código do imóvel (item 4); link clicável vai no caption.
+    legenda = metadados.legenda_cta(kit, ficha) if (cfg.get("classificacao") or {}).get("cta", True) else None
     try:
         novos, novo_mime, meta = pos.pos_processar(
             out["bytes"], out["mime"], aspect=cfg.get("aspect_ratio"),
