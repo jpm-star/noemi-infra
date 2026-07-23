@@ -17,10 +17,9 @@ Env ausente ou arquivo faltando = cai no default, ninguém quebra. Função pura
 """
 from __future__ import annotations
 
-import json
-import os
 import re
-from pathlib import Path
+
+from shared_core import cartucho
 
 # default honesto: marca Noemi neutra, sem inventar logo/cor de cliente
 _DEFAULT = {
@@ -57,23 +56,10 @@ def _mapear(marca: dict) -> dict:
 
 
 def _de_cartucho(nome: str) -> dict:
-    """Marca do cartucho <dir>/<nome>.json. Best-effort: dir/arquivo ausente ou
-    JSON quebrado → {}. Nome saneado contra path traversal."""
-    base = os.environ.get("NOEMI_CARTUCHOS_DIR")
-    nome = re.sub(r"[^a-z0-9_-]", "", (nome or "").lower())
-    if not base or not nome:
-        return {}
-    caminho = Path(base) / f"{nome}.json"
-    if not caminho.is_file():
-        return {}
-    try:
-        cart = json.loads(caminho.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    marca = dict(cart.get("marca") or {})
-    marca.setdefault("nome", cart.get("nome_empresa"))
-    marca.setdefault("whatsapp", cart.get("whatsapp_dono"))
-    return _mapear(marca)
+    """Marca do cartucho <nome>.json, via loader único do shared-core (leitura,
+    path-safety e best-effort moram lá). Só mapeia o bloco pros campos do kit."""
+    cart = cartucho.carregar(nome)
+    return _mapear(cartucho.marca(cart)) if cart else {}
 
 
 def brand_kit(owner: str | None, config: dict | None = None) -> dict:
