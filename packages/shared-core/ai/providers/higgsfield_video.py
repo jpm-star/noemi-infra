@@ -71,9 +71,12 @@ def _refresh(refresh_token: str, client_id: str) -> dict:
         "refresh_token": refresh_token,
         "client_id": client_id,
     }).encode()
+    # User-Agent obrigatório: o WAF da Higgsfield devolve 403 pro UA default do
+    # urllib (mesmo comportamento do Groq). Sem isto o refresh nunca completa.
     req = urllib.request.Request(_TOKEN_URL, data=dados,
                                  headers={"Content-Type": "application/x-www-form-urlencoded",
-                                          "Accept": "application/json"})
+                                          "Accept": "application/json",
+                                          "User-Agent": "noemi-motor-b/1.0"})
     with urllib.request.urlopen(req, timeout=30) as r:
         tok = json.loads(r.read())
     return {
