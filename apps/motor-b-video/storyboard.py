@@ -18,12 +18,23 @@ end→start); xfade é polimento opcional, não o mecanismo.
 """
 from __future__ import annotations
 
+import os
 import tempfile
 from pathlib import Path
 
 import pos
 import prompt_builder
 import templates
+
+# URL pública do asset da cena → cada cena anima a PRÓPRIA foto (image-to-video).
+# Sem isto o caminho HTTP direto falha (exige imagem_url). Mesma base do worker.
+_PUBLIC_URL = os.environ.get("MOTOR_B_PUBLIC_URL", "https://videoshiggs.noemi.digital").rstrip("/")
+
+
+def _imagem_url_cena(asset: dict) -> str | None:
+    if not (asset.get("mime") or "").startswith("image/"):
+        return None
+    return f"{_PUBLIC_URL}/api/assets/{asset['id']}/file"
 
 # shared_core (classificacao/video/log_span) é importado TARDE dentro das funções:
 # mantém o módulo importável standalone (self-check de planejamento puro roda sem
@@ -71,6 +82,7 @@ def _plano_da_cena(asset: dict, cena: dict, base: dict, brand: dict,
             "prompt": plano["prompt"], "duration": dur,
             "aspect_ratio": plano["aspect_ratio"], "comodo": cena["comodo"],
             "movimento": plano["movimento"],
+            "imagem_url": _imagem_url_cena(asset),  # cada cena anima a própria foto
             **({"_start_frame_path": start_frame_path} if start_frame_path else {})}
 
 

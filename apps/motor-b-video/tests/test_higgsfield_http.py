@@ -46,3 +46,13 @@ def test_sem_imagem_falha(monkeypatch):
         assert False
     except RuntimeError as e:
         assert "imagem_url" in str(e)
+
+
+def test_storyboard_cena_passa_imagem_url(monkeypatch):
+    """Cada cena do walkthrough anima a PRÓPRIA foto (imagem_url por asset)."""
+    import storyboard
+    monkeypatch.setenv("MOTOR_B_PUBLIC_URL", "https://videoshiggs.noemi.digital")
+    asset = {"id": "cena9", "mime": "image/jpeg", "owner": "x"}
+    url = storyboard._imagem_url_cena(asset)
+    assert url == "https://videoshiggs.noemi.digital/api/assets/cena9/file"
+    assert storyboard._imagem_url_cena({"id": "v", "mime": "video/mp4"}) is None
