@@ -13,7 +13,7 @@ _AQUI = Path(__file__).resolve().parent
 sys.path.insert(0, str(_AQUI))
 sys.path.insert(0, str(_AQUI.parents[1] / "packages"))  # shared_core (llm_proxy)
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 import agg
@@ -92,6 +92,43 @@ def prospeccao_dados() -> JSONResponse:
         return JSONResponse(json.loads(_PROSPECCAO.read_text(encoding="utf-8")))
     except (OSError, ValueError):
         return JSONResponse({"prospects": [], "tenant": None})
+
+
+# Config editável da fila de prospecção (jitter/janela/pausa/templates por nicho).
+# Lida pelo enviador de prospecção (sdr-motor) e pela geração de mensagens.
+_PROSP_CFG = _AQUI.parents[1] / "data" / "prospeccao_config.json"
+_PROSP_CFG_DEFAULT = {"jitter_min_s": 45, "jitter_max_s": 120, "janela_inicio": "09:00",
+                      "janela_fim": "19:00", "pausado": True, "templates": {}}
+
+
+@app.get("/api/prospeccao/config")
+def prospeccao_config() -> JSONResponse:
+    import json
+    try:
+        return JSONResponse({**_PROSP_CFG_DEFAULT, **json.loads(_PROSP_CFG.read_text("utf-8"))})
+    except (OSError, ValueError):
+        return JSONResponse(_PROSP_CFG_DEFAULT)
+
+
+@app.post("/api/prospeccao/config")
+async def prospeccao_config_salvar(req: Request) -> JSONResponse:
+    import json
+    novo = await req.json()
+    # só campos conhecidos, com saneamento leve (nunca confia no corpo cru)
+    cfg = dict(_PROSP_CFG_DEFAULT)
+    try:
+        cfg["jitter_min_s"] = max(5, int(novo.get("jitter_min_s", cfg["jitter_min_s"])))
+        cfg["jitter_max_s"] = max(cfg["jitter_min_s"], int(novo.get("jitter_max_s", cfg["jitter_max_s"])))
+        cfg["janela_inicio"] = str(novo.get("janela_inicio", cfg["janela_inicio"]))[:5]
+        cfg["janela_fim"] = str(novo.get("janela_fim", cfg["janela_fim"]))[:5]
+        cfg["pausado"] = bool(novo.get("pausado", cfg["pausado"]))
+        t = novo.get("templates", {})
+        cfg["templates"] = {str(k)[:40]: str(v)[:800] for k, v in t.items()} if isinstance(t, dict) else {}
+    except (TypeError, ValueError) as e:
+        return JSONResponse({"ok": False, "erro": str(e)}, status_code=400)
+    _PROSP_CFG.parent.mkdir(parents=True, exist_ok=True)
+    _PROSP_CFG.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), "utf-8")
+    return JSONResponse({"ok": True, "config": cfg})
 
 
 @app.get("/painel", response_class=HTMLResponse)

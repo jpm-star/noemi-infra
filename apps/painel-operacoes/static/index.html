@@ -101,6 +101,18 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
 
 <div class="card" style="margin-bottom:12px">
   <h3>🎯 Prospecção — demos de site <span id="prosp-contador" style="color:var(--mut);font-weight:400"></span></h3>
+  <div id="prosp-ctrl" style="display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin-bottom:12px;font-size:.8rem;color:var(--mut)">
+    <label>jitter min (s)<br><input id="pc-jmin" type="number" min="5" style="width:70px"></label>
+    <label>jitter max (s)<br><input id="pc-jmax" type="number" min="5" style="width:70px"></label>
+    <label>janela início<br><input id="pc-jini" type="time" style="width:90px"></label>
+    <label>janela fim<br><input id="pc-jfim" type="time" style="width:90px"></label>
+    <label style="display:flex;gap:5px;align-items:center;padding-bottom:6px"><input id="pc-pause" type="checkbox"> fila pausada</label>
+    <button id="pc-save" style="padding:6px 14px;background:var(--cy);color:#001;border:0;border-radius:6px;cursor:pointer;font-weight:600">salvar</button>
+    <span id="pc-msg" style="color:var(--ok)"></span>
+  </div>
+  <details style="margin-bottom:10px;font-size:.8rem"><summary style="cursor:pointer;color:var(--mut)">templates de mensagem por nicho (1 por linha: <code>nicho = texto...</code>, use {empresa} {cidade} {link})</summary>
+    <textarea id="pc-tpl" style="width:100%;min-height:80px;margin-top:6px;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:8px" placeholder="mecanica = Oi! Fiz um site pra {empresa} em {cidade}: {link}"></textarea>
+  </details>
   <div class="grid" id="prospeccao" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px"></div>
 </div>
 
@@ -225,9 +237,26 @@ async function prospeccao(){
     }).join('') : '<div class="empty">sem demos — rode o lote batch_demos</div>';
   }catch(e){$("prospeccao").innerHTML='<div class="empty off">prospecção indisponível</div>';}
 }
+// controles da prospecção: carrega config e salva (jitter/janela/pausa/templates)
+async function prospConfig(){
+  try{const c=await (await fetch('api/prospeccao/config')).json();
+    $("pc-jmin").value=c.jitter_min_s; $("pc-jmax").value=c.jitter_max_s;
+    $("pc-jini").value=c.janela_inicio; $("pc-jfim").value=c.janela_fim;
+    $("pc-pause").checked=c.pausado;
+    $("pc-tpl").value=Object.entries(c.templates||{}).map(([k,v])=>`${k} = ${v}`).join('\n');
+  }catch(e){}
+}
+$("pc-save").onclick=async()=>{
+  const tpl={}; $("pc-tpl").value.split('\n').forEach(l=>{const i=l.indexOf('=');if(i>0)tpl[l.slice(0,i).trim()]=l.slice(i+1).trim();});
+  const body={jitter_min_s:+$("pc-jmin").value,jitter_max_s:+$("pc-jmax").value,
+    janela_inicio:$("pc-jini").value,janela_fim:$("pc-jfim").value,pausado:$("pc-pause").checked,templates:tpl};
+  const r=await fetch('api/prospeccao/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  $("pc-msg").textContent=r.ok?'✓ salvo':'erro'; setTimeout(()=>$("pc-msg").textContent='',2500);
+};
 tick(); setInterval(tick, 4000);
 diag(); setInterval(diag, 90000);
 prospeccao(); setInterval(prospeccao, 30000);
+prospConfig();
 </script>
 </body>
 </html>
