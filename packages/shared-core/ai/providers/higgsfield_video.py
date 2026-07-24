@@ -154,7 +154,7 @@ def generate(asset: dict, config: dict) -> dict:
 
 # Modelo default: Kling é o melhor para image-to-video imobiliário (movimento
 # realista + física). Override por config.model ou env.
-_MODELO_VIDEO = os.environ.get("MOTOR_B_VIDEO_MODEL", "kling")
+_MODELO_VIDEO = os.environ.get("MOTOR_B_VIDEO_MODEL", "kling3_0")
 
 
 def _instrucao(asset: dict, config: dict) -> str:
