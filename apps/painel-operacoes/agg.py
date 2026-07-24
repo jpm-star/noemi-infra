@@ -294,8 +294,76 @@ def vps() -> dict:
     return d
 
 
+# -- financeiro: receita (manual) x custo (medido) x lucro por projeto -------
+# Receita vem de data/receita.json (registrada pelo painel/à mão) — acende no
+# instante da 1ª venda. Custo é MEDIDO: créditos Higgsfield dos jobs + gasto IA
+# do LiteLLM. Câmbio/crédito por env (calibra sem mexer no código — o valor
+# real do crédito só o extrato da Higgsfield dá; default é ESTIMADO, marcado).
+_RECEITA = _AQUI.parents[1] / "data" / "receita.json"
+
+
+def _receitas() -> list[dict]:
+    try:
+        d = json.loads(_RECEITA.read_text("utf-8"))
+        return d.get("vendas", d) if isinstance(d, (dict, list)) else []
+    except (OSError, ValueError):
+        return []
+
+
+def _creditos_video() -> dict:
+    """Créditos Higgsfield gastos em jobs completed (total e últimos 30d)."""
+    corte = (datetime.now(timezone.utc).timestamp() - 30 * 86400)
+    tot = mes = 0.0
+    try:
+        with _conn() as c:
+            for r in c.execute("SELECT custo_creditos, atualizado_em FROM jobs "
+                               "WHERE estado='completed' AND custo_creditos IS NOT NULL"):
+                v = float(r["custo_creditos"] or 0)
+                tot += v
+                if _dentro(r["atualizado_em"] or "", corte):
+                    mes += v
+    except sqlite3.Error:
+        pass
+    return {"total": round(tot, 1), "mes": round(mes, 1)}
+
+
+def financeiro() -> dict:
+    usd_brl = float(os.environ.get("USD_BRL", "5.40"))
+    cred_brl = float(os.environ.get("HIGGS_CREDITO_BRL", "0.05"))  # ESTIMADO
+    llm_custo = llm().get("custo", {})
+    ia_mes = round(float(llm_custo.get("mes", 0)) * usd_brl, 2)
+    cred = _creditos_video()
+    video_mes = round(cred["mes"] * cred_brl, 2)
+    vendas = [v for v in _receitas() if isinstance(v, dict)]
+    receita_total = round(sum(float(v.get("valor_brl") or v.get("valor") or 0) for v in vendas), 2)
+    custo_total = round(ia_mes + video_mes, 2)
+    lucro = round(receita_total - custo_total, 2)
+    # por projeto: receita casada pelo campo 'projeto'; custo de vídeo vai pro
+    # Motor B, IA fica como linha compartilhada (o spend do LiteLLM não separa).
+    por_proj: dict[str, dict] = {}
+    for v in vendas:
+        p = str(v.get("projeto") or "—")[:40]
+        por_proj.setdefault(p, {"projeto": p, "receita": 0.0, "custo": 0.0})
+        por_proj[p]["receita"] += float(v.get("valor_brl") or v.get("valor") or 0)
+    por_proj.setdefault("Motor B (vídeo)", {"projeto": "Motor B (vídeo)", "receita": 0.0, "custo": 0.0})
+    por_proj["Motor B (vídeo)"]["custo"] += video_mes
+    por_proj.setdefault("IA (compartilhado)", {"projeto": "IA (compartilhado)", "receita": 0.0, "custo": 0.0})
+    por_proj["IA (compartilhado)"]["custo"] += ia_mes
+    linhas = [{**r, "receita": round(r["receita"], 2), "custo": round(r["custo"], 2),
+               "lucro": round(r["receita"] - r["custo"], 2)} for r in por_proj.values()]
+    return {
+        "receita_total": receita_total, "custo_total": custo_total, "lucro": lucro,
+        "margem_pct": round(lucro / receita_total * 100, 1) if receita_total else None,
+        "n_vendas": len(vendas),
+        "custo": {"ia_brl": ia_mes, "video_brl": video_mes},
+        "creditos_video": cred, "cambio": {"usd_brl": usd_brl, "credito_brl": cred_brl},
+        "por_projeto": sorted(linhas, key=lambda x: -x["receita"]),
+        "obs": "custo do crédito é ESTIMADO (env HIGGS_CREDITO_BRL); janela = 30d",
+    }
+
+
 def snapshot() -> dict:
     """Tudo de uma vez pro painel. Read-only, best-effort por fonte."""
     return {"ts": datetime.now(timezone.utc).isoformat(), "motores": motores(),
             "llm": llm(), "fila": fila(), "erros": erros(),
-            "fallback": fallback_hist(), "vps": vps()}
+            "fallback": fallback_hist(), "vps": vps(), "financeiro": financeiro()}

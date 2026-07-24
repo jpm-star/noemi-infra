@@ -15,6 +15,7 @@ Imagem nascer de verdade e precisar do mesmo.
 """
 from __future__ import annotations
 
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -24,6 +25,42 @@ TIMEOUT_S = 120
 _ESCALA_IMG = "scale='min(1080,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease"
 _ESCALA_VID = ("scale='min(1280,iw)':'min(720,ih)':"
                "force_original_aspect_ratio=decrease:force_divisible_by=2")
+
+# Correção de luz da foto de celular ANTES do Kling (achado real: foto escura →
+# vídeo escuro; o modelo é fiel, não resgata input ruim). Só age quando a luma
+# média (YAVG 0-255) está abaixo do limiar — não estoura foto boa. gamma lifta
+# sombra sem clipar highlight; saturação recupera cor perdida no escuro.
+_LUMA_ALVO = float(os.environ.get("MOTOR_B_LUMA_ALVO", "120"))
+_LUMA_LIMIAR = float(os.environ.get("MOTOR_B_LUMA_LIMIAR", "95"))
+
+
+def _medir_luma(dados: bytes) -> float | None:
+    """YAVG (luma média 0-255) do 1º frame via signalstats. None se não medir."""
+    with tempfile.TemporaryDirectory() as tmp:
+        ent = Path(tmp) / "in"
+        met = Path(tmp) / "luma.txt"
+        ent.write_bytes(dados)
+        try:
+            subprocess.run(
+                ["ffmpeg", "-y", "-loglevel", "error", "-i", str(ent), "-frames:v", "1",
+                 "-vf", f"signalstats,metadata=print:file={met}", "-f", "null", "-"],
+                check=True, capture_output=True, timeout=TIMEOUT_S)
+            for linha in met.read_text().splitlines():
+                if "YAVG=" in linha:
+                    return float(linha.split("YAVG=")[1].split()[0])
+        except (subprocess.SubprocessError, OSError, ValueError, IndexError):
+            return None
+    return None
+
+
+def _correcao_luz(dados: bytes) -> str:
+    """Filtro `eq=...` extra se a foto está escura; '' se já tem luz suficiente
+    (ou se a medição falhar — best-effort, nunca inventa correção sem medir)."""
+    y = _medir_luma(dados)
+    if y is None or y >= _LUMA_LIMIAR:
+        return ""
+    gamma = min(1.8, 1.0 + (_LUMA_ALVO - y) / _LUMA_ALVO)  # >1 clareia midtones
+    return f",eq=gamma={gamma:.2f}:saturation=1.12:contrast=1.04"
 
 
 class NormalizacaoErro(RuntimeError):
@@ -38,7 +75,8 @@ class NormalizacaoErro(RuntimeError):
 def normalizar(dados: bytes, mime: str) -> tuple[bytes, str]:
     """(bytes, mime) normalizados. Lança NormalizacaoErro se o ffmpeg falhar."""
     if mime.startswith("image/"):
-        return _rodar(dados, ".jpg", ["-vf", _ESCALA_IMG, "-q:v", "3"]), "image/jpeg"
+        vf = _ESCALA_IMG + _correcao_luz(dados)  # clareia foto escura de celular
+        return _rodar(dados, ".jpg", ["-vf", vf, "-q:v", "3"]), "image/jpeg"
     if mime.startswith("video/"):
         return _rodar(dados, ".mp4",
                       ["-vf", _ESCALA_VID, "-c:v", "libx264", "-preset", "veryfast",
@@ -90,4 +128,14 @@ if __name__ == "__main__":  # self-check: normaliza uma imagem grande de verdade
             raise SystemExit("deveria ter falhado em bytes inválidos")
         except NormalizacaoErro as e:
             assert e.nivel == "ffmpeg"
-        print("media OK — 2000x2000 png →", len(_b), "bytes jpeg; erro estruturado ok")
+        # correção de luz: gera foto ESCURA, normaliza, confirma que a luma subiu
+        _dark = Path(_t) / "dark.png"
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi",
+                        "-i", "color=c=0x202020:size=800x600:duration=1:rate=1",
+                        "-frames:v", "1", str(_dark)], check=True)
+        y0 = _medir_luma(_dark.read_bytes())
+        _bc, _ = normalizar(_dark.read_bytes(), "image/png")
+        y1 = _medir_luma(_bc)
+        assert y0 is not None and y1 is not None and y1 > y0 + 15, (y0, y1)
+        print("media OK — 2000x2000 png →", len(_b), "bytes jpeg; erro ok; "
+              f"luz {y0:.0f}→{y1:.0f}")

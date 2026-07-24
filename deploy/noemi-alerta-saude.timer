@@ -1,0 +1,10 @@
+[Unit]
+Description=Dispara o alerta de saúde da Noemi OS a cada minuto
+
+[Timer]
+OnBootSec=60
+OnUnitActiveSec=60
+Persistent=true
+
+[Install]
+WantedBy=timers.target

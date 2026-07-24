@@ -131,6 +131,37 @@ async def prospeccao_config_salvar(req: Request) -> JSONResponse:
     return JSONResponse({"ok": True, "config": cfg})
 
 
+# Registro de venda: a 1ª receita acende o dashboard financeiro na hora.
+# Append saneado em data/receita.json (única rota de escrita fora prospecção).
+_RECEITA = _AQUI.parents[1] / "data" / "receita.json"
+
+
+@app.post("/api/receita")
+async def receita_registrar(req: Request) -> JSONResponse:
+    import json
+    novo = await req.json()
+    try:
+        valor = float(novo.get("valor_brl") or novo.get("valor") or 0)
+    except (TypeError, ValueError):
+        return JSONResponse({"ok": False, "erro": "valor inválido"}, status_code=400)
+    if valor <= 0:
+        return JSONResponse({"ok": False, "erro": "valor deve ser > 0"}, status_code=400)
+    venda = {"valor_brl": round(valor, 2),
+             "cliente": str(novo.get("cliente") or "")[:120],
+             "projeto": str(novo.get("projeto") or "—")[:40],
+             "data": str(novo.get("data") or "")[:10],
+             "recorrente": bool(novo.get("recorrente", False))}
+    try:
+        atual = json.loads(_RECEITA.read_text("utf-8"))
+        vendas = atual.get("vendas", []) if isinstance(atual, dict) else atual
+    except (OSError, ValueError):
+        vendas = []
+    vendas.append(venda)
+    _RECEITA.parent.mkdir(parents=True, exist_ok=True)
+    _RECEITA.write_text(json.dumps({"vendas": vendas}, ensure_ascii=False, indent=2), "utf-8")
+    return JSONResponse({"ok": True, "venda": venda, "n": len(vendas)})
+
+
 @app.get("/painel", response_class=HTMLResponse)
 @app.get("/", response_class=HTMLResponse)
 def painel_pagina() -> str:

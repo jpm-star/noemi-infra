@@ -83,7 +83,10 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
 </style>
 </head>
 <body>
-<div class="top">
+<a class="voltar-qg" href="#" title="Voltar"
+   onclick="history.length>1?history.back():location.assign(document.referrer||'https://go.noemi.digital/');return false"
+   style="position:fixed;top:14px;left:14px;z-index:99;background:rgba(0,0,0,.55);color:#fff;text-decoration:none;padding:7px 13px;border-radius:20px;font-size:.85rem;font-weight:600;backdrop-filter:blur(6px)">‹ Voltar</a>
+<div class="top" style="padding-left:96px">
   <div class="brand"><span class="dot"></span><div><b>NOEMI OS</b><small>CABINE DE OPERAÇÃO</small></div></div>
   <div class="meta"><span id="saude"></span><br><span id="upd">—</span></div>
 </div>
@@ -96,6 +99,22 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
 </div>
 
 <div class="card diag"><h3>💡 Diagnóstico da operação · IA</h3><div id="diag-body" class="empty">analisando…</div></div>
+
+<div class="card" id="fin-card" style="margin-bottom:12px">
+  <h3>💰 Financeiro — receita · custo · lucro <span style="color:var(--mut);font-weight:400;font-size:.75rem">(30d · custo real medido)</span></h3>
+  <div id="fin-kpis" class="grid" style="margin-bottom:10px"></div>
+  <div id="fin-proj"></div>
+  <details style="margin-top:10px">
+    <summary style="cursor:pointer;color:var(--cy);font-size:.82rem">＋ registrar venda</summary>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:end;margin-top:8px;font-size:.78rem;color:var(--mut)">
+      <label>cliente<br><input id="rv-cli" style="width:150px"></label>
+      <label>projeto<br><input id="rv-proj" placeholder="SDR / Motor B / Site" style="width:130px"></label>
+      <label>valor R$<br><input id="rv-val" type="number" min="1" style="width:90px"></label>
+      <label style="display:flex;gap:5px;align-items:center;padding-bottom:6px"><input id="rv-rec" type="checkbox"> recorrente</label>
+      <button id="rv-save" style="padding:6px 14px;background:var(--ok);color:#001;border:0;border-radius:6px;cursor:pointer;font-weight:600">🎉 registrar</button>
+    </div>
+  </details>
+</div>
 
 <div class="grid row-mot" id="motores" style="margin-bottom:12px"></div>
 
@@ -150,6 +169,20 @@ function render(d){
     return url?`<a class="card mot abrir" href="${url}" target="_blank" rel="noopener">${inner}</a>`
               :`<div class="card mot">${inner}</div>`;
   }).join('');
+
+  // financeiro — receita x custo x lucro
+  const brl=v=>"R$ "+(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const Fi=d.financeiro||{receita_total:0,custo_total:0,lucro:0,por_projeto:[],custo:{}};
+  const fink=(v,l,cor)=>`<div class="card kpi"><div class="v" style="color:${cor||'inherit'}">${v}</div><div class="l">${l}</div></div>`;
+  $("fin-kpis").innerHTML=[
+    fink(brl(Fi.receita_total),Fi.n_vendas?`receita (${Fi.n_vendas} venda${Fi.n_vendas>1?'s':''})`:'receita — sem venda ainda','var(--ok)'),
+    fink(brl(Fi.custo_total),`custo (IA ${brl(Fi.custo?.ia_brl)} · vídeo ${brl(Fi.custo?.video_brl)})`,'var(--warn)'),
+    fink(brl(Fi.lucro),Fi.margem_pct!=null?`lucro · margem ${Fi.margem_pct}%`:'lucro',Fi.lucro>=0?'var(--cy)':'var(--bad)'),
+  ].join('');
+  $("fin-proj").innerHTML=(Fi.por_projeto&&Fi.por_projeto.length)?`<table><tr><th>projeto</th><th>receita</th><th>custo</th><th>lucro</th></tr>
+    ${Fi.por_projeto.map(p=>`<tr><td>${p.projeto}</td><td style="color:var(--ok)">${brl(p.receita)}</td>
+     <td style="color:var(--warn)">${brl(p.custo)}</td><td style="color:${p.lucro>=0?'var(--cy)':'var(--bad)'}">${brl(p.lucro)}</td></tr>`).join('')}</table>`
+    :'<div class="empty">registre a 1ª venda pra acender o painel</div>';
 
   // KPIs
   const L=d.llm, V=d.vps;
@@ -252,6 +285,13 @@ $("pc-save").onclick=async()=>{
     janela_inicio:$("pc-jini").value,janela_fim:$("pc-jfim").value,pausado:$("pc-pause").checked,templates:tpl};
   const r=await fetch('api/prospeccao/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   $("pc-msg").textContent=r.ok?'✓ salvo':'erro'; setTimeout(()=>$("pc-msg").textContent='',2500);
+};
+$("rv-save").onclick=async()=>{
+  const val=+$("rv-val").value;
+  if(!(val>0)){$("rv-val").focus();return;}
+  const body={cliente:$("rv-cli").value,projeto:$("rv-proj").value,valor_brl:val,recorrente:$("rv-rec").checked,data:new Date().toISOString().slice(0,10)};
+  const r=await fetch('api/receita',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(r.ok){$("rv-cli").value='';$("rv-proj").value='';$("rv-val").value='';$("rv-rec").checked=false;tick();}
 };
 tick(); setInterval(tick, 4000);
 diag(); setInterval(diag, 90000);
