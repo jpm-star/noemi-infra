@@ -330,6 +330,20 @@ def _creditos_video() -> dict:
     return {"total": round(tot, 1), "mes": round(mes, 1), "n_mes": n_mes}
 
 
+def _projeto_canon(nome: str) -> str:
+    """Nome da venda → projeto canônico (pra casar receita com os 4 projetos)."""
+    n = nome.lower()
+    if any(k in n for k in ("sdr", "noemi", "whats", "papai")):
+        return "Noemi SDR"
+    if any(k in n for k in ("site", "studio", "landing")):
+        return "Motor Site"
+    if any(k in n for k in ("motor b", "video", "vídeo", "reels")):
+        return "Motor B"
+    if any(k in n for k in ("arbitr", "garimpo", "china")):
+        return "Motor Arbitragem"
+    return nome.strip()[:40] or "—"
+
+
 def financeiro() -> dict:
     usd_brl = float(os.environ.get("USD_BRL", "5.40"))
     cred_brl = float(os.environ.get("HIGGS_CREDITO_BRL", "0.26"))  # real: R$263/1015
@@ -346,17 +360,18 @@ def financeiro() -> dict:
     custo_total = round(ia_mes + video_mes, 2)
     lucro = round(receita_total - custo_total, 2)
     custo_medio_video = round(video_mes / cred["n_mes"], 2) if cred["n_mes"] else None
-    # por projeto: receita casada pelo campo 'projeto'; custo de vídeo vai pro
-    # Motor B, IA fica como linha compartilhada (o spend do LiteLLM não separa).
-    por_proj: dict[str, dict] = {}
+    # por projeto: SEMPRE lista os 4 projetos canônicos (mesmo com receita 0),
+    # casando a venda pelo nome. Custo de vídeo → Motor B; Groq do SDR é free-tier
+    # (~R$0, não metrado); IA compartilhada (LiteLLM) fica em linha própria.
+    CANON = ("Noemi SDR", "Motor Site", "Motor B", "Motor Arbitragem")
+    por_proj: dict[str, dict] = {p: {"projeto": p, "receita": 0.0, "custo": 0.0} for p in CANON}
     for v in vendas:
-        p = str(v.get("projeto") or "—")[:40]
+        p = _projeto_canon(str(v.get("projeto") or ""))
         por_proj.setdefault(p, {"projeto": p, "receita": 0.0, "custo": 0.0})
         por_proj[p]["receita"] += float(v.get("valor_brl") or v.get("valor") or 0)
-    por_proj.setdefault("Motor B (vídeo)", {"projeto": "Motor B (vídeo)", "receita": 0.0, "custo": 0.0})
-    por_proj["Motor B (vídeo)"]["custo"] += video_mes
+    por_proj["Motor B"]["custo"] += video_mes  # créditos Higgsfield medidos
     por_proj.setdefault("IA (compartilhado)", {"projeto": "IA (compartilhado)", "receita": 0.0, "custo": 0.0})
-    por_proj["IA (compartilhado)"]["custo"] += ia_mes
+    por_proj["IA (compartilhado)"]["custo"] += ia_mes  # spend LiteLLM (não separa por projeto)
     linhas = [{**r, "receita": round(r["receita"], 2), "custo": round(r["custo"], 2),
                "lucro": round(r["receita"] - r["custo"], 2)} for r in por_proj.values()]
     return {
