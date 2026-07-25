@@ -12,6 +12,7 @@ Reuso puro: yt-dlp/ffmpeg (já no host), transcricao (shared-core/ai), llm_proxy
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -40,11 +41,15 @@ def _origem_da_url(url: str) -> str:
 
 
 def _baixar_audio(link: str, destino: Path) -> Path:
-    """Só o áudio em mp3 via yt-dlp (reusa ffmpeg do host). Levanta em erro."""
+    """Só o áudio em mp3 via yt-dlp (reusa ffmpeg do host). Usa cookies (sessão
+    autenticada) se RADAR_COOKIES apontar um cookies.txt — necessário pra IG/YT,
+    que bloqueiam datacenter sem login (403/checkpoint). Levanta em erro."""
     saida = destino / "audio.%(ext)s"
-    subprocess.run(["yt-dlp", "-x", "--audio-format", "mp3", "--no-playlist",
-                    "-o", str(saida), link],
-                   check=True, capture_output=True, text=True, timeout=300)
+    cmd = ["yt-dlp", "-x", "--audio-format", "mp3", "--no-playlist", "-o", str(saida)]
+    cookies = os.environ.get("RADAR_COOKIES", "/root/noemi-infra/infra/cookies.txt")
+    if cookies and Path(cookies).exists():
+        cmd += ["--cookies", cookies]
+    subprocess.run([*cmd, link], check=True, capture_output=True, text=True, timeout=300)
     mp3s = list(destino.glob("*.mp3"))
     if not mp3s:
         raise RuntimeError("yt-dlp não gerou mp3")
