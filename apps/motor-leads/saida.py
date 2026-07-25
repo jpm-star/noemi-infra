@@ -115,6 +115,7 @@ def exportar_sheets(caminho: str, *, so_fila: bool = False) -> dict:
     domínio do site. Lê do BD. Devolve contagem + taxa de e-mail."""
     import re
     conn, _ = _conn()
+    conn.row_factory = sqlite3.Row
     try:
         criar_tabela(conn, "sqlite")
         q = "SELECT * FROM leads_clinicas" + (" WHERE passa_corte=1" if so_fila else "")
