@@ -46,10 +46,19 @@ const $=s=>document.querySelector(s);
 const esc=t=>(t||'').replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
 function card(a){
   const tags=(a.tags||'').split(',').filter(Boolean).map(t=>`<span class="pill">${esc(t)}</span>`).join(' ');
+  const lst=(arr,cor)=>(Array.isArray(arr)?arr:[]).map(x=>`<span class="pill" style="border-color:${cor};color:${cor}">${esc(x)}</span>`).join(' ');
+  const linha=(rot,val)=>val?`<div style="margin-top:6px;font-size:.86rem"><b style="color:var(--mut)">${rot}:</b> ${esc(val)}</div>`:'';
+  const rico=`
+    ${(a.onde_usar&&a.onde_usar.length)?`<div style="margin-top:8px;font-size:.82rem"><b style="color:var(--mut)">onde usar:</b> ${lst(a.onde_usar,'var(--cy)')}</div>`:''}
+    ${(a.verticais&&a.verticais.length)?`<div style="margin-top:4px;font-size:.82rem"><b style="color:var(--mut)">verticais:</b> ${lst(a.verticais,'var(--ok)')}</div>`:''}
+    ${linha('⚡ axioma',a.axioma)}
+    ${linha('🧠 assimilar',a.assimilacao)}
+    ${linha('🔗 vs histórico',a.comparacao)}`;
   return `<div class="card an" data-id="${a.id}">
     <h3>${esc(a.origem||'—')} <span class="score">★${a.score||'?'}</span> <span class="pill">${esc(a.categoria||'?')}</span></h3>
     <div class="meta">${(a.data||'').slice(0,10)} · <a href="${esc(a.url)}" target="_blank" rel="noopener">abrir vídeo ↗</a> ${tags}</div>
     <div class="insight">${esc(a.insight||'')}</div>
+    ${rico}
     <div class="trans" id="tr-${a.id}">carregando transcrição…</div></div>`;
 }
 async function hist(){

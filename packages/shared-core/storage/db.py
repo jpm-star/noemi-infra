@@ -86,13 +86,15 @@ def _migrar(c: sqlite3.Connection) -> None:
           insight     TEXT,            -- resumo/insight gerado (texto)
           categoria   TEXT,
           score       INTEGER,
-          tags        TEXT             -- palavras-chave p/ busca e matching de contexto
+          tags        TEXT,            -- palavras-chave p/ busca e matching de contexto
+          detalhe     TEXT             -- JSON: onde_usar/verticais/axioma/assimilacao/comparacao
         );
         """
     )
     # colunas do dashboard v1.1 (ALTER idempotente — CREATE não adiciona a tabela já existente)
     for col, tipo in (("aprovado", "INTEGER"), ("duracao_s", "REAL"), ("custo_creditos", "REAL")):
         _add_column(c, "jobs", col, tipo)
+    _add_column(c, "video_analises", "detalhe", "TEXT")  # insight rico (tabela já existe em prod)
 
 
 def _add_column(c: sqlite3.Connection, tabela: str, col: str, tipo: str) -> None:
