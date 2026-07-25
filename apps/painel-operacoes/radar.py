@@ -46,7 +46,9 @@ def _baixar_audio(link: str, destino: Path) -> Path:
     if "drive.google.com" in link:
         return _baixar_drive(link, destino)
     saida = destino / "audio.%(ext)s"
-    cmd = ["yt-dlp", "-x", "--audio-format", "mp3", "--no-playlist", "-o", str(saida)]
+    # --write-info-json: guarda o metadado (autor/conta) do post junto do áudio
+    cmd = ["yt-dlp", "-x", "--audio-format", "mp3", "--no-playlist",
+           "--write-info-json", "-o", str(saida)]
     cookies = os.environ.get("RADAR_COOKIES", "/root/noemi-infra/infra/cookies.txt")
     if cookies and Path(cookies).exists():
         cmd += ["--cookies", cookies]
@@ -62,6 +64,20 @@ def _baixar_audio(link: str, destino: Path) -> Path:
     if not mp3s:
         raise RuntimeError("yt-dlp não gerou mp3")
     return mp3s[0]
+
+
+def _conta_do_dir(destino: Path) -> str:
+    """Lê a conta/autor do post no .info.json que o yt-dlp gravou. '' se não houver.
+    Prefere o @handle (channel/uploader_id) ao nome de exibição."""
+    for j in destino.glob("*.info.json"):
+        try:
+            d = json.loads(j.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        h = d.get("channel") or d.get("uploader_id") or d.get("uploader") or ""
+        if h:
+            return "@" + str(h).lstrip("@") if not str(h).startswith("@") else str(h)
+    return ""
 
 
 def _baixar_drive(link: str, destino: Path) -> Path:
@@ -194,9 +210,12 @@ def analisar(url: str, origem: str | None = None) -> dict:
     url = (url or "").strip()
     if not url.startswith("http"):
         raise ValueError("url inválida")
-    origem = (origem or "").strip() or _origem_da_url(url)
+    origem_dada = (origem or "").strip()
     with tempfile.TemporaryDirectory(prefix="radar_") as td:
         audio = _baixar_audio(url, Path(td))
+        # a conta/autor REAL vem do metadado do download (yt-dlp), não da URL —
+        # é o que auto-agrupa por concorrente. Origem explícita do JP tem prioridade.
+        origem = origem_dada or _conta_do_dir(Path(td)) or _origem_da_url(url)
         texto = trans.transcrever(str(audio))
     if not texto:
         raise RuntimeError("transcrição falhou (sem chave Groq ou áudio ilegível)")

@@ -108,7 +108,7 @@ def _processar_msg(m: dict, chat_alvo: str) -> str | None:
         url = links[0].rstrip(").,")
         _responder(chat, "🔗 analisando o link…")
         try:
-            a = radar.analisar(url, origem="telegram")
+            a = radar.analisar(url)  # origem = conta REAL detectada no metadado (auto-agrupa)
             _responder(chat, _fmt_insight(a))
             return f"link ok id={a['id']}"
         except Exception as e:  # noqa: BLE001
