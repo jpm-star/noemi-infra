@@ -107,10 +107,18 @@ border:1px solid var(--ok);border-radius:99px;padding:2px 9px;margin-bottom:14px
 """
 
 
+# botão voltar universal (todas as abas do Studio): volta pro QG/referrer
+_VOLTAR = ("<a href='#' title='Voltar' onclick=\"history.length>1?history.back():"
+           "location.assign(document.referrer||'https://go.noemi.digital/');return false\" "
+           "style='position:fixed;top:14px;left:14px;z-index:99;background:rgba(0,0,0,.55);"
+           "color:#fff;text-decoration:none;padding:7px 13px;border-radius:20px;font-size:.85rem;"
+           "font-weight:600'>‹ Voltar</a>")
+
+
 def _pagina(corpo: str, titulo: str = "Site Studio") -> str:
     return (f"<!doctype html><html lang='pt-BR'><head><meta charset='utf-8'>"
             f"<meta name='viewport' content='width=device-width,initial-scale=1'>"
-            f"<title>{titulo}</title><style>{_CSS}</style></head><body>{corpo}</body></html>")
+            f"<title>{titulo}</title><style>{_CSS}</style></head><body>{_VOLTAR}{corpo}</body></html>")
 
 
 def _topo(com_sair: bool = True) -> str:

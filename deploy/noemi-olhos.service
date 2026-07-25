@@ -1,0 +1,12 @@
+[Unit]
+Description=Noemi OLHOS — puxa links de vídeo (dificil→papai) e roda o Radar
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/noemi-infra
+EnvironmentFile=-/root/noemi-infra/.env
+EnvironmentFile=-/root/noemi-infra/infra/.env
+# OLHOS_FROM_NUMBER = número do "dificil" (só mensagens dele viram análise).
+# Preencha no infra/.env antes de habilitar o timer.
+ExecStart=/root/noemi-infra/.venv/bin/python deploy/olhos_whatsapp.py
