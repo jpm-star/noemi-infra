@@ -86,11 +86,13 @@ def _prompt(config: dict) -> str:
 
 @track_cost("higgsfield")
 def generate(asset: dict, config: dict) -> dict:
-    token = _token_atual()
+    # sanitização do payload PRIMEIRO (fail-fast antes de token/rede): sem
+    # imagem_url não há image-to-video — erro tratável, nunca 500 no worker.
     imagem_url = config.get("imagem_url")
     if not imagem_url:
         raise RuntimeError("higgsfield_http exige config['imagem_url'] (image-to-video); "
                            "sem foto, use o mock ou preencha a URL do asset")
+    token = _token_atual()
     modelo = config.get("model") or _MODELO_VIDEO
 
     # 1) importa a foto -> media_id (a tool pode responder JSON OU texto humano
