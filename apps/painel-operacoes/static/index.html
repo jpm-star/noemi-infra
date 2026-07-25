@@ -422,20 +422,20 @@ ctLoad();
 // Histórico JPOS de prospecção — anota approach/objeção/argumento
 const RES_COR={fechou:'var(--ok)',agendou:'var(--cy)',respondeu:'var(--cy)',ligado:'var(--mut)',recusou:'var(--warn)',sem_resposta:'var(--mut)',hostil:'var(--bad)'};
 async function plLoad(){
-  const q=$('#pl-busca').value.trim();
+  const q=$('pl-busca').value.trim();
   try{const d=await (await fetch('/api/proslog'+(q?('?q='+encodeURIComponent(q)):''))).json();
     const L=d.log||[];const R=d.resumo||{por_resultado:{}};
-    $('#pl-sub').textContent=R.total?`${R.total} approaches · `+Object.entries(R.por_resultado).map(([k,v])=>`${v} ${k}`).join(' · '):'';
-    $('#pl-lista').innerHTML=L.length?L.map(e=>`<div style="border-left:3px solid ${RES_COR[e.resultado]||'var(--line)'};padding:6px 10px;margin-bottom:6px;font-size:.84rem">
+    $('pl-sub').textContent=R.total?`${R.total} approaches · `+Object.entries(R.por_resultado).map(([k,v])=>`${v} ${k}`).join(' · '):'';
+    $('pl-lista').innerHTML=L.length?L.map(e=>`<div style="border-left:3px solid ${RES_COR[e.resultado]||'var(--line)'};padding:6px 10px;margin-bottom:6px;font-size:.84rem">
       <b>${e.empresa||'—'}</b> <span class="pill" style="color:${RES_COR[e.resultado]}">${e.resultado}</span> <span style="color:var(--mut)">${(e.criado_em||'').slice(0,10)} · ${e.telefone||''}</span>
       ${e.objecao?`<div style="color:var(--warn)">✋ objeção: ${e.objecao}</div>`:''}
       ${e.o_que_falei?`<div style="color:var(--mut)">💬 falei: ${e.o_que_falei}</div>`:''}</div>`).join(''):'<div class="empty">nenhum approach anotado ainda</div>';
   }catch(e){}
 }
-let tPl;$('#pl-busca').oninput=()=>{clearTimeout(tPl);tPl=setTimeout(plLoad,300);};
-$('#pl-save').onclick=async()=>{
-  if(!$('#pl-emp').value.trim())return $('#pl-emp').focus();
-  const body={empresa:$('#pl-emp').value,telefone:$('#pl-tel').value,resultado:$('#pl-res').value,objecao:$('#pl-obj').value,o_que_falei:$('#pl-fal').value};
+let tPl;$('pl-busca').oninput=()=>{clearTimeout(tPl);tPl=setTimeout(plLoad,300);};
+$('pl-save').onclick=async()=>{
+  if(!$('pl-emp').value.trim())return $('pl-emp').focus();
+  const body={empresa:$('pl-emp').value,telefone:$('pl-tel').value,resultado:$('pl-res').value,objecao:$('pl-obj').value,o_que_falei:$('pl-fal').value};
   const r=await fetch('/api/proslog',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   if(r.ok){['pl-emp','pl-tel','pl-obj','pl-fal'].forEach(i=>$(i).value='');plLoad();tick();}
 };
