@@ -1,0 +1,11 @@
+[Unit]
+Description=Noemi — captação de leads de clínicas (Places→enriquece→score→banco/CSV/Sheet)
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/noemi-infra
+EnvironmentFile=-/root/noemi-infra/.env
+EnvironmentFile=-/root/noemi-infra/infra/.env
+# ajuste a lista de cidades conforme a fase (piloto → 5 cidades → região Lins)
+ExecStart=/root/noemi-infra/.venv/bin/python apps/motor-leads/captacao.py --cidades "Lins,Birigui,Araçatuba,Promissão,Getulina,Guaiçara" --limite 100
