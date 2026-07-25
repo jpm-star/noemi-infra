@@ -181,6 +181,21 @@ async def receita_registrar(req: Request) -> JSONResponse:
     return JSONResponse({"ok": True, "venda": venda, "n": len(vendas)})
 
 
+# -- Histórico JPOS de prospecção: o JP anota approach/objeção/o que falou -------
+@app.get("/api/proslog")
+def proslog_listar(q: str | None = None) -> JSONResponse:
+    import proslog
+    return JSONResponse({"log": proslog.listar(q), "resumo": proslog.resumo(),
+                         "resultados": list(proslog.RESULTADOS)})
+
+
+@app.post("/api/proslog")
+async def proslog_registrar(req: Request) -> JSONResponse:
+    import proslog
+    corpo = await req.json()
+    return JSONResponse({"ok": True, "entrada": proslog.registrar(corpo)})
+
+
 # -- Handoff de contato: quem a IA atende (lista editável, não hardcoded) -------
 @app.get("/api/contatos")
 def contatos_listar() -> JSONResponse:
