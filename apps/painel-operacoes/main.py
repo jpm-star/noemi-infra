@@ -98,8 +98,18 @@ def prospeccao_dados() -> JSONResponse:
 # Config editável da fila de prospecção (jitter/janela/pausa/templates por nicho).
 # Lida pelo enviador de prospecção (sdr-motor) e pela geração de mensagens.
 _PROSP_CFG = _AQUI.parents[1] / "data" / "prospeccao_config.json"
+# Mensagem curta padrão (impressiona rápido: já mostra um site pronto) + follow-up.
+# {empresa} {cidade} {link} são preenchidos por lead. Editável no /obs.
+_TPL_ABERTURA = ("Oi, tudo bem? Aqui é a Noemi 👋 Montei um site de demonstração "
+                 "pra {empresa} — dá uma olhada rápida: {link}\n\nSe curtir, coloco "
+                 "no ar já com atendimento automático no WhatsApp 24h. Posso te mostrar em 1 min?")
+_TPL_FOLLOWUP = ("Oi {empresa}! Só pra garantir que chegou 🙂 O site de demonstração "
+                 "tá aqui: {link}\n\nTopa eu te mostrar como fica com a Noemi respondendo "
+                 "seus clientes 24h (agendamento, dúvida, orçamento)?")
 _PROSP_CFG_DEFAULT = {"jitter_min_s": 45, "jitter_max_s": 120, "janela_inicio": "09:00",
-                      "janela_fim": "19:00", "pausado": True, "templates": {}}
+                      "janela_fim": "19:00", "pausado": True,
+                      "templates": {"padrao": _TPL_ABERTURA, "followup": _TPL_FOLLOWUP,
+                                    "clinica": _TPL_ABERTURA.replace("pra {empresa}", "pra clínica {empresa}")}}
 
 
 @app.get("/api/prospeccao/config")
