@@ -232,8 +232,8 @@ function corPct(p){return p>=90?'var(--bad)':p>=70?'var(--warn)':'var(--ok)'}
 let _ultimoTs=null;  // pro relógio relativo "há Xs"
 function render(d){
   // saúde geral: Health Index % + mood (🟢/🟡/🔴) + título da aba dinâmico
-  const tot=d.motores.length, down=d.motores.filter(m=>m.status!=='up').length;
-  const health=Math.round(100*(tot-down)/(tot||1));
+  const totM=d.motores.length, down=d.motores.filter(m=>m.status!=='up').length;
+  const health=Math.round(100*(totM-down)/(totM||1));
   const mood = down===0?'🟢':(down>=2?'🔴':'🟡');
   const cor = down===0?'var(--ok)':(down>=2?'var(--bad)':'var(--warn)');
   $("saude").innerHTML = `<b style="color:${cor}">${mood} ${health}% operacional</b>`
