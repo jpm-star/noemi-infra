@@ -1,0 +1,9 @@
+[Unit]
+Description=Noemi — watcher de reconexão do WhatsApp (alerta+reconnect via Telegram)
+After=network.target
+[Service]
+Type=oneshot
+WorkingDirectory=/root/noemi-infra
+EnvironmentFile=-/root/noemi-infra/.env
+EnvironmentFile=-/root/noemi-infra/infra/.env
+ExecStart=/root/noemi-infra/.venv/bin/python deploy/whatsapp_watch.py

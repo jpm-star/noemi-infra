@@ -92,7 +92,7 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
    onclick="history.length>1?history.back():(document.referrer&&location.assign(document.referrer));return false"
    style="position:fixed;top:14px;left:14px;z-index:99;background:rgba(0,0,0,.55);color:#fff;text-decoration:none;padding:7px 13px;border-radius:20px;font-size:.85rem;font-weight:600;backdrop-filter:blur(6px)">‹ Voltar</a>
 <div class="top" style="padding-left:96px">
-  <div class="brand"><span class="dot"></span><div><b>NOEMI OS</b><small>CABINE DE OPERAÇÃO</small></div></div>
+  <div class="brand"><span class="dot"></span><div><b>JPOS</b><small>CABINE DE OPERAÇÃO</small></div></div>
   <div class="meta"><span id="saude"></span><br><span id="upd">—</span></div>
 </div>
 
@@ -293,10 +293,19 @@ function render(d){
   const kpi=(v,l)=>`<div class="card kpi"><div class="v">${v}</div><div class="l">${l}</div></div>`;
   const gauge=(v,l,pct)=>`<div class="card kpi"><div class="v">${v}</div><div class="l">${l}</div>
     <div class="gauge"><i style="width:${Math.min(pct,100)}%;background:${corPct(pct)}"></i></div></div>`;
+  // sparklines: histórico rolante client-side (últimos 30 ticks) + mini SVG de tendência
+  window._hist=window._hist||{custo:[],lat:[],ram:[]};
+  if(L.online){_hist.custo.push(L.custo.hoje);_hist.lat.push(L.latencia.media);}
+  _hist.ram.push(V.ram_pct||0);
+  for(const k in _hist) if(_hist[k].length>30)_hist[k].shift();
+  const spark=(a,cor)=>{if(!a||a.length<2)return'';const mn=Math.min(...a),mx=Math.max(...a),r=(mx-mn)||1;
+    const pts=a.map((v,i)=>`${(i/(a.length-1)*100).toFixed(1)},${(20-(v-mn)/r*18).toFixed(1)}`).join(' ');
+    return `<svg viewBox="0 0 100 20" preserveAspectRatio="none" style="width:100%;height:20px;margin-top:4px;opacity:.8"><polyline fill="none" stroke="${cor}" stroke-width="1.5" points="${pts}"/></svg>`;};
+  const burn=L.online?money((L.custo.hoje||0)*30):'—';  // projeção do mês (burn-rate)
   $("kpis").innerHTML = [
-    kpi(L.online?money(L.custo.hoje):'—',"custo hoje"),
-    kpi(L.online?money(L.custo.mes):'—',"custo mês"),
-    kpi(L.online?L.latencia.media+'<small>ms</small>':'—',"latência média"),
+    kpi(L.online?money(L.custo.hoje)+spark(_hist.custo,'var(--cy)'):'—',"custo hoje"),
+    kpi(burn,"projeção mês (burn)"),
+    kpi(L.online?L.latencia.media+'<small>ms</small>'+spark(_hist.lat,'var(--warn)'):'—',"latência média"),
     kpi(L.online?`<span style="color:${L.latencia.p95<1000?'var(--ok)':L.latencia.p95<2000?'var(--warn)':'var(--bad)'}">${L.latencia.p95}</span><small>ms</small>`:'—',"P95"),
     kpi(L.online?L.cache.hit_rate+'<small>%</small>':'—',"cache hit"),
     gauge((V.cpu_pct||0)+'<small>%</small>',"CPU · load "+(V.load1||0),V.cpu_pct||0),

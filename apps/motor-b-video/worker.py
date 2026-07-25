@@ -39,6 +39,25 @@ def _imagem_url(origem: dict) -> str | None:
     return f"{MOTOR_B_PUBLIC_URL}/api/assets/{origem['id']}/file"
 
 
+def _teto_diario_atingido() -> int:
+    """Nº de vídeos gerados HOJE se já bateu MAX_VIDEOS_DIA; 0 se dentro do teto
+    (ou teto desligado). Guarda o crédito Higgsfield contra estouro por volume."""
+    maximo = int(os.environ.get("MAX_VIDEOS_DIA", "0"))
+    if maximo <= 0:
+        return 0
+    from datetime import datetime, timezone
+
+    from shared_core.storage import db
+    hoje = datetime.now(timezone.utc).date().isoformat()
+    try:
+        with db.conn() as c:
+            n = c.execute("SELECT COUNT(*) FROM jobs WHERE estado='completed' "
+                          "AND substr(atualizado_em,1,10)=?", (hoje,)).fetchone()[0]
+    except Exception:  # noqa: BLE001 — na dúvida, NÃO trava (não perde geração real)
+        return 0
+    return n if n >= maximo else 0
+
+
 async def loop() -> None:
     while True:
         try:
@@ -71,6 +90,13 @@ async def processar(job: dict) -> None:
         # ANTES do Higgsfield. Substitui prompt genérico por prompt ajustado ao segmento.
         cfg = await asyncio.to_thread(_planejar, origem, job)
         if not jobs.atualizar(jid, "processing", config=json.dumps(cfg, ensure_ascii=False)):
+            return
+        # HARD-CAP de custo: trava se o teto diário de vídeos foi atingido (protege
+        # o crédito Higgsfield de estouro por loop/volume). MAX_VIDEOS_DIA=0 desliga.
+        teto = _teto_diario_atingido()
+        if teto:
+            jobs.atualizar(jid, "failed", erro=f"teto diário de vídeos atingido ({teto})")
+            log_span("motor_b.teto", job=jid, ok=False, teto=teto)
             return
         t0 = time.monotonic()
         # item 4: storyboard = várias cenas encadeadas num walkthrough; senão, 1 clipe.

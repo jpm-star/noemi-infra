@@ -1,0 +1,8 @@
+[Unit]
+Description=Roda o watcher de WhatsApp a cada 2 min
+[Timer]
+OnBootSec=120
+OnUnitActiveSec=120
+Persistent=true
+[Install]
+WantedBy=timers.target
