@@ -118,6 +118,32 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
   </details>
 </div>
 
+<div class="card" style="margin-bottom:12px">
+  <h3>🛡️ Handoff & proteção do chip</h3>
+  <div style="display:flex;gap:22px;flex-wrap:wrap">
+    <div style="flex:1;min-width:290px">
+      <div style="font-size:.78rem;color:var(--mut);margin-bottom:6px">Contatos <b>conhecidos</b> — a IA responde 1x e <b>para</b> (você assume). Desconhecido = prospecção fria completa.</div>
+      <div id="ct-lista"><div class="empty">nenhum contato — todos tratados como frios</div></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;font-size:.8rem">
+        <input id="ct-num" placeholder="número c/ DDD" style="width:130px;background:#0c131d;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:5px 8px">
+        <input id="ct-nome" placeholder="nome" style="width:110px;background:#0c131d;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:5px 8px">
+        <select id="ct-modo" style="background:#0c131d;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:5px"><option value="uma_msg">1 msg + pausa</option><option value="ia_livre">IA livre</option><option value="so_eu">só eu</option></select>
+        <button id="ct-add" style="padding:5px 12px;background:var(--line);color:var(--txt);border:0;border-radius:6px;cursor:pointer">+ add</button>
+        <button id="ct-save" style="padding:5px 12px;background:var(--cy);color:#001;border:0;border-radius:6px;cursor:pointer;font-weight:600">salvar</button>
+        <span id="ct-msg" style="align-self:center;color:var(--ok);font-size:.78rem"></span>
+      </div>
+    </div>
+    <div style="flex:1;min-width:290px">
+      <div style="font-size:.78rem;color:var(--mut);margin-bottom:6px">Verificar números <b>antes de disparar</b> — pula os sem WhatsApp (protege o chip novo).</div>
+      <textarea id="wa-nums" placeholder="cole os números, um por linha" style="width:100%;height:70px;background:#0c131d;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:8px;font-size:.82rem"></textarea>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
+        <button id="wa-check" style="padding:6px 14px;background:var(--cy);color:#001;border:0;border-radius:6px;cursor:pointer;font-weight:600">verificar</button>
+        <span id="wa-res" style="font-size:.82rem;color:var(--mut)"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="grid row-mot" id="motores" style="margin-bottom:12px"></div>
 
 <div class="card" style="margin-bottom:12px">
@@ -301,6 +327,38 @@ $("pc-save").onclick=async()=>{
   const r=await fetch('api/prospeccao/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   $("pc-msg").textContent=r.ok?'✓ salvo':'erro'; setTimeout(()=>$("pc-msg").textContent='',2500);
 };
+// Handoff de contato: lista editável de conhecidos (IA responde 1x e para)
+let ctState=[];
+const MODO_LBL={uma_msg:'1 msg + pausa',ia_livre:'IA livre',so_eu:'só eu'};
+function ctRender(){
+  $("ct-lista").innerHTML = ctState.length? ctState.map((c,i)=>
+    `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--line);font-size:.82rem">
+      <span><b>${c.nome||'—'}</b> · ${c.numero} <span class="pill b-warn">${MODO_LBL[c.modo]||c.modo}</span></span>
+      <span style="cursor:pointer;color:var(--bad)" onclick="ctDel(${i})">✕</span></div>`).join('')
+    : '<div class="empty">nenhum contato — todos tratados como frios</div>';
+}
+window.ctDel=i=>{ctState.splice(i,1);ctRender();};
+async function ctLoad(){try{const d=await (await fetch('api/contatos')).json();ctState=d.contatos||[];ctRender();}catch(e){}}
+$("ct-add").onclick=()=>{
+  const num=$("ct-num").value.trim(); if(!num)return;
+  ctState.push({numero:num,nome:$("ct-nome").value.trim(),modo:$("ct-modo").value});
+  $("ct-num").value='';$("ct-nome").value='';ctRender();
+};
+$("ct-save").onclick=async()=>{
+  const r=await fetch('api/contatos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contatos:ctState})});
+  const d=await r.json(); ctState=d.contatos||ctState; ctRender();
+  $("ct-msg").textContent='✓ salvo'; setTimeout(()=>$("ct-msg").textContent='',2500);
+};
+$("wa-check").onclick=async()=>{
+  $("wa-res").textContent='⏳ verificando…';
+  try{const r=await fetch('api/wa/verificar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({numeros:$("wa-nums").value})});
+    const d=await r.json();
+    $("wa-res").innerHTML = d.checagem_disponivel
+      ? `<b style="color:var(--ok)">${d.vivos.length} com WhatsApp</b> · <b style="color:var(--bad)">${d.mortos.length} mortos</b> de ${d.n}`+(d.mortos.length?`<br><span style="color:var(--bad)">pular: ${d.mortos.join(', ')}</span>`:'')
+      : `<span style="color:var(--warn)">checagem indisponível (Evolution não configurada) — ${d.n} números</span>`;
+  }catch(e){$("wa-res").textContent='erro';}
+};
+ctLoad();
 $("rv-save").onclick=async()=>{
   const val=+$("rv-val").value;
   if(!(val>0)){$("rv-val").focus();return;}

@@ -5,6 +5,7 @@ escrita/ação: só leitura e diagnóstico. Mesmo padrão do dashboard do Motor 
 """
 from __future__ import annotations
 
+import re
 import sys
 import time
 from pathlib import Path
@@ -168,6 +169,37 @@ async def receita_registrar(req: Request) -> JSONResponse:
     except Exception:
         pass
     return JSONResponse({"ok": True, "venda": venda, "n": len(vendas)})
+
+
+# -- Handoff de contato: quem a IA atende (lista editável, não hardcoded) -------
+@app.get("/api/contatos")
+def contatos_listar() -> JSONResponse:
+    from shared_core import contatos
+    conh = contatos.carregar()
+    return JSONResponse({"contatos": [{"numero": n, **v} for n, v in conh.items()],
+                         "modos": sorted(contatos.MODOS)})
+
+
+@app.post("/api/contatos")
+async def contatos_salvar(req: Request) -> JSONResponse:
+    from shared_core import contatos
+    corpo = await req.json()
+    salvos = contatos.salvar(corpo.get("contatos", []))
+    return JSONResponse({"ok": True, "contatos": salvos, "n": len(salvos)})
+
+
+# -- Verificação de número morto (protege o chip antes do disparo) --------------
+@app.post("/api/wa/verificar")
+async def wa_verificar(req: Request) -> JSONResponse:
+    from shared_core import wa
+    corpo = await req.json()
+    brutos = corpo.get("numeros")
+    if isinstance(brutos, str):  # aceita lista colada (um por linha/vírgula)
+        brutos = [x for x in re.split(r"[\n,;]+", brutos) if x.strip()]
+    vivos, mortos = wa.filtrar_vivos(brutos or [])
+    disponivel = bool(wa.tem_whatsapp(brutos or []))  # {} = checagem indisponível
+    return JSONResponse({"vivos": vivos, "mortos": mortos, "n": len(brutos or []),
+                         "checagem_disponivel": disponivel})
 
 
 # -- Radar de Vídeo: análise (yt-dlp→Whisper→insight) com memória persistente ---
