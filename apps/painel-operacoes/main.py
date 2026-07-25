@@ -232,11 +232,14 @@ def radar_obter(aid: int) -> JSONResponse:
     return JSONResponse(a or {"erro": "não encontrada"}, status_code=200 if a else 404)
 
 
-@app.get("/radar", response_class=HTMLResponse)
+@app.get("/obs/radar", response_class=HTMLResponse)
+@app.get("/radar", response_class=HTMLResponse)  # legado (redireciona no front antigo)
 def radar_pagina() -> str:
     return (_AQUI / "static" / "radar.html").read_text(encoding="utf-8")
 
 
+# / = QG central (painel de controle); /obs = observação. Mesma HTML, view por JS.
+@app.get("/obs", response_class=HTMLResponse)
 @app.get("/painel", response_class=HTMLResponse)
 @app.get("/", response_class=HTMLResponse)
 def painel_pagina() -> str:

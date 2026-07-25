@@ -91,17 +91,19 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
   <div class="meta"><span id="saude"></span><br><span id="upd">—</span></div>
 </div>
 
-<div class="operar">
+<div class="operar v-qg">
   <span class="op-lab">OPERAR</span>
   <a class="op op-vid" href="https://videoshiggs.noemi.digital/" target="_blank" rel="noopener">🎬 Fazer um vídeo</a>
   <a class="op op-site" href="https://go.noemi.digital/studio/" target="_blank" rel="noopener">🌐 Fazer um site</a>
-  <a class="op op-ghost" href="https://go.noemi.digital/studio/combo" target="_blank" rel="noopener">⚡ Onboarding em 3 perguntas</a>
-  <a class="op op-radar" href="radar">📡 Radar de vídeo</a>
+  <a class="op" href="https://painel.noemi.digital/" target="_blank" rel="noopener">💬 Noemi SDR</a>
+  <a class="op op-ghost" href="https://go.noemi.digital/studio/combo" target="_blank" rel="noopener">⚡ Onboarding</a>
+  <a class="op op-radar" href="/obs/radar">📡 Radar de vídeo</a>
+  <a class="op" href="/obs">🩺 Observação</a>
 </div>
 
-<div class="card diag"><h3>💡 Diagnóstico da operação · IA</h3><div id="diag-body" class="empty">analisando…</div></div>
+<div class="card diag v-obs"><h3>💡 Diagnóstico da operação · IA</h3><div id="diag-body" class="empty">analisando…</div></div>
 
-<div class="card" id="fin-card" style="margin-bottom:12px">
+<div class="card v-qg" id="fin-card" style="margin-bottom:12px">
   <h3>💰 Financeiro — receita · custo · lucro <span style="color:var(--mut);font-weight:400;font-size:.75rem">(30d · custo real medido)</span></h3>
   <div id="fin-kpis" class="grid" style="margin-bottom:10px"></div>
   <div id="fin-meta" style="margin-bottom:12px"></div>
@@ -118,7 +120,7 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
   </details>
 </div>
 
-<div class="card" style="margin-bottom:12px">
+<div class="card v-qg" style="margin-bottom:12px">
   <h3>🛡️ Handoff & proteção do chip</h3>
   <div style="display:flex;gap:22px;flex-wrap:wrap">
     <div style="flex:1;min-width:290px">
@@ -144,9 +146,9 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
   </div>
 </div>
 
-<div class="grid row-mot" id="motores" style="margin-bottom:12px"></div>
+<div class="grid row-mot v-obs" id="motores" style="margin-bottom:12px"></div>
 
-<div class="card" style="margin-bottom:12px">
+<div class="card v-qg" style="margin-bottom:12px">
   <h3>🎯 Prospecção — demos de site <span id="prosp-contador" style="color:var(--mut);font-weight:400"></span></h3>
   <div id="prosp-ctrl" style="display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin-bottom:12px;font-size:.8rem;color:var(--mut)">
     <label>jitter min (s)<br><input id="pc-jmin" type="number" min="5" style="width:70px"></label>
@@ -163,20 +165,36 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
   <div class="grid" id="prospeccao" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px"></div>
 </div>
 
-<div class="grid row-kpi" id="kpis" style="margin-bottom:12px"></div>
+<div class="grid row-kpi v-obs" id="kpis" style="margin-bottom:12px"></div>
 
-<div class="grid row2" style="margin-bottom:12px">
+<div class="grid row2 v-obs" style="margin-bottom:12px">
   <div class="card"><h3>Últimas chamadas — LiteLLM</h3><div id="chamadas"></div></div>
   <div class="card"><h3>Ranking por modelo</h3><div id="ranking"></div></div>
 </div>
 
-<div class="grid row3">
+<div class="grid row3 v-obs">
   <div class="card"><h3>Fila viva</h3><div id="fila"></div></div>
   <div class="card"><h3>Cascata de fallback</h3><div id="fallback"></div></div>
   <div class="card"><h3>Falhas agrupadas</h3><div id="erros"></div></div>
 </div>
 
+<style>
+  body[data-view="obs"] .v-qg{display:none!important}
+  body[data-view="qg"]  .v-obs{display:none!important}
+</style>
 <script>
+// Modo: raiz (go.noemi.digital/) = QG central (financeiro/prospecção/handoff/operar);
+// /obs = observação (saúde dos motores + radar + IA/VPS). Mesma HTML, seções por view.
+(function(){
+  const OBS = /\/obs\/?$/.test(location.pathname);
+  document.body.dataset.view = OBS ? 'obs' : 'qg';
+  const sub = document.querySelector('.brand small');
+  if(sub) sub.textContent = OBS ? 'OBSERVAÇÃO POR PROJETO' : 'PAINEL DE CONTROLE';
+  // no QG a raiz é o topo do escopo → esconde o "‹ Voltar"; em /obs ele volta pra raiz
+  const volta = document.querySelector('.voltar-qg');
+  if(volta && !OBS) volta.style.display='none';
+  else if(volta) volta.setAttribute('href','/');
+})();
 const $=id=>document.getElementById(id);
 const money=v=>"$"+(v||0).toFixed(v<0.01?6:4);
 const pill=(up,txt)=>`<span class="pill ${up?'b-ok':'b-bad'}">${up?'🟢':'🔴'} ${txt}</span>`;

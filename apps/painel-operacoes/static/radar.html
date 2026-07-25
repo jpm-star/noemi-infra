@@ -20,7 +20,7 @@ input{width:100%}button{cursor:pointer;font-weight:600;border:0}
 #status{color:var(--warn);font-size:.85rem;margin-top:8px;min-height:1em}
 .score{color:var(--warn);font-weight:700}
 </style></head><body>
-<a class="voltar" href="./" title="Voltar" onclick="if(history.length>1){history.back();return false}">‹ Voltar</a>
+<a class="voltar" href="/obs" title="Voltar" onclick="if(history.length>1){history.back();return false}">‹ Voltar</a>
 <h1>📡 Radar de Vídeo</h1>
 <p class="sub">Cola um link (Instagram/Drive/YouTube). A Noemi baixa o áudio, transcreve, gera insight — e <b>guarda</b>. Cada análise vira contexto das próximas (aprende padrão por conta/tema).</p>
 
@@ -54,7 +54,7 @@ function card(a){
 }
 async function hist(){
   const q=$('#busca').value.trim();
-  const r=await fetch('api/radar/analises'+(q?('?q='+encodeURIComponent(q)):''));
+  const r=await fetch('/api/radar/analises'+(q?('?q='+encodeURIComponent(q)):''));
   const d=await r.json(); const L=d.analises||[];
   $('#hist').innerHTML = L.length? L.map(card).join('') : '<div class="empty">nenhuma análise ainda — cola um link acima</div>';
 }
@@ -64,7 +64,7 @@ $('#hist').addEventListener('click',async e=>{
   el.classList.toggle('open');
   const tr=el.querySelector('.trans');
   if(el.classList.contains('open') && !tr.dataset.loaded){
-    const a=await (await fetch('api/radar/analise/'+el.dataset.id)).json();
+    const a=await (await fetch('/api/radar/analise/'+el.dataset.id)).json();
     tr.textContent=a.transcricao||'(sem transcrição)'; tr.dataset.loaded=1;
   }
 });
@@ -73,7 +73,7 @@ $('#go').onclick=async()=>{
   const url=$('#url').value.trim(); if(!url){$('#url').focus();return;}
   $('#go').disabled=true; $('#status').textContent='⏳ baixando + transcrevendo… (pode levar 30-90s)'; $('#result').innerHTML='';
   try{
-    const r=await fetch('api/radar/analisar',{method:'POST',headers:{'Content-Type':'application/json'},
+    const r=await fetch('/api/radar/analisar',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({url,origem:$('#origem').value.trim()})});
     const d=await r.json();
     if(d.ok){$('#status').textContent='✓ análise salva'+(d.analise.usou_contexto?` · usou ${d.analise.usou_contexto} análises anteriores como contexto`:'');
