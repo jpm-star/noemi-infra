@@ -29,7 +29,7 @@
 </head>
 <body>
 <a class="voltar-qg" href="#" title="Voltar ao QG"
-   onclick="history.length>1?history.back():location.assign(document.referrer||'https://go.noemi.digital/');return false"
+   onclick="history.length>1?history.back():(document.referrer&&location.assign(document.referrer));return false"
    style="position:fixed;top:14px;left:14px;z-index:99;background:rgba(0,0,0,.55);color:#fff;text-decoration:none;padding:7px 13px;border-radius:20px;font-size:.85rem;font-weight:600;backdrop-filter:blur(6px)">‹ Voltar</a>
 <main>
   <h1>🎥 Motor B — <span>Vídeo IA</span></h1>

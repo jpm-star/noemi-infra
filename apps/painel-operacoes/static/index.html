@@ -84,7 +84,7 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
 </head>
 <body>
 <a class="voltar-qg" href="#" title="Voltar"
-   onclick="history.length>1?history.back():location.assign(document.referrer||'https://go.noemi.digital/');return false"
+   onclick="history.length>1?history.back():(document.referrer&&location.assign(document.referrer));return false"
    style="position:fixed;top:14px;left:14px;z-index:99;background:rgba(0,0,0,.55);color:#fff;text-decoration:none;padding:7px 13px;border-radius:20px;font-size:.85rem;font-weight:600;backdrop-filter:blur(6px)">‹ Voltar</a>
 <div class="top" style="padding-left:96px">
   <div class="brand"><span class="dot"></span><div><b>NOEMI OS</b><small>CABINE DE OPERAÇÃO</small></div></div>

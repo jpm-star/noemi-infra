@@ -109,7 +109,7 @@ border:1px solid var(--ok);border-radius:99px;padding:2px 9px;margin-bottom:14px
 
 # botão voltar universal (todas as abas do Studio): volta pro QG/referrer
 _VOLTAR = ("<a href='#' title='Voltar' onclick=\"history.length>1?history.back():"
-           "location.assign(document.referrer||'https://go.noemi.digital/');return false\" "
+           "(document.referrer&&location.assign(document.referrer));return false\" "
            "style='position:fixed;top:14px;left:14px;z-index:99;background:rgba(0,0,0,.55);"
            "color:#fff;text-decoration:none;padding:7px 13px;border-radius:20px;font-size:.85rem;"
            "font-weight:600'>‹ Voltar</a>")
