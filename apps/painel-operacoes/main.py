@@ -242,6 +242,13 @@ def radar_obter(aid: int) -> JSONResponse:
     return JSONResponse(a or {"erro": "não encontrada"}, status_code=200 if a else 404)
 
 
+@app.get("/api/leads/export.csv")
+def leads_export() -> Response:
+    from fastapi.responses import Response as _R
+    return _R(content=agg.leads_csv(), media_type="text/csv",
+             headers={"Content-Disposition": "attachment; filename=leads_clinicas.csv"})
+
+
 @app.get("/obs/radar", response_class=HTMLResponse)
 @app.get("/radar", response_class=HTMLResponse)  # legado (redireciona no front antigo)
 def radar_pagina() -> str:

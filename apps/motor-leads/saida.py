@@ -122,16 +122,20 @@ def exportar_sheets(caminho: str, *, so_fila: bool = False) -> dict:
         rows = [dict(r) for r in conn.execute(q + " ORDER BY score_final DESC")]
     finally:
         conn.close()
+    # dedup por TELEFONE (único por unidade — preserva franquias com mesmo domínio
+    # corporativo mas telefones diferentes). Domínio só desempata quem NÃO tem tel.
     vistos_tel, vistos_dom, linhas = set(), set(), []
     com_email = 0
     for r in rows:
         tel = re.sub(r"\D", "", r.get("telefone") or "")
         dom = re.sub(r"^www\.", "", (r.get("website") or "").split("//")[-1].split("/")[0]).lower()
-        if (tel and tel in vistos_tel) or (dom and dom in vistos_dom):
+        if tel and tel in vistos_tel:
+            continue
+        if not tel and dom and dom in vistos_dom:  # sem telefone: usa domínio
             continue
         if tel:
             vistos_tel.add(tel)
-        if dom:
+        elif dom:
             vistos_dom.add(dom)
         if r.get("email"):
             com_email += 1

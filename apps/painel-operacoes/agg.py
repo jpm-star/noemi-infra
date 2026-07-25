@@ -414,8 +414,62 @@ def financeiro() -> dict:
     }
 
 
+# -- captação de leads (motor-leads → data/leads.db): contador vs meta 1000 ------
+_LEADS_DB = _AQUI.parents[1] / "data" / "leads.db"
+_LEADS_META = int(os.environ.get("LEADS_META", "1000"))
+
+
+def leads_captacao() -> dict:
+    """Contador de leads coletados vs meta. Read-only, best-effort ({} se sem DB)."""
+    if not _LEADS_DB.exists():
+        return {"total": 0, "fila": 0, "com_email": 0, "meta": _LEADS_META,
+                "pct": 0.0, "cidades": 0, "taxa_email_pct": 0.0}
+    try:
+        c = sqlite3.connect(f"file:{_LEADS_DB}?mode=ro", uri=True, timeout=2)
+        tot = c.execute("SELECT COUNT(DISTINCT COALESCE(NULLIF(telefone,''),place_id)) FROM leads_clinicas").fetchone()[0]
+        fila = c.execute("SELECT COUNT(*) FROM leads_clinicas WHERE passa_corte=1").fetchone()[0]
+        email = c.execute("SELECT COUNT(*) FROM leads_clinicas WHERE email IS NOT NULL AND email!=''").fetchone()[0]
+        cid = c.execute("SELECT COUNT(DISTINCT cidade_origem) FROM leads_clinicas").fetchone()[0]
+        c.close()
+    except sqlite3.Error:
+        return {"total": 0, "fila": 0, "com_email": 0, "meta": _LEADS_META, "pct": 0.0,
+                "cidades": 0, "taxa_email_pct": 0.0}
+    return {"total": tot, "fila": fila, "com_email": email, "meta": _LEADS_META,
+            "pct": round(100 * tot / _LEADS_META, 1) if _LEADS_META else 0.0,
+            "cidades": cid, "taxa_email_pct": round(100 * email / tot, 1) if tot else 0.0}
+
+
+def leads_csv() -> str:
+    """CSV dos leads (colunas do time) pro botão de export. Dedup por telefone."""
+    import csv
+    import io
+    import re
+    if not _LEADS_DB.exists():
+        return "nome,telefone,cidade,tier,site,email,endereco,avaliacao,multi_unidade,observacoes\n"
+    c = sqlite3.connect(f"file:{_LEADS_DB}?mode=ro", uri=True, timeout=3)
+    c.row_factory = sqlite3.Row
+    rows = c.execute("SELECT * FROM leads_clinicas ORDER BY score_final DESC").fetchall()
+    c.close()
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["nome", "telefone", "cidade", "tier", "site", "email", "endereco",
+                "avaliacao", "multi_unidade", "observacoes"])
+    vistos = set()
+    for r in rows:
+        tel = re.sub(r"\D", "", r["telefone"] or "")
+        if tel and tel in vistos:
+            continue
+        if tel:
+            vistos.add(tel)
+        w.writerow([r["nome"], r["telefone"], r["cidade_origem"], r["tier_sugerido"],
+                    r["website"], r["email"] or "", r["endereco"], r["rating"],
+                    bool((r["n_unidades"] or 1) >= 2), r["motivo_da_dor"]])
+    return buf.getvalue()
+
+
 def snapshot() -> dict:
     """Tudo de uma vez pro painel. Read-only, best-effort por fonte."""
     return {"ts": datetime.now(timezone.utc).isoformat(), "motores": motores(),
             "llm": llm(), "fila": fila(), "erros": erros(),
-            "fallback": fallback_hist(), "vps": vps(), "financeiro": financeiro()}
+            "fallback": fallback_hist(), "vps": vps(), "financeiro": financeiro(),
+            "leads": leads_captacao()}

@@ -103,6 +103,13 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
 
 <div class="card diag v-obs"><h3>💡 Diagnóstico da operação · IA</h3><div id="diag-body" class="empty">analisando…</div></div>
 
+<div class="card v-qg" id="leads-card" style="margin-bottom:12px">
+  <h3>🎯 Captação de leads <span id="leads-sub" style="color:var(--mut);font-weight:400;font-size:.8rem"></span>
+    <a href="/api/leads/export.csv" style="float:right;font-size:.8rem;background:var(--cy);color:#001;padding:4px 12px;border-radius:6px;text-decoration:none;font-weight:600">⬇ exportar CSV</a></h3>
+  <div id="leads-kpis" class="grid" style="margin:8px 0"></div>
+  <div id="leads-bar"></div>
+</div>
+
 <div class="card v-qg" id="fin-card" style="margin-bottom:12px">
   <h3>💰 Financeiro — receita · custo · lucro <span style="color:var(--mut);font-weight:400;font-size:.75rem">(30d · custo real medido)</span></h3>
   <div id="fin-kpis" class="grid" style="margin-bottom:10px"></div>
@@ -216,6 +223,20 @@ function render(d){
     return url?`<a class="card mot abrir" href="${url}" target="_blank" rel="noopener">${inner}</a>`
               :`<div class="card mot">${inner}</div>`;
   }).join('');
+
+  // captação de leads — contador vs meta 1000
+  const Le=d.leads||{total:0,meta:1000,fila:0,com_email:0,cidades:0,pct:0,taxa_email_pct:0};
+  const lkpi=(v,l,cor)=>`<div class="card kpi"><div class="v" style="color:${cor||'inherit'}">${v}</div><div class="l">${l}</div></div>`;
+  $("leads-sub").textContent = `${Le.cidades} cidades · meta ${Le.meta}`;
+  $("leads-kpis").innerHTML=[
+    lkpi(Le.total,'leads coletados','var(--ok)'),
+    lkpi(Le.fila,'na fila de ligação','var(--cy)'),
+    lkpi(Le.com_email+`<small> (${Le.taxa_email_pct}%)</small>`,'com e-mail','var(--warn)'),
+  ].join('');
+  {const pc=Math.min(Le.pct,100);
+   $("leads-bar").innerHTML=`<div style="display:flex;justify-content:space-between;font-size:.78rem;color:var(--mut);margin:2px 0 4px">
+     <span>meta de coleta</span><span><b style="color:var(--ok)">${Le.total}</b> / ${Le.meta} · ${Le.pct}%</span></div>
+     <div class="gauge" style="height:9px"><i style="width:${pc}%;background:${pc>=100?'var(--ok)':'var(--cy)'}"></i></div>`;}
 
   // financeiro — receita x custo x lucro
   const brl=v=>"R$ "+(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
