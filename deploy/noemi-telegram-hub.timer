@@ -1,0 +1,8 @@
+[Unit]
+Description=Roda o hub do Telegram a cada 30s
+[Timer]
+OnBootSec=30
+OnUnitActiveSec=30
+Persistent=true
+[Install]
+WantedBy=timers.target

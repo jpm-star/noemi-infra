@@ -189,10 +189,8 @@ def _extrair_json(texto: str) -> dict | None:
 
 
 def analisar(url: str, origem: str | None = None) -> dict:
-    """Pipeline completo: baixa → transcreve → contexto → insight → GRAVA. Levanta
-    só se download/transcrição falharem totalmente (o caller vira erro HTTP)."""
+    """Pipeline por URL: baixa → transcreve → contexto → insight → GRAVA."""
     from shared_core.ai import transcricao as trans
-    from shared_core.storage import db
     url = (url or "").strip()
     if not url.startswith("http"):
         raise ValueError("url inválida")
@@ -202,6 +200,27 @@ def analisar(url: str, origem: str | None = None) -> dict:
         texto = trans.transcrever(str(audio))
     if not texto:
         raise RuntimeError("transcrição falhou (sem chave Groq ou áudio ilegível)")
+    return _processar(texto, origem, url)
+
+
+def analisar_arquivo(caminho: str, origem: str = "telegram", url_ref: str = "") -> dict:
+    """Pipeline por ARQUIVO local (vídeo/áudio já baixado — ex: enviado no Telegram,
+    sem bot-detection de IG/YT). Extrai áudio → transcreve → insight → GRAVA."""
+    from shared_core.ai import transcricao as trans
+    with tempfile.TemporaryDirectory(prefix="radar_") as td:
+        audio = Path(td) / "audio.mp3"
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", caminho,
+                        "-vn", "-acodec", "libmp3lame", "-q:a", "4", str(audio)],
+                       check=True, capture_output=True, timeout=180)
+        texto = trans.transcrever(str(audio))
+    if not texto:
+        raise RuntimeError("transcrição falhou (áudio ilegível ou sem chave Groq)")
+    return _processar(texto, origem, url_ref)
+
+
+def _processar(texto: str, origem: str, url: str) -> dict:
+    """Núcleo compartilhado: contexto → insight → grava → devolve."""
+    from shared_core.storage import db
     contexto = _contexto_anterior(origem)
     ins = _insight(texto, contexto)
     data = datetime.now(timezone.utc).isoformat()

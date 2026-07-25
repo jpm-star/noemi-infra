@@ -1,0 +1,9 @@
+[Unit]
+Description=Noemi Telegram Hub — vídeo/link no @noemi_alert_bot → Radar → insight de volta
+After=network.target
+[Service]
+Type=oneshot
+WorkingDirectory=/root/noemi-infra
+EnvironmentFile=-/root/noemi-infra/.env
+EnvironmentFile=-/root/noemi-infra/infra/.env
+ExecStart=/root/noemi-infra/.venv/bin/python deploy/telegram_hub.py
