@@ -12,6 +12,14 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
+from urllib.parse import urljoin, urlparse
+
+# e-mail: regex + mailto:. Filtra lixo (imagens, sentry/wix, exemplos) e prefere
+# e-mail de negócio (contato@/comercial@ ou do mesmo domínio do site).
+_EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
+_EMAIL_LIXO = ("sentry", "wixpress", "example.", "@2x", ".png", ".jpg", ".gif",
+               "@sentry", "godaddy", "domain.com", "email.com", "seuemail")
+_CONTATO_PATHS = ("/contato", "/contact")
 
 # widgets de chat/atendimento mais comuns no BR (indício de que JÁ têm atendimento)
 _CHAT_MARCADORES = ("tawk.to", "jivochat", "jivosite", "zendesk", "crisp.chat",
@@ -42,7 +50,36 @@ def analisar_html(html: str, url: str) -> dict:
         "tem_wa_button": any(m in low for m in _WA_MARCADORES),
         "tem_chat": any(m in low for m in _CHAT_MARCADORES),
         "site_de_agencia": _de_agencia(generator, ano),
+        "email": extrair_email(h, urlparse(url).netloc),
     }
+
+
+def extrair_email(html: str, dominio: str = "") -> str:
+    """Melhor e-mail de negócio do HTML (mailto: + regex). '' se nenhum. Prefere
+    contato@/comercial@/atendimento@ e e-mail do mesmo domínio do site."""
+    achados: list[str] = []
+    for m in re.finditer(r'mailto:([^"\'>?\s]+)', html or "", re.I):  # mailto: primeiro
+        achados.append(m.group(1))
+    achados += _EMAIL_RE.findall(html or "")
+    limpos: list[str] = []
+    for e in achados:
+        e = e.strip().lower().rstrip(".")
+        if e and "@" in e and e not in limpos and not any(x in e for x in _EMAIL_LIXO):
+            limpos.append(e)
+    if not limpos:
+        return ""
+    dom = (dominio or "").lower().replace("www.", "")
+
+    def _peso(e: str) -> int:
+        p = 0
+        if any(e.startswith(x) for x in ("contato@", "comercial@", "atendimento@", "contato.", "faleconosco@")):
+            p += 3
+        if dom and e.endswith("@" + dom):
+            p += 2
+        if e.split("@")[-1] in ("gmail.com", "hotmail.com", "outlook.com", "yahoo.com"):
+            p -= 1  # e-mail pessoal vale menos que o do domínio
+        return p
+    return sorted(limpos, key=_peso, reverse=True)[0]
 
 
 def _ano_rodape(html: str) -> int | None:
@@ -74,9 +111,10 @@ def enriquecer(lead: dict, *, fetch=None) -> dict:
         l.update({"sem_site": True, "http_status": None, "tem_ssl": False,
                   "responsivo": False, "generator": "", "ano_rodape": None,
                   "site_abandonado": False, "tem_wa_button": False, "tem_chat": False,
-                  "site_de_agencia": False})
+                  "site_de_agencia": False, "email": ""})
         return l
-    status, html, url_final = (fetch or _fetch)(site)
+    fx = fetch or _fetch
+    status, html, url_final = fx(site)
     l["sem_site"] = False
     l["http_status"] = status
     if status and 200 <= status < 400 and html:
@@ -84,15 +122,33 @@ def enriquecer(lead: dict, *, fetch=None) -> dict:
     else:  # site no ar mas erro/redirect quebrado = tratado como abandonado
         l.update({"tem_ssl": site.startswith("https://"), "responsivo": False,
                   "generator": "", "ano_rodape": None, "site_abandonado": True,
-                  "tem_wa_button": False, "tem_chat": False, "site_de_agencia": False})
+                  "tem_wa_button": False, "tem_chat": False, "site_de_agencia": False,
+                  "email": ""})
+    # e-mail não achado na home → tenta páginas de contato (best-effort, timeout curto)
+    if not l.get("email"):
+        base = url_final or site
+        for path in _CONTATO_PATHS:
+            try:
+                st, h, u = fx(urljoin(base, path))
+            except Exception:  # noqa: BLE001
+                continue
+            if st and 200 <= st < 400 and h:
+                em = extrair_email(h, urlparse(u or base).netloc)
+                if em:
+                    l["email"] = em
+                    break
     return l
 
 
 def _fetch(url: str):
-    """(status, html, url_final) via httpx. Erro/timeout → (None, '', url)."""
+    """(status, html, url_final) via httpx. Timeout curto (LEADS_FETCH_TIMEOUT,
+    default 6s) pra não travar o lote de 1000. Erro/timeout → (None, '', url)."""
+    import os
+
     import httpx
     try:
-        with httpx.Client(timeout=15.0, follow_redirects=True,
+        to = float(os.environ.get("LEADS_FETCH_TIMEOUT", "6"))
+        with httpx.Client(timeout=to, follow_redirects=True,
                           headers={"User-Agent": "Mozilla/5.0 (noemi-leads/1.0)"}) as c:
             r = c.get(url)
             return r.status_code, r.text, str(r.url)
@@ -116,5 +172,10 @@ if __name__ == "__main__":  # self-check: fixtures wix-abandonado vs moderno c/ 
     assert not b["site_abandonado"] and b["site_de_agencia"], b
 
     semsite = enriquecer({"nome": "Clínica Z", "website": ""})
-    assert semsite["sem_site"] and semsite["http_status"] is None
-    print("enriquecimento OK — wix/2019 abandonado, moderno c/ wa+chat, sem_site")
+    assert semsite["sem_site"] and semsite["http_status"] is None and semsite["email"] == ""
+    # e-mail: prefere contato@ e domínio do site, ignora lixo (sentry/imagem)
+    hm = ('<a href="mailto:contato@clinicay.com.br">email</a> foto@2x.png '
+          'suporte@sentry.io atendimento@gmail.com')
+    assert extrair_email(hm, "clinicay.com.br") == "contato@clinicay.com.br"
+    assert extrair_email("sem email aqui", "x.com") == ""
+    print("enriquecimento OK — wix/2019, moderno wa+chat, sem_site, e-mail (contato@ > lixo)")

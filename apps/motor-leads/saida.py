@@ -18,11 +18,11 @@ from pathlib import Path
 
 # colunas persistidas (ordem estável); status NÃO é sobrescrito no update
 COLUNAS = ("place_id", "cidade_origem", "categoria", "nome", "telefone", "website",
-           "rating", "total_reviews", "endereco", "horario", "sem_site", "http_status",
-           "tem_ssl", "responsivo", "generator", "ano_rodape", "site_abandonado",
-           "tem_wa_button", "tem_chat", "reviews_reclamam_demora", "atividade_recente",
-           "n_unidades", "score_movimento", "score_dor", "score_final", "tier_sugerido",
-           "motivo_da_dor", "passa_corte")
+           "email", "rating", "total_reviews", "endereco", "horario", "sem_site",
+           "http_status", "tem_ssl", "responsivo", "generator", "ano_rodape",
+           "site_abandonado", "tem_wa_button", "tem_chat", "reviews_reclamam_demora",
+           "atividade_recente", "n_unidades", "score_movimento", "score_dor",
+           "score_final", "tier_sugerido", "motivo_da_dor", "passa_corte")
 _STATUS_VALIDOS = ("novo", "ligado", "agendado", "fechado", "hostil")
 
 
@@ -56,7 +56,7 @@ def criar_tabela(conn, dialect: str) -> None:
     conn.execute(f"""
         CREATE TABLE IF NOT EXISTS leads_clinicas (
           place_id {tipo_pk}, cidade_origem TEXT, categoria TEXT, nome TEXT,
-          telefone TEXT, website TEXT, rating REAL, total_reviews INTEGER,
+          telefone TEXT, website TEXT, email TEXT, rating REAL, total_reviews INTEGER,
           endereco TEXT, horario TEXT, sem_site INTEGER, http_status INTEGER,
           tem_ssl INTEGER, responsivo INTEGER, generator TEXT, ano_rodape INTEGER,
           site_abandonado INTEGER, tem_wa_button INTEGER, tem_chat INTEGER,
@@ -107,6 +107,51 @@ def exportar_csv(leads: list[dict], caminho: str) -> str:
         for l in leads:
             w.writerow({**{k: _val(l, k) for k in COLUNAS}, "status": l.get("status", "novo")})
     return str(p)
+
+
+def exportar_sheets(caminho: str, *, so_fila: bool = False) -> dict:
+    """CSV no formato do JP (nome·telefone·cidade·tier·site·email·endereco·
+    avaliacao·multi_unidade·observacoes), DEDUP por telefone (só dígitos) ou
+    domínio do site. Lê do BD. Devolve contagem + taxa de e-mail."""
+    import re
+    conn, _ = _conn()
+    try:
+        criar_tabela(conn, "sqlite")
+        q = "SELECT * FROM leads_clinicas" + (" WHERE passa_corte=1" if so_fila else "")
+        rows = [dict(r) for r in conn.execute(q + " ORDER BY score_final DESC")]
+    finally:
+        conn.close()
+    vistos_tel, vistos_dom, linhas = set(), set(), []
+    com_email = 0
+    for r in rows:
+        tel = re.sub(r"\D", "", r.get("telefone") or "")
+        dom = re.sub(r"^www\.", "", (r.get("website") or "").split("//")[-1].split("/")[0]).lower()
+        if (tel and tel in vistos_tel) or (dom and dom in vistos_dom):
+            continue
+        if tel:
+            vistos_tel.add(tel)
+        if dom:
+            vistos_dom.add(dom)
+        if r.get("email"):
+            com_email += 1
+        linhas.append({
+            "nome": r.get("nome"), "telefone": r.get("telefone"), "cidade": r.get("cidade_origem"),
+            "tier": r.get("tier_sugerido"), "site": r.get("website"), "email": r.get("email") or "",
+            "endereco": r.get("endereco"), "avaliacao": r.get("rating"),
+            "multi_unidade": bool((r.get("n_unidades") or 1) >= 2),
+            "observacoes": r.get("motivo_da_dor")})
+    p = Path(caminho)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    campos = ["nome", "telefone", "cidade", "tier", "site", "email", "endereco",
+              "avaliacao", "multi_unidade", "observacoes"]
+    with p.open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=campos)
+        w.writeheader()
+        w.writerows(linhas)
+    total = len(linhas)
+    return {"total": total, "com_email": com_email,
+            "taxa_email_pct": round(100 * com_email / total, 1) if total else 0.0,
+            "caminho": str(p)}
 
 
 def sincronizar_sheet(leads: list[dict], *, sheet_id: str = "", sa_json: str = "") -> bool:
