@@ -36,6 +36,12 @@ def _tok() -> str:
     return os.environ.get("TELEGRAM_BOT_TOKEN", "")
 
 
+def _conta_legenda(m: dict) -> str:
+    """@handle na legenda/texto → rótulo da conta (pro JP agrupar arquivos)."""
+    mm = re.search(r"@[\w.]+", (m.get("caption") or m.get("text") or ""))
+    return mm.group(0) if mm else ""
+
+
 def _get(metodo: str, params: dict) -> dict:
     url = _API.format(tok=_tok(), m=metodo) + "?" + urllib.parse.urlencode(params)
     try:
@@ -86,6 +92,7 @@ def _processar_msg(m: dict, chat_alvo: str) -> str | None:
     if chat_alvo and chat != chat_alvo:
         return None  # só o JP
     # 1) vídeo ou documento de vídeo → baixa e analisa o arquivo
+    conta = _conta_legenda(m)  # @handle na legenda vence (arquivo não traz autor)
     vid = m.get("video") or (m.get("document") if "video" in ((m.get("document") or {}).get("mime_type") or "") else None)
     if vid and vid.get("file_id"):
         _responder(chat, "🎬 recebi o vídeo, analisando…")
@@ -95,7 +102,7 @@ def _processar_msg(m: dict, chat_alvo: str) -> str | None:
                 _responder(chat, "✗ não consegui baixar o arquivo do Telegram")
                 return "download_falhou"
             try:
-                a = radar.analisar_arquivo(str(arq), origem="telegram")
+                a = radar.analisar_arquivo(str(arq), origem=conta or "telegram")
                 _responder(chat, _fmt_insight(a))
                 return f"video ok id={a['id']}"
             except Exception as e:  # noqa: BLE001
@@ -108,7 +115,7 @@ def _processar_msg(m: dict, chat_alvo: str) -> str | None:
         url = links[0].rstrip(").,")
         _responder(chat, "🔗 analisando o link…")
         try:
-            a = radar.analisar(url)  # origem = conta REAL detectada no metadado (auto-agrupa)
+            a = radar.analisar(url, origem=conta or None)  # legenda > metadado > url
             _responder(chat, _fmt_insight(a))
             return f"link ok id={a['id']}"
         except Exception as e:  # noqa: BLE001
