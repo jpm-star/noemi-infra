@@ -21,7 +21,6 @@ from __future__ import annotations
 import json
 import os
 import sys
-import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -71,19 +70,11 @@ def _mudancas(anterior: set[str], atual: set[str]) -> tuple[list[str], list[str]
 
 
 def _telegram(texto: str) -> bool:
-    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-    chat = os.environ.get("TELEGRAM_CHAT_ID", "")
-    if not token or not chat:
-        print("[alerta] Telegram não configurado — pulando envio:", texto)
-        return False
-    dados = urllib.parse.urlencode({"chat_id": chat, "text": texto}).encode()
-    req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=dados)
-    try:
-        with urllib.request.urlopen(req, timeout=10) as r:
-            return r.status == 200
-    except Exception as e:  # noqa: BLE001
-        print("[alerta] falha ao enviar Telegram:", e)
-        return False
+    from shared_core import notify  # notificador compartilhado (painel usa o mesmo)
+    ok = notify.telegram(texto)
+    if not ok:
+        print("[alerta] Telegram não enviado (sem token/chat ou falha):", texto)
+    return ok
 
 
 def rodar() -> int:

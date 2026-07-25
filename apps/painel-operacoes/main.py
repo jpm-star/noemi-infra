@@ -159,6 +159,14 @@ async def receita_registrar(req: Request) -> JSONResponse:
     vendas.append(venda)
     _RECEITA.parent.mkdir(parents=True, exist_ok=True)
     _RECEITA.write_text(json.dumps({"vendas": vendas}, ensure_ascii=False, indent=2), "utf-8")
+    # ping de venda: a Noemi te avisa no Telegram quando entra dinheiro (best-effort)
+    try:
+        from shared_core import notify
+        rec = " · recorrente 🔁" if venda["recorrente"] else ""
+        notify.telegram(f"🎉 NOVA VENDA — R$ {venda['valor_brl']:.2f}\n"
+                        f"{venda['cliente'] or 'cliente'} · {venda['projeto']}{rec}")
+    except Exception:
+        pass
     return JSONResponse({"ok": True, "venda": venda, "n": len(vendas)})
 
 

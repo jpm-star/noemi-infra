@@ -103,6 +103,7 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
 <div class="card" id="fin-card" style="margin-bottom:12px">
   <h3>💰 Financeiro — receita · custo · lucro <span style="color:var(--mut);font-weight:400;font-size:.75rem">(30d · custo real medido)</span></h3>
   <div id="fin-kpis" class="grid" style="margin-bottom:10px"></div>
+  <div id="fin-meta" style="margin-bottom:12px"></div>
   <div id="fin-proj"></div>
   <details style="margin-top:10px">
     <summary style="cursor:pointer;color:var(--cy);font-size:.82rem">＋ registrar venda</summary>
@@ -174,11 +175,19 @@ function render(d){
   const brl=v=>"R$ "+(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
   const Fi=d.financeiro||{receita_total:0,custo_total:0,lucro:0,por_projeto:[],custo:{}};
   const fink=(v,l,cor)=>`<div class="card kpi"><div class="v" style="color:${cor||'inherit'}">${v}</div><div class="l">${l}</div></div>`;
+  const cmv=Fi.custo_medio_video!=null?` · vídeo médio ${brl(Fi.custo_medio_video)}`:'';
   $("fin-kpis").innerHTML=[
     fink(brl(Fi.receita_total),Fi.n_vendas?`receita (${Fi.n_vendas} venda${Fi.n_vendas>1?'s':''})`:'receita — sem venda ainda','var(--ok)'),
-    fink(brl(Fi.custo_total),`custo (IA ${brl(Fi.custo?.ia_brl)} · vídeo ${brl(Fi.custo?.video_brl)})`,'var(--warn)'),
+    fink(brl(Fi.mrr||0),'MRR · recorrente/mês','var(--cy)'),
+    fink(brl(Fi.custo_total),`custo (IA ${brl(Fi.custo?.ia_brl)} · vídeo ${brl(Fi.custo?.video_brl)})${cmv}`,'var(--warn)'),
     fink(brl(Fi.lucro),Fi.margem_pct!=null?`lucro · margem ${Fi.margem_pct}%`:'lucro',Fi.lucro>=0?'var(--cy)':'var(--bad)'),
   ].join('');
+  // barra de meta do mês
+  if(Fi.meta_mes){const pc=Math.min(Fi.meta_pct||0,100);
+    $("fin-meta").innerHTML=`<div style="display:flex;justify-content:space-between;font-size:.78rem;color:var(--mut);margin:2px 0 4px">
+      <span>meta do mês</span><span><b style="color:var(--ok)">${brl(Fi.receita_total)}</b> / ${brl(Fi.meta_mes)} · ${Fi.meta_pct||0}%</span></div>
+      <div class="gauge" style="height:9px"><i style="width:${pc}%;background:${pc>=100?'var(--ok)':'var(--cy)'}"></i></div>`;}
+  else $("fin-meta").innerHTML='';
   $("fin-proj").innerHTML=(Fi.por_projeto&&Fi.por_projeto.length)?`<table><tr><th>projeto</th><th>receita</th><th>custo</th><th>lucro</th></tr>
     ${Fi.por_projeto.map(p=>`<tr><td>${p.projeto}</td><td style="color:var(--ok)">${brl(p.receita)}</td>
      <td style="color:var(--warn)">${brl(p.custo)}</td><td style="color:${p.lucro>=0?'var(--cy)':'var(--bad)'}">${brl(p.lucro)}</td></tr>`).join('')}</table>`
@@ -259,7 +268,12 @@ const ST={gerada:['b-warn','gerada'],enviada:['b-ok','enviada'],respondida:['b-o
 async function prospeccao(){
   try{const r=await fetch('api/prospeccao');const d=await r.json();const P=d.prospects||[];
     const porStatus=P.reduce((a,p)=>{a[p.status]=(a[p.status]||0)+1;return a},{});
-    $("prosp-contador").textContent = P.length? `· ${P.length} demos · `+Object.entries(porStatus).map(([k,v])=>`${v} ${k}`).join(' · ') : '';
+    // funil: enviada⊇respondida⊇fechada — taxa de resposta e de fechamento
+    const env=(porStatus.enviada||0)+(porStatus.respondida||0)+(porStatus.fechada||0);
+    const resp=(porStatus.respondida||0)+(porStatus.fechada||0), fec=porStatus.fechada||0;
+    const tx=(a,b)=>b?Math.round(a/b*100)+'%':'—';
+    $("prosp-contador").innerHTML = P.length? `· ${P.length} demos · ${env} enviadas · `
+      +`<b style="color:var(--cy)">${tx(resp,env)} resposta</b> · <b style="color:var(--ok)">${tx(fec,resp)} fechamento</b>` : '';
     $("prospeccao").innerHTML = P.length ? P.map(p=>{
       const [cls,lab]=ST[p.status]||['b-warn',p.status];
       const ph=p.whatsapp_placeholder?' <span title="número placeholder — trocar por real" style="color:var(--warn)">⚠</span>':'';

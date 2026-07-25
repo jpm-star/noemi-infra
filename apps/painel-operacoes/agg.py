@@ -311,9 +311,11 @@ def _receitas() -> list[dict]:
 
 
 def _creditos_video() -> dict:
-    """Créditos Higgsfield gastos em jobs completed (total e últimos 30d)."""
+    """Créditos Higgsfield gastos em jobs completed (total e últimos 30d) + nº de
+    vídeos entregues no mês (pra custo médio por vídeo)."""
     corte = (datetime.now(timezone.utc).timestamp() - 30 * 86400)
     tot = mes = 0.0
+    n_mes = 0
     try:
         with _conn() as c:
             for r in c.execute("SELECT custo_creditos, atualizado_em FROM jobs "
@@ -322,22 +324,28 @@ def _creditos_video() -> dict:
                 tot += v
                 if _dentro(r["atualizado_em"] or "", corte):
                     mes += v
+                    n_mes += 1
     except sqlite3.Error:
         pass
-    return {"total": round(tot, 1), "mes": round(mes, 1)}
+    return {"total": round(tot, 1), "mes": round(mes, 1), "n_mes": n_mes}
 
 
 def financeiro() -> dict:
     usd_brl = float(os.environ.get("USD_BRL", "5.40"))
-    cred_brl = float(os.environ.get("HIGGS_CREDITO_BRL", "0.05"))  # ESTIMADO
+    cred_brl = float(os.environ.get("HIGGS_CREDITO_BRL", "0.26"))  # real: R$263/1015
+    meta_mes = float(os.environ.get("META_RECEITA_MES", "6000"))  # 5 clientes x 1200
     llm_custo = llm().get("custo", {})
     ia_mes = round(float(llm_custo.get("mes", 0)) * usd_brl, 2)
     cred = _creditos_video()
     video_mes = round(cred["mes"] * cred_brl, 2)
     vendas = [v for v in _receitas() if isinstance(v, dict)]
-    receita_total = round(sum(float(v.get("valor_brl") or v.get("valor") or 0) for v in vendas), 2)
+    def _val(v):
+        return float(v.get("valor_brl") or v.get("valor") or 0)
+    receita_total = round(sum(_val(v) for v in vendas), 2)
+    mrr = round(sum(_val(v) for v in vendas if v.get("recorrente")), 2)  # receita recorrente
     custo_total = round(ia_mes + video_mes, 2)
     lucro = round(receita_total - custo_total, 2)
+    custo_medio_video = round(video_mes / cred["n_mes"], 2) if cred["n_mes"] else None
     # por projeto: receita casada pelo campo 'projeto'; custo de vídeo vai pro
     # Motor B, IA fica como linha compartilhada (o spend do LiteLLM não separa).
     por_proj: dict[str, dict] = {}
@@ -354,11 +362,13 @@ def financeiro() -> dict:
     return {
         "receita_total": receita_total, "custo_total": custo_total, "lucro": lucro,
         "margem_pct": round(lucro / receita_total * 100, 1) if receita_total else None,
-        "n_vendas": len(vendas),
+        "n_vendas": len(vendas), "mrr": mrr,
+        "meta_mes": meta_mes, "meta_pct": round(receita_total / meta_mes * 100, 1) if meta_mes else None,
         "custo": {"ia_brl": ia_mes, "video_brl": video_mes},
+        "custo_medio_video": custo_medio_video, "n_videos_mes": cred["n_mes"],
         "creditos_video": cred, "cambio": {"usd_brl": usd_brl, "credito_brl": cred_brl},
         "por_projeto": sorted(linhas, key=lambda x: -x["receita"]),
-        "obs": "custo do crédito é ESTIMADO (env HIGGS_CREDITO_BRL); janela = 30d",
+        "obs": "custo do crédito é REAL (R$263/1015); janela = 30d",
     }
 
 
