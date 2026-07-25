@@ -6,19 +6,26 @@ model_list:
     litellm_params:
       model: groq/llama-3.3-70b-versatile
       api_key: os.environ/GROQ_API_KEY
-  # geração/raciocínio do Motor B: Anthropic quando a chave existir
+  # geração/classificação do Motor B: Groq (era Anthropic com chave vazia = 100%
+  # de erro; llama-3.3-70b dá conta da classificação e tem sucesso/latência boa).
   - model_name: motor-b
     litellm_params:
-      model: anthropic/claude-opus-4-8
-      api_key: os.environ/ANTHROPIC_API_KEY
+      model: groq/llama-3.3-70b-versatile
+      api_key: os.environ/GROQ_API_KEY
+  # reserva: 2ª chave Groq (conta diferente) — fallback cross-key contra 429/TPM.
+  - model_name: groq-reserva
+    litellm_params:
+      model: groq/llama-3.3-70b-versatile
+      api_key: os.environ/GROQ_API_KEY_RESERVA
 # Ollama (fallback local, 3B/CPU) NÃO entra no proxy de propósito: manter o
 # Ollama em loopback (127.0.0.1) é mais seguro que expô-lo à bridge do Docker. O
 # fallback pro local acontece no NÍVEL DO APP (shared-core/ai/local_llm.py) —
 # camada 2 da cascata. Proxy cobre os cloud; local_llm cobre o offline.
 
 litellm_settings:
-  # entre os cloud: se o primário falhar, cai no outro (quando a chave existir)
-  fallbacks: [{"analise": ["motor-b"]}, {"motor-b": ["analise"]}]
+  # cascata no proxy: primário (Groq key 1) → reserva (Groq key 2). O 3º nível
+  # (Ollama local → regras determinísticas) fica no app (classificacao.py).
+  fallbacks: [{"analise": ["groq-reserva"]}, {"motor-b": ["groq-reserva"]}]
   drop_params: true          # ignora params que um provider não suporta
   request_timeout: 40
   # observabilidade nativa: custo/latência/modelo/erro por chamada no dashboard /ui
