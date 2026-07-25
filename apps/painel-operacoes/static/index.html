@@ -28,7 +28,12 @@ body{background:
 .row3{grid-template-columns:1fr 1fr 1fr}
 @media(max-width:900px){.row2,.row3{grid-template-columns:1fr}}
 .card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);
-  border-radius:14px;padding:14px 15px}
+  border-radius:14px;padding:14px 15px;backdrop-filter:blur(8px);
+  transition:border-color .3s,box-shadow .3s}
+.card:hover{border-color:#28406a}
+.kpi .v{transition:color .35s}  /* crossfade sutil no valor, sem 'piscar' */
+@keyframes fadein{from{opacity:.35}to{opacity:1}}
+#chamadas tr,#erros .err,#motores>*{animation:fadein .4s ease}
 .card h3{font-size:.7rem;text-transform:uppercase;letter-spacing:.16em;color:var(--mut);margin-bottom:11px;font-weight:600}
 .mot{display:flex;align-items:center;justify-content:space-between}
 .mot .n{font-weight:600;font-size:.95rem}
@@ -224,12 +229,18 @@ const money=v=>"$"+(v||0).toFixed(v<0.01?6:4);
 const pill=(up,txt)=>`<span class="pill ${up?'b-ok':'b-bad'}">${up?'🟢':'🔴'} ${txt}</span>`;
 function corPct(p){return p>=90?'var(--bad)':p>=70?'var(--warn)':'var(--ok)'}
 
+let _ultimoTs=null;  // pro relógio relativo "há Xs"
 function render(d){
-  // saúde geral
-  const down=d.motores.filter(m=>m.status!=='up').length;
-  $("saude").innerHTML = down===0?'<span style="color:var(--ok)">● todos os sistemas operacionais</span>'
-    :`<span style="color:var(--bad)">● ${down} serviço(s) fora</span>`;
-  $("upd").textContent = "atualizado "+new Date(d.ts).toLocaleTimeString('pt-BR');
+  // saúde geral: Health Index % + mood (🟢/🟡/🔴) + título da aba dinâmico
+  const tot=d.motores.length, down=d.motores.filter(m=>m.status!=='up').length;
+  const health=Math.round(100*(tot-down)/(tot||1));
+  const mood = down===0?'🟢':(down>=2?'🔴':'🟡');
+  const cor = down===0?'var(--ok)':(down>=2?'var(--bad)':'var(--warn)');
+  $("saude").innerHTML = `<b style="color:${cor}">${mood} ${health}% operacional</b>`
+    + (down?` · <span style="color:var(--bad)">${down} fora</span>`:'');
+  document.title = (down?`(${down} DOWN) `:'')+'JPOS · Cabine';
+  _ultimoTs=Date.now();
+  $("upd").textContent = "atualizado agora";
 
   // motores — os operáveis viram cards CLICÁVEIS que abrem a ferramenta
   const ABRIR={"Motor Vídeo":"https://videoshiggs.noemi.digital/","Motor Site":"https://go.noemi.digital/studio/"};
@@ -286,7 +297,7 @@ function render(d){
     kpi(L.online?money(L.custo.hoje):'—',"custo hoje"),
     kpi(L.online?money(L.custo.mes):'—',"custo mês"),
     kpi(L.online?L.latencia.media+'<small>ms</small>':'—',"latência média"),
-    kpi(L.online?L.latencia.p95+'<small>ms</small>':'—',"P95"),
+    kpi(L.online?`<span style="color:${L.latencia.p95<1000?'var(--ok)':L.latencia.p95<2000?'var(--warn)':'var(--bad)'}">${L.latencia.p95}</span><small>ms</small>`:'—',"P95"),
     kpi(L.online?L.cache.hit_rate+'<small>%</small>':'—',"cache hit"),
     gauge((V.cpu_pct||0)+'<small>%</small>',"CPU · load "+(V.load1||0),V.cpu_pct||0),
     gauge((V.ram_pct||0)+'<small>%</small>',"RAM "+(V.ram_gb||0)+"GB",V.ram_pct||0),
@@ -448,6 +459,9 @@ $("rv-save").onclick=async()=>{
   if(r.ok){$("rv-cli").value='';$("rv-proj").value='';$("rv-val").value='';$("rv-rec").checked=false;tick();}
 };
 tick(); setInterval(tick, 4000);
+// relógio relativo: "atualizado há Xs" (elimina o cálculo mental do horário)
+setInterval(()=>{if(_ultimoTs){const s=Math.round((Date.now()-_ultimoTs)/1000);
+  $("upd").textContent = s<2?'atualizado agora':`atualizado há ${s}s`;}},1000);
 diag(); setInterval(diag, 90000);
 prospeccao(); setInterval(prospeccao, 30000);
 prospConfig();

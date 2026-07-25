@@ -48,16 +48,22 @@ def _pct(parte: float, total: float) -> float:
 
 
 # -- 1) status dos motores -------------------------------------------------
+def _checar_motor(nome_url) -> dict:
+    nome, url, _ = nome_url
+    t0 = time.monotonic()
+    code, _b = _get(url)
+    ms = round((time.monotonic() - t0) * 1000)
+    up = code == 200
+    return {"nome": nome, "status": "up" if up else "down",
+            "ping_ms": ms if up else None, "badge": "verde" if up else "vermelho"}
+
+
 def motores() -> list[dict]:
-    saida = []
-    for nome, url, _ in _MOTORES:
-        t0 = time.monotonic()
-        code, _b = _get(url)
-        ms = round((time.monotonic() - t0) * 1000)
-        up = code == 200
-        saida.append({"nome": nome, "status": "up" if up else "down",
-                      "ping_ms": ms if up else None,
-                      "badge": "verde" if up else "vermelho"})
+    # PARALELO: os 7 health-checks + WhatsApp rodam juntos (antes eram sequenciais,
+    # e 1 serviço down custava o timeout inteiro no loop → era o P95 do painel).
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        saida = list(ex.map(_checar_motor, _MOTORES))
     saida.append(_whatsapp())  # instância(s) do WhatsApp (Evolution)
     return saida
 
