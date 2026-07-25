@@ -193,7 +193,8 @@ function render(d){
   const ABRIR={"Motor Vídeo":"https://videoshiggs.noemi.digital/","Motor Site":"https://go.noemi.digital/studio/"};
   $("motores").innerHTML = d.motores.map(m=>{
     const url=ABRIR[m.nome];
-    const inner=`<div><div class="n">${m.nome}</div><div class="s">${m.ping_ms!=null?m.ping_ms+'ms':'sem resposta'}${url?' · <b style="color:var(--cy)">abrir ↗</b>':''}</div></div>${pill(m.status==='up',m.status.toUpperCase())}`;
+    const sub=m.detalhe?m.detalhe:(m.ping_ms!=null?m.ping_ms+'ms':'sem resposta');
+    const inner=`<div><div class="n">${m.nome}</div><div class="s">${sub}${url?' · <b style="color:var(--cy)">abrir ↗</b>':''}</div></div>${pill(m.status==='up',m.status.toUpperCase())}`;
     return url?`<a class="card mot abrir" href="${url}" target="_blank" rel="noopener">${inner}</a>`
               :`<div class="card mot">${inner}</div>`;
   }).join('');

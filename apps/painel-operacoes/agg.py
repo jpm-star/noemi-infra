@@ -29,6 +29,7 @@ _MOTORES = [
     # Motor Arbitragem (Exodia/motor-garimpo): experimental, sem serviço no ar hoje —
     # aparece 'down' honesto até ganhar deploy. Override a URL quando subir.
     ("Motor Arbitragem", os.environ.get("GARIMPO_URL", "http://127.0.0.1:8040") + "/health", 8),
+    ("Noemi SDR", os.environ.get("SDR_URL", "http://127.0.0.1:8007") + "/docs", 8),
     ("Ollama", os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434") + "/api/tags", 8),
 ]
 
@@ -57,7 +58,33 @@ def motores() -> list[dict]:
         saida.append({"nome": nome, "status": "up" if up else "down",
                       "ping_ms": ms if up else None,
                       "badge": "verde" if up else "vermelho"})
+    saida.append(_whatsapp())  # instância(s) do WhatsApp (Evolution)
     return saida
+
+
+def _whatsapp() -> dict:
+    """Estado do WhatsApp via Evolution (nº de instâncias 'open'). up se ≥1 conectada.
+    Precisa EVOLUTION_URL + EVOLUTION_APIKEY (global) no env do painel; senão 'down'."""
+    url = os.environ.get("EVOLUTION_URL", "").rstrip("/")
+    key = os.environ.get("EVOLUTION_APIKEY", "")
+    base = {"nome": "WhatsApp", "ping_ms": None, "badge": "vermelho", "status": "down"}
+    if not url or not key:
+        return {**base, "detalhe": "Evolution não configurada no painel"}
+    code, body = _get(f"{url}/instance/fetchInstances", timeout=6, headers={"apikey": key})
+    if code != 200:
+        return {**base, "detalhe": f"Evolution HTTP {code}"}
+    try:
+        d = json.loads(body)
+        insts = d if isinstance(d, list) else [d]
+        estados = [(i.get("instance", i)) for i in insts]
+        abertas = [e for e in estados
+                   if (e.get("connectionStatus") or e.get("state") or e.get("status")) == "open"]
+    except (ValueError, AttributeError):
+        return {**base, "detalhe": "resposta ilegível"}
+    up = len(abertas) >= 1
+    return {"nome": "WhatsApp", "status": "up" if up else "down",
+            "ping_ms": len(abertas) if up else None, "badge": "verde" if up else "vermelho",
+            "detalhe": f"{len(abertas)}/{len(estados)} conectada(s)"}
 
 
 # -- 2/3/4) LiteLLM: chamadas, custo, latência, cache, ranking --------------
