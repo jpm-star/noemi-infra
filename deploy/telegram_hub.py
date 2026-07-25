@@ -42,6 +42,14 @@ def _conta_legenda(m: dict) -> str:
     return mm.group(0) if mm else ""
 
 
+def _instrucao_legenda(m: dict) -> str:
+    """Texto do JP (menos URL e @handle) = a instrução pro LLM responder."""
+    t = m.get("caption") or m.get("text") or ""
+    t = _URL_RE.sub("", t)
+    t = re.sub(r"@[\w.]+", "", t).strip(" -–—\n\t")
+    return t if len(t) >= 4 else ""
+
+
 def _get(metodo: str, params: dict) -> dict:
     url = _API.format(tok=_tok(), m=metodo) + "?" + urllib.parse.urlencode(params)
     try:
@@ -93,6 +101,7 @@ def _processar_msg(m: dict, chat_alvo: str) -> str | None:
         return None  # só o JP
     # 1) vídeo ou documento de vídeo → baixa e analisa o arquivo
     conta = _conta_legenda(m)  # @handle na legenda vence (arquivo não traz autor)
+    instr = _instrucao_legenda(m)  # texto do JP (replicar/adaptar/comparar) → vai pro LLM
     vid = m.get("video") or (m.get("document") if "video" in ((m.get("document") or {}).get("mime_type") or "") else None)
     if vid and vid.get("file_id"):
         _responder(chat, "🎬 recebi o vídeo, analisando…")
@@ -102,7 +111,7 @@ def _processar_msg(m: dict, chat_alvo: str) -> str | None:
                 _responder(chat, "✗ não consegui baixar o arquivo do Telegram")
                 return "download_falhou"
             try:
-                a = radar.analisar_arquivo(str(arq), origem=conta or "telegram")
+                a = radar.analisar_arquivo(str(arq), origem=conta or "telegram", instrucao=instr)
                 _responder(chat, _fmt_insight(a))
                 return f"video ok id={a['id']}"
             except Exception as e:  # noqa: BLE001
@@ -115,7 +124,7 @@ def _processar_msg(m: dict, chat_alvo: str) -> str | None:
         url = links[0].rstrip(").,")
         _responder(chat, "🔗 analisando o link…")
         try:
-            a = radar.analisar(url, origem=conta or None)  # legenda > metadado > url
+            a = radar.analisar(url, origem=conta or None, instrucao=instr)  # legenda > metadado > url
             _responder(chat, _fmt_insight(a))
             return f"link ok id={a['id']}"
         except Exception as e:  # noqa: BLE001
@@ -154,9 +163,9 @@ if __name__ == "__main__":
         vistos = []
         import types
         mod = types.ModuleType("radar")
-        mod.analisar = lambda u, origem=None: {"id": 1, "categoria": "vendas", "score": 5,
-                                               "insight": "x", "onde_usar": ["a"], "verticais": [], "axioma": "", "assimilacao": ""}
-        mod.analisar_arquivo = lambda p, origem=None: {"id": 2, "categoria": "mkt", "score": 4, "insight": "y",
+        mod.analisar = lambda u, origem=None, instrucao="": {"id": 1, "categoria": "vendas", "score": 5,
+                                               "insight": instrucao or "x", "onde_usar": ["a"], "verticais": [], "axioma": "", "assimilacao": ""}
+        mod.analisar_arquivo = lambda p, origem=None, url_ref="", instrucao="": {"id": 2, "categoria": "mkt", "score": 4, "insight": "y",
                                                        "onde_usar": [], "verticais": [], "axioma": "", "assimilacao": ""}
         sys.modules["radar"] = mod
         globals()["_responder"] = lambda c, t: vistos.append(t)

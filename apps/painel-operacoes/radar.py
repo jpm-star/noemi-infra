@@ -153,20 +153,27 @@ _PROMPT_BASE = (
 )
 
 
-def _prompt(transcricao: str, contexto: list[dict]) -> str:
+def _prompt(transcricao: str, contexto: list[dict], instrucao: str = "") -> str:
     hist = ""
     if contexto:
         linhas = [f"- [{a.get('categoria','?')}/{a.get('score','?')}] {a.get('origem','?')}: "
                   f"{(a.get('resumo_curto') or '').strip()[:160]}" for a in contexto]
         hist = "\n\nHISTÓRICO (análises anteriores relevantes):\n" + "\n".join(linhas)
-    return f"{_PROMPT_BASE}{hist}\n\nTRANSCRIÇÃO:\n{transcricao[:9000]}"
+    # Se o JP mandou uma INSTRUÇÃO junto (legenda), ela MANDA: o campo "insight"
+    # responde o pedido dele especificamente (replicar/adaptar/comparar), não um
+    # digest genérico. Os outros campos seguem preenchidos pro radar acumular.
+    pedido = ""
+    if instrucao and instrucao.strip():
+        pedido = (f"\n\n⚠️ O JP PEDIU ISTO (responda no campo 'insight', "
+                  f"concreto e específico, usando o vídeo): \"{instrucao.strip()[:400]}\"")
+    return f"{_PROMPT_BASE}{pedido}{hist}\n\nTRANSCRIÇÃO:\n{transcricao[:9000]}"
 
 
-def _insight(transcricao: str, contexto: list[dict]) -> dict:
+def _insight(transcricao: str, contexto: list[dict], instrucao: str = "") -> dict:
     """LLM (via proxy sancionado, com retry) → dict validado. Degrada pra resumo
     extrativo se o proxy estiver fora — nunca crasha a análise."""
     from shared_core.ai import llm_proxy
-    txt = llm_proxy.completar(_prompt(transcricao, contexto), model="analise",
+    txt = llm_proxy.completar(_prompt(transcricao, contexto, instrucao), model="analise",
                               max_tokens=800, temperature=0.3)
     bruto = _extrair_json(txt) if txt else None
     if not bruto:  # proxy fora / saída ilegível → resumo extrativo honesto
@@ -204,8 +211,10 @@ def _extrair_json(texto: str) -> dict | None:
         return None
 
 
-def analisar(url: str, origem: str | None = None) -> dict:
-    """Pipeline por URL: baixa → transcreve → contexto → insight → GRAVA."""
+def analisar(url: str, origem: str | None = None, instrucao: str = "") -> dict:
+    """Pipeline por URL: baixa → transcreve → contexto → insight → GRAVA.
+    `instrucao` = pedido do JP na legenda (replicar/adaptar/comparar) — o LLM
+    responde ISSO especificamente em vez do digest genérico."""
     from shared_core.ai import transcricao as trans
     url = (url or "").strip()
     if not url.startswith("http"):
@@ -219,10 +228,11 @@ def analisar(url: str, origem: str | None = None) -> dict:
         texto = trans.transcrever(str(audio))
     if not texto:
         raise RuntimeError("transcrição falhou (sem chave Groq ou áudio ilegível)")
-    return _processar(texto, origem, url)
+    return _processar(texto, origem, url, instrucao)
 
 
-def analisar_arquivo(caminho: str, origem: str = "telegram", url_ref: str = "") -> dict:
+def analisar_arquivo(caminho: str, origem: str = "telegram", url_ref: str = "",
+                     instrucao: str = "") -> dict:
     """Pipeline por ARQUIVO local (vídeo/áudio já baixado — ex: enviado no Telegram,
     sem bot-detection de IG/YT). Extrai áudio → transcreve → insight → GRAVA."""
     from shared_core.ai import transcricao as trans
@@ -234,14 +244,14 @@ def analisar_arquivo(caminho: str, origem: str = "telegram", url_ref: str = "") 
         texto = trans.transcrever(str(audio))
     if not texto:
         raise RuntimeError("transcrição falhou (áudio ilegível ou sem chave Groq)")
-    return _processar(texto, origem, url_ref)
+    return _processar(texto, origem, url_ref, instrucao)
 
 
-def _processar(texto: str, origem: str, url: str) -> dict:
+def _processar(texto: str, origem: str, url: str, instrucao: str = "") -> dict:
     """Núcleo compartilhado: contexto → insight → grava → devolve."""
     from shared_core.storage import db
     contexto = _contexto_anterior(origem)
-    ins = _insight(texto, contexto)
+    ins = _insight(texto, contexto, instrucao)
     data = datetime.now(timezone.utc).isoformat()
     detalhe = json.dumps({k: ins.get(k) for k in
                           ("onde_usar", "verticais", "axioma", "assimilacao", "comparacao", "fonte")},

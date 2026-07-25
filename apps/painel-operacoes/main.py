@@ -235,10 +235,11 @@ async def radar_analisar(req: Request) -> JSONResponse:
     corpo = await req.json()
     url = str(corpo.get("url") or "").strip()
     origem = str(corpo.get("origem") or "").strip() or None
+    instrucao = str(corpo.get("instrucao") or "")  # pedido do JP → responde específico
     if not url.startswith("http"):
         return JSONResponse({"ok": False, "erro": "cole um link http(s) válido"}, status_code=400)
     try:  # pipeline pesado (download+STT) roda fora do event loop
-        res = await asyncio.to_thread(radar.analisar, url, origem)
+        res = await asyncio.to_thread(radar.analisar, url, origem, instrucao)
         return JSONResponse({"ok": True, "analise": res})
     except Exception as e:  # noqa: BLE001 — vira erro legível, não 500 cru
         return JSONResponse({"ok": False, "erro": str(e)[:300]}, status_code=422)
