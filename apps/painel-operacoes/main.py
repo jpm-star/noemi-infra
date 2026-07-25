@@ -41,8 +41,22 @@ def _resumo(snap: dict) -> str:
 
 
 def _diagnostico() -> dict:
-    if _DIAG_CACHE["dados"] and time.time() - _DIAG_CACHE["ts"] < _DIAG_TTL:
+    # stale-while-revalidate: nunca bloqueia no LLM depois da 1ª vez. Cache fresco
+    # → devolve; cache velho → devolve o velho JÁ e atualiza em background (mata o
+    # "analisando…" travado quando o Groq engasga); sem cache → calcula (1ª vez só).
+    fresco = _DIAG_CACHE["dados"] and time.time() - _DIAG_CACHE["ts"] < _DIAG_TTL
+    if fresco:
         return _DIAG_CACHE["dados"]
+    if _DIAG_CACHE["dados"]:
+        if not _DIAG_CACHE.get("atualizando"):
+            _DIAG_CACHE["atualizando"] = True
+            import threading
+            threading.Thread(target=_calcular_diag, daemon=True).start()
+        return _DIAG_CACHE["dados"]
+    return _calcular_diag()
+
+
+def _calcular_diag() -> dict:
     snap = agg.snapshot()
     resumo = _resumo(snap)
     prompt = (
@@ -62,7 +76,7 @@ def _diagnostico() -> dict:
                else "- IA indisponível; operação sem alertas críticos pelos números.")
     dicas = [l.strip("- ").strip() for l in txt.splitlines() if l.strip().startswith("-")] or [txt.strip()]
     dados = {"dicas": dicas[:3], "resumo": resumo, "gerado_em": snap["ts"], "fonte": "analise"}
-    _DIAG_CACHE.update(ts=time.time(), dados=dados)
+    _DIAG_CACHE.update(ts=time.time(), dados=dados, atualizando=False)
     return dados
 
 

@@ -341,11 +341,14 @@ async function tick(){
   catch(e){$("saude").innerHTML='<span style="color:var(--bad)">● painel sem conexão</span>';}
 }
 async function diag(){
-  try{const r=await fetch('api/diagnostico');const d=await r.json();
+  const ac=new AbortController();const to=setTimeout(()=>ac.abort(),8000);  // nunca trava em "analisando…"
+  try{const r=await fetch('api/diagnostico',{signal:ac.signal});const d=await r.json();
     $("diag-body").innerHTML=(d.dicas&&d.dicas.length)
       ? d.dicas.map(t=>`<div class="dica">→ ${t}</div>`).join('')
       : '<div class="empty">sem alertas</div>';
-  }catch(e){$("diag-body").innerHTML='<div class="empty off">IA indisponível</div>';}
+  }catch(e){ // timeout/erro: só mostra fallback se ainda estava "analisando…" (não apaga dica boa)
+    if($("diag-body").querySelector('.dica')===null) $("diag-body").innerHTML='<div class="empty off">IA lenta — reprocessando…</div>';
+  }finally{clearTimeout(to);}
 }
 // Prospecção: cada demo vira um card clicável com status colorido (funil de venda).
 const ST={gerada:['b-warn','gerada'],enviada:['b-ok','enviada'],respondida:['b-ok','respondida'],fechada:['b-ok','✓ fechada']};
