@@ -75,6 +75,19 @@ def _migrar(c: sqlite3.Connection) -> None:
           url       TEXT NOT NULL,
           criado_em TEXT NOT NULL
         );
+        -- Radar de Vídeo: cada análise (transcrição + insight) fica salva pra
+        -- virar CONTEXTO das próximas (memória persistente, não fine-tuning).
+        CREATE TABLE IF NOT EXISTS video_analises (
+          id          INTEGER PRIMARY KEY AUTOINCREMENT,
+          origem      TEXT,            -- conta/concorrente/tema (agrupa o radar)
+          url         TEXT NOT NULL,
+          data        TEXT NOT NULL,
+          transcricao TEXT,
+          insight     TEXT,            -- resumo/insight gerado (texto)
+          categoria   TEXT,
+          score       INTEGER,
+          tags        TEXT             -- palavras-chave p/ busca e matching de contexto
+        );
         """
     )
     # colunas do dashboard v1.1 (ALTER idempotente — CREATE não adiciona a tabela já existente)

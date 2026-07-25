@@ -170,6 +170,41 @@ async def receita_registrar(req: Request) -> JSONResponse:
     return JSONResponse({"ok": True, "venda": venda, "n": len(vendas)})
 
 
+# -- Radar de Vídeo: análise (yt-dlp→Whisper→insight) com memória persistente ---
+@app.post("/api/radar/analisar")
+async def radar_analisar(req: Request) -> JSONResponse:
+    import asyncio
+    import radar
+    corpo = await req.json()
+    url = str(corpo.get("url") or "").strip()
+    origem = str(corpo.get("origem") or "").strip() or None
+    if not url.startswith("http"):
+        return JSONResponse({"ok": False, "erro": "cole um link http(s) válido"}, status_code=400)
+    try:  # pipeline pesado (download+STT) roda fora do event loop
+        res = await asyncio.to_thread(radar.analisar, url, origem)
+        return JSONResponse({"ok": True, "analise": res})
+    except Exception as e:  # noqa: BLE001 — vira erro legível, não 500 cru
+        return JSONResponse({"ok": False, "erro": str(e)[:300]}, status_code=422)
+
+
+@app.get("/api/radar/analises")
+def radar_listar(q: str | None = None) -> JSONResponse:
+    import radar
+    return JSONResponse({"analises": radar.listar(q)})
+
+
+@app.get("/api/radar/analise/{aid}")
+def radar_obter(aid: int) -> JSONResponse:
+    import radar
+    a = radar.obter(aid)
+    return JSONResponse(a or {"erro": "não encontrada"}, status_code=200 if a else 404)
+
+
+@app.get("/radar", response_class=HTMLResponse)
+def radar_pagina() -> str:
+    return (_AQUI / "static" / "radar.html").read_text(encoding="utf-8")
+
+
 @app.get("/painel", response_class=HTMLResponse)
 @app.get("/", response_class=HTMLResponse)
 def painel_pagina() -> str:

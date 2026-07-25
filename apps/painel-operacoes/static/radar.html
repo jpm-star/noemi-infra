@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="pt-BR"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Radar de Vídeo — Noemi OS</title>
+<style>
+:root{--bg:#0a0e14;--card:#111823;--line:#1e2a3a;--ink:#e6edf3;--mut:#7d8da3;--cy:#38bdf8;--ok:#34d399;--warn:#fbbf24;--bad:#f87171}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,Segoe UI,Roboto,sans-serif;padding:20px;max-width:900px;margin:0 auto}
+a{color:var(--cy)}h1{font-size:1.4rem;margin:.2em 0}.sub{color:var(--mut);font-size:.9rem;margin-top:0}
+.voltar{position:fixed;top:14px;left:14px;background:rgba(0,0,0,.55);color:#fff;text-decoration:none;padding:7px 13px;border-radius:20px;font-size:.85rem;font-weight:600}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+input,button{font:inherit;border-radius:8px;border:1px solid var(--line);background:#0c131d;color:var(--ink);padding:9px 12px}
+input{width:100%}button{cursor:pointer;font-weight:600;border:0}
+.btn-go{background:var(--cy);color:#001}.btn-go:disabled{opacity:.5;cursor:wait}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.row>input{flex:1;min-width:200px}
+.pill{font-size:.72rem;padding:2px 9px;border-radius:20px;background:#0c131d;border:1px solid var(--line)}
+.an{border-left:3px solid var(--cy);cursor:pointer}.an h3{margin:.1em 0;font-size:1rem}
+.meta{color:var(--mut);font-size:.78rem;margin:2px 0 6px}.insight{color:var(--ink)}
+.trans{display:none;white-space:pre-wrap;margin-top:10px;padding:10px;background:#0c131d;border-radius:8px;color:var(--mut);font-size:.85rem;max-height:340px;overflow:auto}
+.an.open .trans{display:block}.empty{color:var(--mut);text-align:center;padding:20px}
+#status{color:var(--warn);font-size:.85rem;margin-top:8px;min-height:1em}
+.score{color:var(--warn);font-weight:700}
+</style></head><body>
+<a class="voltar" href="/" title="Voltar ao QG">‹ Voltar</a>
+<h1>📡 Radar de Vídeo</h1>
+<p class="sub">Cola um link (Instagram/Drive/YouTube). A Noemi baixa o áudio, transcreve, gera insight — e <b>guarda</b>. Cada análise vira contexto das próximas (aprende padrão por conta/tema).</p>
+
+<div class="card">
+  <div class="row">
+    <input id="url" placeholder="https://www.instagram.com/reel/…  (ou link do Drive/YouTube)">
+    <input id="origem" placeholder="origem (opcional: @conta / concorrente)" style="max-width:260px">
+    <button id="go" class="btn-go">Analisar</button>
+  </div>
+  <div id="status"></div>
+  <div id="result"></div>
+</div>
+
+<div class="card">
+  <div class="row" style="margin-bottom:10px">
+    <input id="busca" placeholder="🔎 buscar no histórico (palavra-chave, conta, tag)…">
+  </div>
+  <div id="hist"><div class="empty">carregando histórico…</div></div>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+const esc=t=>(t||'').replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+function card(a){
+  const tags=(a.tags||'').split(',').filter(Boolean).map(t=>`<span class="pill">${esc(t)}</span>`).join(' ');
+  return `<div class="card an" data-id="${a.id}">
+    <h3>${esc(a.origem||'—')} <span class="score">★${a.score||'?'}</span> <span class="pill">${esc(a.categoria||'?')}</span></h3>
+    <div class="meta">${(a.data||'').slice(0,10)} · <a href="${esc(a.url)}" target="_blank" rel="noopener">abrir vídeo ↗</a> ${tags}</div>
+    <div class="insight">${esc(a.insight||'')}</div>
+    <div class="trans" id="tr-${a.id}">carregando transcrição…</div></div>`;
+}
+async function hist(){
+  const q=$('#busca').value.trim();
+  const r=await fetch('/api/radar/analises'+(q?('?q='+encodeURIComponent(q)):''));
+  const d=await r.json(); const L=d.analises||[];
+  $('#hist').innerHTML = L.length? L.map(card).join('') : '<div class="empty">nenhuma análise ainda — cola um link acima</div>';
+}
+// clicar num card abre/fecha e carrega a transcrição completa sob demanda
+$('#hist').addEventListener('click',async e=>{
+  const el=e.target.closest('.an'); if(!el||e.target.tagName==='A')return;
+  el.classList.toggle('open');
+  const tr=el.querySelector('.trans');
+  if(el.classList.contains('open') && !tr.dataset.loaded){
+    const a=await (await fetch('/api/radar/analise/'+el.dataset.id)).json();
+    tr.textContent=a.transcricao||'(sem transcrição)'; tr.dataset.loaded=1;
+  }
+});
+let tBusca; $('#busca').oninput=()=>{clearTimeout(tBusca);tBusca=setTimeout(hist,350);};
+$('#go').onclick=async()=>{
+  const url=$('#url').value.trim(); if(!url){$('#url').focus();return;}
+  $('#go').disabled=true; $('#status').textContent='⏳ baixando + transcrevendo… (pode levar 30-90s)'; $('#result').innerHTML='';
+  try{
+    const r=await fetch('/api/radar/analisar',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({url,origem:$('#origem').value.trim()})});
+    const d=await r.json();
+    if(d.ok){$('#status').textContent='✓ análise salva'+(d.analise.usou_contexto?` · usou ${d.analise.usou_contexto} análises anteriores como contexto`:'');
+      $('#result').innerHTML=card(d.analise); $('#url').value=''; hist();}
+    else $('#status').textContent='✗ '+(d.erro||'falhou');
+  }catch(e){$('#status').textContent='✗ erro de conexão';}
+  $('#go').disabled=false;
+};
+hist();
+</script></body></html>
