@@ -42,6 +42,15 @@ def _servicos_fora() -> list[str]:
     est = _evolution_estado()
     if est is not None and est != "open":
         fora.append(f"WhatsApp/Evolution ({est})")
+    try:  # RAM>85% / disco>90% viram alerta (previne OOM/disco cheio derrubarem tudo)
+        import agg
+        v = agg.vps()
+        if (v.get("ram_pct") or 0) >= 85:
+            fora.append(f"RAM alta ({v['ram_pct']}%)")
+        if (v.get("disco_pct") or 0) >= 90:
+            fora.append(f"disco cheio ({v['disco_pct']}%)")
+    except Exception:  # noqa: BLE001
+        pass
     return fora
 
 

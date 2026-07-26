@@ -175,6 +175,11 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
   </div>
 </div>
 
+<div class="card v-qg" id="aprend-card" style="margin-bottom:12px">
+  <h3>🧠 Aprendizado do agente <span style="color:var(--mut);font-weight:400;font-size:.75rem">(self-análise · read-only)</span></h3>
+  <div id="aprend-body" class="empty">carregando…</div>
+</div>
+
 <div class="grid row-mot v-obs" id="motores" style="margin-bottom:12px"></div>
 
 <div class="card v-qg" style="margin-bottom:12px">
@@ -309,7 +314,7 @@ function render(d){
     kpi(L.online?`<span style="color:${L.latencia.p95<1000?'var(--ok)':L.latencia.p95<2000?'var(--warn)':'var(--bad)'}">${L.latencia.p95}</span><small>ms</small>`:'—',"P95"),
     kpi(L.online?L.cache.hit_rate+'<small>%</small>':'—',"cache hit"),
     gauge((V.cpu_pct||0)+'<small>%</small>',"CPU · load "+(V.load1||0),V.cpu_pct||0),
-    gauge((V.ram_pct||0)+'<small>%</small>',"RAM "+(V.ram_gb||0)+"GB",V.ram_pct||0),
+    gauge((V.ram_pct||0)+'<small>%</small>'+spark(_hist.ram,'var(--cy)'),"RAM "+(V.ram_gb||0)+"GB",V.ram_pct||0),
     gauge((V.disco_pct||0)+'<small>%</small>',"disco",V.disco_pct||0),
   ].join('');
 
@@ -460,6 +465,17 @@ $('pl-save').onclick=async()=>{
   if(r.ok){['pl-emp','pl-tel','pl-obj','pl-fal'].forEach(i=>$(i).value='');plLoad();tick();}
 };
 plLoad();
+async function aprend(){
+  try{const d=await (await fetch('/api/tuning')).json();
+    if(d.status==='dados_insuficientes'){$("aprend-body").innerHTML=`<div class="empty">colete +${d.faltam||''} approaches → o agente aprende sozinho (roda 04:00)</div>`;return;}
+    const t=d.tuning||{};const l=(rot,v)=>v?`<div style="margin-top:5px;font-size:.85rem"><b style="color:var(--mut)">${rot}:</b> ${v}</div>`:'';
+    const reb=t.rebuttals?Object.entries(t.rebuttals).map(([o,r])=>`<div style="font-size:.82rem;color:var(--mut)">✋ "${o}" → ${r}</div>`).join(''):'';
+    $("aprend-body").innerHTML=(t.angulo_vencedor||reb)?
+      `${l('🎯 ângulo vencedor',t.angulo_vencedor)}${l('⏰ melhores horas',(t.melhores_horas||[]).join(', '))}${reb?'<div style="margin-top:5px"><b style="color:var(--mut);font-size:.85rem">rebuttals:</b>'+reb+'</div>':''}${l('🔗 pra arbitragem',t.para_arbitragem)}`
+      :`<div class="empty">agente rodou (${d.stats?.total||0} approaches) — sem padrão forte ainda</div>`;
+  }catch(e){$("aprend-body").innerHTML='<div class="empty off">—</div>';}
+}
+aprend(); setInterval(aprend, 300000);
 $("rv-save").onclick=async()=>{
   const val=+$("rv-val").value;
   if(!(val>0)){$("rv-val").focus();return;}

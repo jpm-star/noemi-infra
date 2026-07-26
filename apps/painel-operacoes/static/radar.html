@@ -59,7 +59,17 @@ function card(a){
     <div class="meta">${(a.data||'').slice(0,10)} · <a href="${esc(a.url)}" target="_blank" rel="noopener">abrir vídeo ↗</a> ${tags}</div>
     <div class="insight">${esc(a.insight||'')}</div>
     ${rico}
+    <div style="margin-top:8px;font-size:.9rem">
+      <span onclick="event.stopPropagation();fb(${a.id},1,this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;${a.feedback===1?'background:var(--ok);color:#001':''}">👍</span>
+      <span onclick="event.stopPropagation();fb(${a.id},-1,this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;${a.feedback===-1?'background:var(--bad);color:#fff':''}">👎</span>
+      <span class="fb-msg" style="color:var(--mut);font-size:.78rem"></span></div>
     <div class="trans" id="tr-${a.id}">carregando transcrição…</div></div>`;
+}
+async function fb(id,valor,el){
+  await fetch('/api/radar/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,valor})});
+  const box=el.parentElement; box.querySelectorAll('span').forEach(s=>s.style.background='');
+  el.style.background=valor>0?'var(--ok)':'var(--bad)'; el.style.color=valor>0?'#001':'#fff';
+  box.querySelector('.fb-msg').textContent='✓ registrado';
 }
 async function hist(){
   const q=$('#busca').value.trim();

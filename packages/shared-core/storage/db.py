@@ -95,6 +95,7 @@ def _migrar(c: sqlite3.Connection) -> None:
     for col, tipo in (("aprovado", "INTEGER"), ("duracao_s", "REAL"), ("custo_creditos", "REAL")):
         _add_column(c, "jobs", col, tipo)
     _add_column(c, "video_analises", "detalhe", "TEXT")  # insight rico (tabela já existe em prod)
+    _add_column(c, "video_analises", "feedback", "INTEGER")  # 👍=1 / 👎=-1 / null (sinal do 2.1)
 
 
 def _add_column(c: sqlite3.Connection, tabela: str, col: str, tipo: str) -> None:

@@ -275,15 +275,15 @@ def listar(q: str | None = None, limite: int = 40) -> list[dict]:
         if q and q.strip():
             like = f"%{q.strip()}%"
             rows = c.execute(
-                "SELECT id, origem, url, data, categoria, score, tags, detalhe, "
+                "SELECT id, origem, url, data, categoria, score, tags, detalhe, feedback, "
                 "substr(insight,1,300) insight FROM video_analises "
                 "WHERE insight LIKE ? OR transcricao LIKE ? OR origem LIKE ? OR tags LIKE ? "
-                "ORDER BY id DESC LIMIT ?", (like, like, like, like, limite)).fetchall()
+                "ORDER BY COALESCE(feedback,0) DESC, score DESC, id DESC LIMIT ?",(like, like, like, like, limite)).fetchall()
         else:
             rows = c.execute(
-                "SELECT id, origem, url, data, categoria, score, tags, detalhe, "
+                "SELECT id, origem, url, data, categoria, score, tags, detalhe, feedback, "
                 "substr(insight,1,300) insight FROM video_analises "
-                "ORDER BY id DESC LIMIT ?", (limite,)).fetchall()
+                "ORDER BY COALESCE(feedback,0) DESC, score DESC, id DESC LIMIT ?",(limite,)).fetchall()
     return [_expandir(dict(r)) for r in rows]
 
 
@@ -304,6 +304,16 @@ def obter(aid: int) -> dict | None:
     with db.conn() as c:
         r = c.execute("SELECT * FROM video_analises WHERE id = ?", (aid,)).fetchone()
     return _expandir(dict(r)) if r else None
+
+
+def set_feedback(aid: int, valor: int) -> bool:
+    """👍=1 / 👎=-1 / 0=limpa. Sinal rotulado do 2.1 (o autotune pondera por isto)."""
+    v = 1 if valor > 0 else (-1 if valor < 0 else None)
+    from shared_core.storage import db
+    with db.conn() as c:
+        c.execute("UPDATE video_analises SET feedback=? WHERE id=?", (v, aid))
+        c.commit()
+    return True
 
 
 if __name__ == "__main__":  # self-check: origem + json + degradação (sem rede)

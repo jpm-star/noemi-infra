@@ -28,6 +28,9 @@ litellm_settings:
   fallbacks: [{"analise": ["groq-reserva"]}, {"motor-b": ["groq-reserva"]}]
   drop_params: true          # ignora params que um provider não suporta
   request_timeout: 40
+  cache: true                # cache de prompt em memória (hit rate era 0%) — corta
+  cache_params:              # custo/latência em chamadas repetidas (ex: diagnóstico)
+    type: local
   # observabilidade nativa: custo/latência/modelo/erro por chamada no dashboard /ui
   # (Langfuse é plug de 3 linhas aqui — success_callback: ["langfuse"] — quando o
   #  trace-UI dedicado valer o container extra; ver infra/README.md)

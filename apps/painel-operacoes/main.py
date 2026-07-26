@@ -279,6 +279,25 @@ def leads_export() -> Response:
              headers={"Content-Disposition": "attachment; filename=leads_clinicas.csv"})
 
 
+@app.post("/api/radar/feedback")
+async def radar_feedback(req: Request) -> JSONResponse:
+    import radar
+    corpo = await req.json()
+    radar.set_feedback(int(corpo.get("id") or 0), int(corpo.get("valor") or 0))
+    return JSONResponse({"ok": True})
+
+
+@app.get("/api/tuning")
+def tuning_dados() -> JSONResponse:
+    # aprendizado do agente de self-análise (read-only, pro card do /obs)
+    import json
+    p = _AQUI.parents[1] / "data" / "tuning_prospeccao.json"
+    try:
+        return JSONResponse(json.loads(p.read_text("utf-8")))
+    except (OSError, ValueError):
+        return JSONResponse({"status": "sem_dados", "tuning": {}})
+
+
 @app.get("/obs/radar", response_class=HTMLResponse)
 @app.get("/radar", response_class=HTMLResponse)  # legado (redireciona no front antigo)
 def radar_pagina() -> str:

@@ -231,9 +231,10 @@ def erros() -> dict:
                                      "motivo": (r["erro"] or "")[:160], "ts": (r["atualizado_em"] or "")[11:19]})
     except sqlite3.Error:
         pass
-    # falhas do obs.jsonl (spans ok=false)
+    # falhas do obs.jsonl (spans ok=false) — só as últimas 24h (tira ruído histórico)
+    corte = time.time() - 86400
     for linha in _tail_obs(400):
-        if linha.get("ok") is False:
+        if linha.get("ok") is False and _dentro(linha.get("ts") or "", corte):
             msg = linha.get("erro") or linha.get("motivo") or linha.get("nivel") or "falha"
             b = _bucket(str(msg))
             grupos[b] = grupos.get(b, 0) + 1
