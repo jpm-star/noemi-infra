@@ -40,18 +40,29 @@ def _origem_da_url(url: str) -> str:
         return "desconhecida"
 
 
+def _yt_extra() -> list[str]:
+    """Args comuns do yt-dlp: cookies (RADAR_COOKIES) + proxy (RADAR_PROXY). O proxy
+    faz o download SAIR por um IP que o IG/YT não bloqueia (o IP do servidor toma 429).
+    Com RADAR_PROXY setado, o link volta a funcionar automático — sem enviar vídeo."""
+    extra: list[str] = []
+    cookies = os.environ.get("RADAR_COOKIES", "/root/noemi-infra/infra/cookies.txt")
+    if cookies and Path(cookies).exists():
+        extra += ["--cookies", cookies]
+    proxy = os.environ.get("RADAR_PROXY", "").strip()
+    if proxy:
+        extra += ["--proxy", proxy]
+    return extra
+
+
 def _baixar_audio(link: str, destino: Path) -> Path:
     """Só o áudio em mp3. Drive tem caminho próprio (yt-dlp não baixa Drive /view);
-    IG/YT usam yt-dlp com cookies (RADAR_COOKIES) — sem login, IG/YT dão 403. Erro claro."""
+    IG/YT usam yt-dlp com cookies (RADAR_COOKIES) + proxy opcional (RADAR_PROXY)."""
     if "drive.google.com" in link:
         return _baixar_drive(link, destino)
     saida = destino / "audio.%(ext)s"
     # --write-info-json: guarda o metadado (autor/conta) do post junto do áudio
     cmd = ["yt-dlp", "-x", "--audio-format", "mp3", "--no-playlist",
-           "--write-info-json", "-o", str(saida)]
-    cookies = os.environ.get("RADAR_COOKIES", "/root/noemi-infra/infra/cookies.txt")
-    if cookies and Path(cookies).exists():
-        cmd += ["--cookies", cookies]
+           "--write-info-json", "-o", str(saida)] + _yt_extra()
     try:
         subprocess.run([*cmd, link], check=True, capture_output=True, text=True, timeout=300)
     except subprocess.CalledProcessError as e:
@@ -72,10 +83,7 @@ def _metadados(link: str) -> tuple[str, str]:
     dá 403). ('', '') se nem o metadado sair. É a fonte do nome-do-produto/oferta."""
     if "drive.google.com" in link:
         return "", ""
-    cmd = ["yt-dlp", "--dump-json", "--skip-download", "--no-playlist", "--no-warnings"]
-    cookies = os.environ.get("RADAR_COOKIES", "/root/noemi-infra/infra/cookies.txt")
-    if cookies and Path(cookies).exists():
-        cmd += ["--cookies", cookies]
+    cmd = ["yt-dlp", "--dump-json", "--skip-download", "--no-playlist", "--no-warnings"] + _yt_extra()
     try:
         out = subprocess.run([*cmd, link], capture_output=True, text=True, timeout=120).stdout
         d = json.loads(out.splitlines()[0]) if out.strip() else {}
