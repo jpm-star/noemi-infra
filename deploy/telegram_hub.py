@@ -64,19 +64,24 @@ def _responder(chat_id: str, texto: str) -> None:
     notify.telegram(texto)  # usa TELEGRAM_CHAT_ID; msg direta pro JP
 
 
-def _baixar_arquivo(file_id: str, destino: Path) -> Path | None:
-    """Baixa um arquivo do Telegram (getFile → download). None se falhar."""
+def _baixar_arquivo(file_id: str, destino: Path) -> tuple[Path | None, str]:
+    """(caminho, erro). Baixa um arquivo do Telegram (getFile → download). O getFile
+    de bot tem TETO de 20MB — reel HD estoura e volta 'file is too big' (erro normal
+    do Telegram, não bug nosso). Surfacea o motivo pra orientar o JP."""
     info = _get("getFile", {"file_id": file_id})
     fp = (info.get("result") or {}).get("file_path")
     if not fp:
-        return None
+        desc = (info.get("description") or "").lower()
+        if "too big" in desc or "file is too big" in desc:
+            return None, "grande"  # >20MB: limite do Telegram pra bots
+        return None, "getfile"
     url = f"https://api.telegram.org/file/bot{_tok()}/{fp}"
     out = destino / Path(fp).name
     try:
         urllib.request.urlretrieve(url, out)
-        return out
+        return out, ""
     except Exception:  # noqa: BLE001
-        return None
+        return None, "download"
 
 
 def _fmt_insight(a: dict) -> str:
@@ -110,12 +115,21 @@ def _processar_msg(m: dict, chat_alvo: str) -> str | None:
     instr = _instrucao_legenda(m)  # texto do JP (replicar/adaptar/comparar) → vai pro LLM
     vid = m.get("video") or (m.get("document") if "video" in ((m.get("document") or {}).get("mime_type") or "") else None)
     if vid and vid.get("file_id"):
+        # teto de 20MB do getFile de bot: avisa ANTES de tentar (reel HD estoura)
+        if (vid.get("file_size") or 0) > 20 * 1024 * 1024:
+            _responder(chat, "✗ esse vídeo tem mais de 20MB — o Telegram não deixa o "
+                             "bot baixar arquivo desse tamanho. Manda um trecho mais curto "
+                             "ou comprime (ou manda o link, que eu leio a legenda).")
+            return "arquivo_grande"
         _responder(chat, "🎬 recebi o vídeo, analisando…")
         with tempfile.TemporaryDirectory(prefix="tg_") as td:
-            arq = _baixar_arquivo(vid["file_id"], Path(td))
+            arq, erro = _baixar_arquivo(vid["file_id"], Path(td))
             if not arq:
-                _responder(chat, "✗ não consegui baixar o arquivo do Telegram")
-                return "download_falhou"
+                msg = ("✗ esse vídeo passa de 20MB — limite do Telegram pra bots. "
+                       "Manda um trecho curto/comprimido." if erro == "grande"
+                       else "✗ não consegui baixar o arquivo do Telegram — tenta reenviar.")
+                _responder(chat, msg)
+                return f"download_falhou_{erro}"
             try:
                 a = radar.analisar_arquivo(str(arq), origem=conta or "telegram", instrucao=instr)
                 _responder(chat, _fmt_insight(a))
@@ -182,7 +196,7 @@ if __name__ == "__main__":
                                                        "onde_usar": [], "verticais": [], "axioma": "", "assimilacao": ""}
         sys.modules["radar"] = mod
         globals()["_responder"] = lambda c, t: vistos.append(t)
-        globals()["_baixar_arquivo"] = lambda fid, d: Path("/tmp/fake.mp4")
+        globals()["_baixar_arquivo"] = lambda fid, d: (Path("/tmp/fake.mp4"), "")
         assert "link ok" in _processar_msg({"chat": {"id": "1"}, "text": "olha https://youtu.be/x"}, "1")
         assert "video ok" in _processar_msg({"chat": {"id": "1"}, "video": {"file_id": "F"}}, "1")
         assert _processar_msg({"chat": {"id": "9"}, "text": "https://x.com"}, "1") is None  # outro chat
