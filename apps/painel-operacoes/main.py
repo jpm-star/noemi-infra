@@ -272,6 +272,13 @@ def radar_obter(aid: int) -> JSONResponse:
     return JSONResponse(a or {"erro": "não encontrada"}, status_code=200 if a else 404)
 
 
+@app.get("/api/ideias")
+def ideias_dados() -> JSONResponse:
+    """Caixa de ideias: templates replicáveis colhidos de todas as análises do radar."""
+    import radar
+    return JSONResponse(radar.harvest_ideias())
+
+
 @app.get("/api/leads/export.csv")
 def leads_export() -> Response:
     from fastapi.responses import Response as _R
@@ -302,6 +309,11 @@ def tuning_dados() -> JSONResponse:
 @app.get("/radar", response_class=HTMLResponse)  # legado (redireciona no front antigo)
 def radar_pagina() -> str:
     return (_AQUI / "static" / "radar.html").read_text(encoding="utf-8")
+
+
+@app.get("/obs/ideias", response_class=HTMLResponse)
+def ideias_pagina() -> str:
+    return (_AQUI / "static" / "ideias.html").read_text(encoding="utf-8")
 
 
 # / = QG central (painel de controle); /obs = observação. Mesma HTML, view por JS.

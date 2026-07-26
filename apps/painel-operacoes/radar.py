@@ -380,10 +380,41 @@ def _expandir(d: dict) -> dict:
         det = json.loads(d.get("detalhe") or "{}")
         if isinstance(det, dict):
             d.update({k: det.get(k) for k in
-                      ("onde_usar", "verticais", "axioma", "assimilacao", "comparacao")})
+                      ("onde_usar", "verticais", "axioma", "assimilacao", "comparacao", "modelos")})
     except (ValueError, TypeError):
         pass
     return d
+
+
+_DOMINIOS = ("video", "site", "negocio", "produto", "operacao", "projeto")
+
+
+def harvest_ideias(limite: int = 300) -> dict:
+    """CAIXA DE IDEIAS: colhe os `modelos` (templates replicáveis) de TODAS as análises,
+    agrupados por domínio. Cada ideia carrega a fonte (origem/url/data/score) pra
+    rastrear de onde veio. É uma VIEW sobre video_analises — não duplica storage."""
+    from shared_core.storage import db
+    grupos: dict[str, list] = {k: [] for k in _DOMINIOS}
+    try:
+        with db.conn() as c:
+            rows = c.execute(
+                "SELECT id, origem, url, data, score, detalhe FROM video_analises "
+                "ORDER BY COALESCE(feedback,0) DESC, score DESC, id DESC LIMIT ?", (limite,)).fetchall()
+    except Exception:  # noqa: BLE001 — sem dados ainda é OK
+        return {"grupos": grupos, "total": 0}
+    total = 0
+    for r in rows:
+        try:
+            mods = (json.loads(r["detalhe"] or "{}") or {}).get("modelos") or {}
+        except (ValueError, TypeError):
+            continue
+        for dom in _DOMINIOS:
+            ideia = (mods.get(dom) or "").strip()
+            if ideia:
+                grupos[dom].append({"ideia": ideia, "origem": r["origem"], "url": r["url"],
+                                    "data": r["data"], "score": r["score"], "aid": r["id"]})
+                total += 1
+    return {"grupos": grupos, "total": total}
 
 
 def obter(aid: int) -> dict | None:
