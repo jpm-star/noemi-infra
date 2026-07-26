@@ -30,7 +30,9 @@
 <body>
 <a class="voltar-qg" href="#" title="Voltar ao QG"
    onclick="history.length>1?history.back():(document.referrer&&location.assign(document.referrer));return false"
-   style="position:fixed;top:14px;left:14px;z-index:99;background:rgba(0,0,0,.55);color:#fff;text-decoration:none;padding:7px 13px;border-radius:20px;font-size:.85rem;font-weight:600;backdrop-filter:blur(6px)">‹ Voltar</a>
+   style="display:none;position:fixed;top:14px;left:14px;z-index:99;background:rgba(0,0,0,.55);color:#fff;text-decoration:none;padding:7px 13px;border-radius:20px;font-size:.85rem;font-weight:600;backdrop-filter:blur(6px)">‹ Voltar</a>
+<script>/* fail-safe: só mostra o voltar se houver pra onde voltar (aberto do QG) */
+if(history.length>1||document.referrer)document.querySelector('.voltar-qg').style.display='block';</script>
 <main>
   <h1>🎥 Motor B — <span>Vídeo IA</span></h1>
   <p class="sub">Envie fotos ou vídeo bruto do imóvel/produto e receba o vídeo pronto.</p>
@@ -38,8 +40,9 @@
   <div class="card">
     <label>Seu nome / cliente</label>
     <input type="text" id="owner" placeholder="ex.: Rodrigo Imóveis" maxlength="120">
-    <label>Mídia de origem (imagem ou vídeo)</label>
-    <input type="file" id="arquivo" accept="image/*,video/*">
+    <label>Fotos do imóvel (pode escolher várias) ou 1 vídeo</label>
+    <input type="file" id="arquivo" accept="image/*,video/*" multiple>
+    <small id="conta-arq" style="color:var(--fraco);font-size:.8rem"></small>
 
     <details id="dadosImovel">
       <summary>Dados do imóvel (opcional — aparecem no vídeo)</summary>
@@ -117,17 +120,29 @@ async function acompanhar(jobId) {
   }
 }
 
+const MAX_FOTOS = 8;  // teto de fotos/vídeo: cada foto = 1 clipe Higgsfield (custo)
+$("arquivo").onchange = () => {
+  const n = $("arquivo").files.length;
+  $("conta-arq").textContent = n > MAX_FOTOS
+    ? `⚠ ${n} escolhidas — só as ${MAX_FOTOS} primeiras entram (custo por clipe)`
+    : n > 1 ? `${n} fotos → vídeo walkthrough (uma cena por foto)` : "";
+};
+
 $("gerar").onclick = async () => {
-  const f = $("arquivo").files[0];
-  if (!f) { $("msg").textContent = "Escolha um arquivo primeiro."; return; }
+  const fs = Array.from($("arquivo").files).slice(0, MAX_FOTOS);
+  if (!fs.length) { $("msg").textContent = "Escolha ao menos uma foto."; return; }
   $("gerar").disabled = true; $("resultado").style.display = "none";
-  $("msg").textContent = "Enviando mídia…";
   try {
-    const fd = new FormData();
-    fd.append("file", f); fd.append("owner", $("owner").value || "cliente");
-    const up = await fetch("/api/upload", { method: "POST", body: fd });
-    if (!up.ok) throw new Error((await up.json()).detail);
-    const { asset_id } = await up.json();
+    const owner = $("owner").value || "cliente";
+    const asset_ids = [];
+    for (let i = 0; i < fs.length; i++) {
+      $("msg").textContent = fs.length > 1 ? `Enviando foto ${i + 1}/${fs.length}…` : "Enviando mídia…";
+      const fd = new FormData();
+      fd.append("file", fs[i]); fd.append("owner", owner);
+      const up = await fetch("/api/upload", { method: "POST", body: fd });
+      if (!up.ok) throw new Error((await up.json()).detail);
+      asset_ids.push((await up.json()).asset_id);
+    }
     $("msg").textContent = "Na fila de geração…";
     // dados do imóvel (só os preenchidos) → viram overlay/caption/CTA no vídeo
     const campos = {codigo:"im-codigo", preco:"im-preco", bairro:"im-bairro",
@@ -136,9 +151,11 @@ $("gerar").onclick = async () => {
     for (const [chave, id] of Object.entries(campos)) {
       const v = ($(id)?.value || "").trim(); if (v) config[chave] = v;
     }
+    // >1 foto → cenas (o worker monta um walkthrough, 1 cena por foto). 1 só = clipe único.
+    if (asset_ids.length > 1) config.cenas = asset_ids.map(id => ({ asset_id: id }));
     const cj = await fetch("/api/jobs", { method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ asset_id, config }) });
+      body: JSON.stringify({ asset_id: asset_ids[0], config }) });
     if (!cj.ok) throw new Error((await cj.json()).detail);
     const { job_id } = await cj.json();
     await acompanhar(job_id);

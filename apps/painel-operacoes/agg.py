@@ -426,8 +426,36 @@ _LEADS_DB = _AQUI.parents[1] / "data" / "leads.db"
 _LEADS_META = int(os.environ.get("LEADS_META", "1000"))
 
 
+# preços Places (ESTIMATIVA — confirmar no billing; env sobrescreve). Details puxa
+# `reviews` → SKU Atmosphere, o mais caro. Free tier por-SKU/mês (o $200 acabou 03/2025).
+_PLACES_USD = {"text_search": float(os.environ.get("PLACES_USD_TEXT", "0.032")),
+               "place_details": float(os.environ.get("PLACES_USD_DETAILS", "0.025"))}
+_USD_BRL = float(os.environ.get("USD_BRL", "5.40"))
+_PLACES_FREE = int(os.environ.get("PLACES_FREE_SKU", "5000"))  # grátis/SKU/mês (Pro)
+
+
+def _custo_places(c) -> dict:
+    """Gasto REAL do grid a partir das chamadas contadas (places_uso). Aplica o
+    grátis por-SKU do mês → só cobra o excedente. {} se a tabela não existe ainda."""
+    from datetime import date
+    try:
+        hoje = date.today().isoformat()
+        mes = hoje[:7]
+        por_sku = dict(c.execute("SELECT sku, SUM(n) FROM places_uso WHERE dia LIKE ? GROUP BY sku",
+                                 (mes + "%",)).fetchall())
+        hoje_n = c.execute("SELECT COALESCE(SUM(n),0) FROM places_uso WHERE dia=?", (hoje,)).fetchone()[0]
+    except sqlite3.Error:
+        return {}
+    custo = 0.0
+    for sku, n in por_sku.items():
+        cobravel = max(0, (n or 0) - _PLACES_FREE)  # grátis mensal por SKU
+        custo += cobravel * _PLACES_USD.get(sku, 0.0) * _USD_BRL
+    return {"chamadas_hoje": hoje_n, "chamadas_mes": sum(v or 0 for v in por_sku.values()),
+            "custo_mes_brl": round(custo, 2), "sob_gratis": custo == 0.0}
+
+
 def leads_captacao() -> dict:
-    """Contador de leads coletados vs meta. Read-only, best-effort ({} se sem DB)."""
+    """Contador de leads coletados vs meta + gasto Places real. Read-only, best-effort."""
     if not _LEADS_DB.exists():
         return {"total": 0, "fila": 0, "com_email": 0, "meta": _LEADS_META,
                 "pct": 0.0, "cidades": 0, "taxa_email_pct": 0.0}
@@ -437,13 +465,15 @@ def leads_captacao() -> dict:
         fila = c.execute("SELECT COUNT(*) FROM leads_clinicas WHERE passa_corte=1").fetchone()[0]
         email = c.execute("SELECT COUNT(*) FROM leads_clinicas WHERE email IS NOT NULL AND email!=''").fetchone()[0]
         cid = c.execute("SELECT COUNT(DISTINCT cidade_origem) FROM leads_clinicas").fetchone()[0]
+        custo = _custo_places(c)
         c.close()
     except sqlite3.Error:
         return {"total": 0, "fila": 0, "com_email": 0, "meta": _LEADS_META, "pct": 0.0,
                 "cidades": 0, "taxa_email_pct": 0.0}
     return {"total": tot, "fila": fila, "com_email": email, "meta": _LEADS_META,
             "pct": round(100 * tot / _LEADS_META, 1) if _LEADS_META else 0.0,
-            "cidades": cid, "taxa_email_pct": round(100 * email / tot, 1) if tot else 0.0}
+            "cidades": cid, "taxa_email_pct": round(100 * email / tot, 1) if tot else 0.0,
+            "places": custo}
 
 
 def leads_csv() -> str:

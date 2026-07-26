@@ -90,8 +90,8 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
 <body>
 <a class="voltar-qg" href="#" title="Voltar"
    onclick="history.length>1?history.back():(document.referrer&&location.assign(document.referrer));return false"
-   style="position:fixed;top:14px;left:14px;z-index:99;background:rgba(0,0,0,.55);color:#fff;text-decoration:none;padding:7px 13px;border-radius:20px;font-size:.85rem;font-weight:600;backdrop-filter:blur(6px)">‹ Voltar</a>
-<div class="top" style="padding-left:96px">
+   style="display:none;position:fixed;top:14px;left:14px;z-index:99;background:rgba(0,0,0,.55);color:#fff;text-decoration:none;padding:7px 13px;border-radius:20px;font-size:.85rem;font-weight:600;backdrop-filter:blur(6px)">‹ Voltar</a>
+<div class="top">
   <div class="brand"><span class="dot"></span><div><b>JPOS</b><small>CABINE DE OPERAÇÃO</small></div></div>
   <div class="meta"><span id="saude"></span><br><span id="upd">—</span></div>
 </div>
@@ -224,10 +224,11 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
   document.body.dataset.view = OBS ? 'obs' : 'qg';
   const sub = document.querySelector('.brand small');
   if(sub) sub.textContent = OBS ? 'OBSERVAÇÃO POR PROJETO' : 'PAINEL DE CONTROLE';
-  // no QG a raiz é o topo do escopo → esconde o "‹ Voltar"; em /obs ele volta pra raiz
+  // voltar é oculto por padrão (fail-safe): a home / é o TOPO do QG (sem volta).
+  // Só /obs revela o botão (→ raiz). Erro de JS não deixa botão órfão na home.
   const volta = document.querySelector('.voltar-qg');
-  if(volta && !OBS) volta.style.display='none';
-  else if(volta) volta.setAttribute('href','/');
+  if(volta && OBS){ volta.setAttribute('href','/'); volta.style.display='block';
+                    document.querySelector('.top').style.paddingLeft='96px'; }
 })();
 const $=id=>document.getElementById(id);
 const money=v=>"$"+(v||0).toFixed(v<0.01?6:4);
@@ -260,11 +261,16 @@ function render(d){
   // captação de leads — contador vs meta 1000
   const Le=d.leads||{total:0,meta:1000,fila:0,com_email:0,cidades:0,pct:0,taxa_email_pct:0};
   const lkpi=(v,l,cor)=>`<div class="card kpi"><div class="v" style="color:${cor||'inherit'}">${v}</div><div class="l">${l}</div></div>`;
+  const Pl=Le.places||null;
   $("leads-sub").textContent = `${Le.cidades} cidades · meta ${Le.meta}`;
   $("leads-kpis").innerHTML=[
     lkpi(Le.total,'leads coletados','var(--ok)'),
     lkpi(Le.fila,'na fila de ligação','var(--cy)'),
     lkpi(Le.com_email+`<small> (${Le.taxa_email_pct}%)</small>`,'com e-mail','var(--warn)'),
+    Pl?lkpi((Pl.sob_gratis?'R$ 0,00':'R$ '+Pl.custo_mes_brl.toLocaleString('pt-BR',{minimumFractionDigits:2}))
+      +`<small> (${Pl.chamadas_mes} cham.)</small>`,
+      Pl.sob_gratis?'Places · dentro do grátis':'Places · gasto do mês',
+      Pl.sob_gratis?'var(--ok)':'var(--warn)'):'',
   ].join('');
   {const pc=Math.min(Le.pct,100);
    $("leads-bar").innerHTML=`<div style="display:flex;justify-content:space-between;font-size:.78rem;color:var(--mut);margin:2px 0 4px">

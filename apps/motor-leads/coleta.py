@@ -106,12 +106,33 @@ def _marcar_unidades(leads: list[dict]) -> None:
         l["n_unidades"] = contagem[_norm_nome(l["nome"])]
 
 
+def _registrar_uso(url: str) -> None:
+    """Conta a chamada REAL por SKU (Text Search vs Place Details) em leads.db →
+    /obs mostra gasto real em R$, não estimativa cega. Fail-safe: nunca quebra o fetch."""
+    import os
+    import sqlite3
+    from datetime import date
+    sku = "text_search" if "textsearch" in url else "place_details" if "/details/" in url else "outro"
+    try:
+        p = os.environ.get("LEADS_DB", "data/leads.db")
+        c = sqlite3.connect(p, timeout=5)
+        c.execute("CREATE TABLE IF NOT EXISTS places_uso (dia TEXT, sku TEXT, n INTEGER, PRIMARY KEY(dia,sku))")
+        c.execute("INSERT INTO places_uso (dia,sku,n) VALUES (?,?,1) "
+                  "ON CONFLICT(dia,sku) DO UPDATE SET n=n+1", (date.today().isoformat(), sku))
+        c.commit(); c.close()
+    except Exception:  # noqa: BLE001 — contar é secundário; a captação não pode falhar por isso
+        pass
+
+
 def _get_http(url: str, params: dict) -> dict:
     import httpx
     try:
         with httpx.Client(timeout=20.0) as c:
             r = c.get(url, params=params)
-            return r.json() if r.status_code == 200 else {}
+            if r.status_code == 200:
+                _registrar_uso(url)  # só conta chamada que o Google efetivamente cobra (200)
+                return r.json()
+            return {}
     except Exception:  # noqa: BLE001 — uma busca falha, o lote segue
         return {}
 
