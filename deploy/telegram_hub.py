@@ -134,7 +134,14 @@ def _processar_msg(m: dict, chat_alvo: str) -> str | None:
             _responder(chat, _fmt_insight(a))
             return f"link ok id={a['id']}"
         except Exception as e:  # noqa: BLE001
-            _responder(chat, f"✗ {str(e)[:200]}")
+            # IG/YT bloqueiam IP de datacenter (ou a sessão venceu) → guia pro caminho
+            # garantido: o vídeo enviado direto NÃO usa yt-dlp (ffmpeg local, 100%).
+            dica = ("\n\n💡 O Instagram costuma bloquear meu IP (ou a sessão venceu). "
+                    "Caminho garantido: baixa o reel no teu celular e me manda o VÍDEO "
+                    "aqui — analiso 100%, sem depender do link."
+                    if "instagram" in url.lower()
+                    else "\n\n💡 Se o link não abrir, me manda o vídeo direto que eu analiso.")
+            _responder(chat, f"✗ {str(e)[:160]}{dica}")
             return "link_falhou"
     return None
 
