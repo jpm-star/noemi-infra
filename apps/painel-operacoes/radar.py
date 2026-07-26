@@ -66,6 +66,26 @@ def _baixar_audio(link: str, destino: Path) -> Path:
     return mp3s[0]
 
 
+def _metadados(link: str) -> tuple[str, str]:
+    """(legenda, @handle) via `yt-dlp --dump-json --skip-download` — pega caption/
+    título SEM baixar mídia. No IG isso funciona bem mais que baixar o vídeo (que
+    dá 403). ('', '') se nem o metadado sair. É a fonte do nome-do-produto/oferta."""
+    if "drive.google.com" in link:
+        return "", ""
+    cmd = ["yt-dlp", "--dump-json", "--skip-download", "--no-playlist", "--no-warnings"]
+    cookies = os.environ.get("RADAR_COOKIES", "/root/noemi-infra/infra/cookies.txt")
+    if cookies and Path(cookies).exists():
+        cmd += ["--cookies", cookies]
+    try:
+        out = subprocess.run([*cmd, link], capture_output=True, text=True, timeout=120).stdout
+        d = json.loads(out.splitlines()[0]) if out.strip() else {}
+    except Exception:  # noqa: BLE001 — metadado é best-effort; falha vira ('','')
+        return "", ""
+    legenda = " ".join(filter(None, [d.get("title"), d.get("description")]))[:6000]
+    h = (d.get("uploader_id") or d.get("channel") or d.get("uploader") or "").strip()
+    return legenda, ("@" + h.lstrip("@") if h else "")
+
+
 def _conta_do_dir(destino: Path) -> str:
     """Lê a conta/autor do post no .info.json que o yt-dlp gravou. '' se não houver.
     Prefere o @handle (channel/uploader_id) ao nome de exibição."""
@@ -147,6 +167,14 @@ _PROMPT_BASE = (
     '"axioma" (1 frase — o princípio atemporal por trás da dica), '
     '"assimilacao" (1 frase — o próximo passo concreto pra ABSORVER isso no sistema/operação), '
     '"comparacao" (1 frase — como se relaciona com o histórico: reforça? contradiz? é novo?), '
+    '"modelos" (objeto com o TEMPLATE REPLICÁVEL específico que dá pra tirar disso. '
+    "REGRA DURA: se o conteúdo não dá uma ação ESPECÍFICA pra um domínio, deixe \"\" — "
+    "vazio é MELHOR que genérico. PROIBIDO platitude tipo 'criar conteúdo atraente', "
+    "'desenvolver site coerente', 'processos eficientes'. Cada valor tem que citar algo "
+    "concreto DO conteúdo (um número, um produto, um gancho, um passo). "
+    '{"video":"gancho/formato específico","site":"seção/oferta específica","negocio":'
+    '"como monetiza, concreto","produto":"produto/feature nomeável","operacao":'
+    '"automação/passo concreto","projeto":"experimento testável"}), '
     f'"categoria" (um de {sorted(CATEGORIAS)}), '
     '"score" (inteiro 1-5 de relevância pro JP), '
     '"tags" (lista de 3-6 palavras-chave minúsculas).'
@@ -181,7 +209,8 @@ def _insight(transcricao: str, contexto: list[dict], instrucao: str = "") -> dic
         return {"insight": " ".join(frase)[:400] or "(sem insight — LLM indisponível)",
                 "resumo": (frase[0] if frase else "")[:160], "categoria": "outro",
                 "score": 1, "tags": [], "fonte": "extrativo",
-                "onde_usar": [], "verticais": [], "axioma": "", "assimilacao": "", "comparacao": ""}
+                "onde_usar": [], "verticais": [], "axioma": "", "assimilacao": "", "comparacao": "",
+                "modelos": {}}
     cat = str(bruto.get("categoria", "outro")).strip().lower()
     try:
         score = max(1, min(5, int(bruto.get("score", 1))))
@@ -190,7 +219,14 @@ def _insight(transcricao: str, contexto: list[dict], instrucao: str = "") -> dic
 
     def _lista(v):
         return [str(x).strip()[:40] for x in v if str(x).strip()][:5] if isinstance(v, list) else []
+
+    def _modelos(v):  # 6 domínios, cada um 1 frase (ordem de trabalho) ou ausente
+        d = v if isinstance(v, dict) else {}
+        out = {k: str(d.get(k, "")).strip()[:200] for k in
+               ("video", "site", "negocio", "produto", "operacao", "projeto")}
+        return {k: val for k, val in out.items() if val}  # só os que têm ação real
     return {"insight": str(bruto.get("insight", "")).strip()[:1200] or "(sem insight)",
+            "modelos": _modelos(bruto.get("modelos")),
             "resumo": str(bruto.get("resumo", "")).strip()[:200],
             "onde_usar": _lista(bruto.get("onde_usar")), "verticais": _lista(bruto.get("verticais")),
             "axioma": str(bruto.get("axioma", "")).strip()[:240],
@@ -220,14 +256,26 @@ def analisar(url: str, origem: str | None = None, instrucao: str = "") -> dict:
     if not url.startswith("http"):
         raise ValueError("url inválida")
     origem_dada = (origem or "").strip()
+    legenda, handle = _metadados(url)  # caption/título — funciona mesmo quando a mídia não baixa
+    texto_audio = ""
     with tempfile.TemporaryDirectory(prefix="radar_") as td:
-        audio = _baixar_audio(url, Path(td))
-        # a conta/autor REAL vem do metadado do download (yt-dlp), não da URL —
-        # é o que auto-agrupa por concorrente. Origem explícita do JP tem prioridade.
-        origem = origem_dada or _conta_do_dir(Path(td)) or _origem_da_url(url)
-        texto = trans.transcrever(str(audio))
-    if not texto:
-        raise RuntimeError("transcrição falhou (sem chave Groq ou áudio ilegível)")
+        try:
+            audio = _baixar_audio(url, Path(td))
+            # a conta/autor REAL vem do metadado do download (yt-dlp), não da URL.
+            origem = origem_dada or _conta_do_dir(Path(td)) or handle or _origem_da_url(url)
+            texto_audio = trans.transcrever(str(audio))
+        except RuntimeError as e:
+            # IG/YT bloqueou a mídia → NÃO morre: segue com a legenda (análise sempre).
+            origem = origem_dada or handle or _origem_da_url(url)
+            if not legenda:
+                raise RuntimeError(f"não deu pra baixar o vídeo nem ler a legenda: {e}")
+    # legenda (nome do produto/oferta) + transcrição (narração) → análise fiel, sem
+    # confundir música de fundo com o produto (a legenda é a âncora do "o quê").
+    texto = "\n".join(filter(None, [
+        ("LEGENDA/TÍTULO: " + legenda) if legenda else "",
+        ("TRANSCRIÇÃO DO ÁUDIO: " + texto_audio) if texto_audio else ""]))
+    if not texto.strip():
+        raise RuntimeError("sem transcrição e sem legenda — link privado/inacessível")
     return _processar(texto, origem, url, instrucao)
 
 
@@ -254,7 +302,8 @@ def _processar(texto: str, origem: str, url: str, instrucao: str = "") -> dict:
     ins = _insight(texto, contexto, instrucao)
     data = datetime.now(timezone.utc).isoformat()
     detalhe = json.dumps({k: ins.get(k) for k in
-                          ("onde_usar", "verticais", "axioma", "assimilacao", "comparacao", "fonte")},
+                          ("onde_usar", "verticais", "axioma", "assimilacao", "comparacao",
+                           "modelos", "fonte")},
                          ensure_ascii=False)
     with db.conn() as c:
         cur = c.execute(

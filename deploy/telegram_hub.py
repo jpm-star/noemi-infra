@@ -90,6 +90,12 @@ def _fmt_insight(a: dict) -> str:
         l.append("⚡ axioma: " + a["axioma"])
     if a.get("assimilacao"):
         l.append("🧠 assimilar: " + a["assimilacao"])
+    mods = a.get("modelos") or {}
+    if mods:  # templates replicáveis por domínio — o "de lá saia template de TUDO"
+        icones = {"video": "🎬", "site": "🌐", "negocio": "💼", "produto": "📦",
+                  "operacao": "⚙️", "projeto": "🧪"}
+        l.append("\n📐 *templates replicáveis:*")
+        l += [f"{icones.get(k,'•')} {k}: {v}" for k, v in mods.items()]
     return "\n".join(l)[:3500]
 
 
