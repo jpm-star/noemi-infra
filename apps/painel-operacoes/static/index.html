@@ -261,7 +261,7 @@ function render(d){
   // captação de leads — contador vs meta 1000
   const Le=d.leads||{total:0,meta:1000,fila:0,com_email:0,cidades:0,pct:0,taxa_email_pct:0};
   const lkpi=(v,l,cor)=>`<div class="card kpi"><div class="v" style="color:${cor||'inherit'}">${v}</div><div class="l">${l}</div></div>`;
-  const Pl=Le.places||null;
+  const Pl=(Le.places&&Le.places.chamadas_mes!=null)?Le.places:null;  // {} = sem chamada ainda
   $("leads-sub").textContent = `${Le.cidades} cidades · meta ${Le.meta}`;
   $("leads-kpis").innerHTML=[
     lkpi(Le.total,'leads coletados','var(--ok)'),
