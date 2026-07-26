@@ -94,6 +94,28 @@ def _metadados(link: str) -> tuple[str, str]:
     return legenda, ("@" + h.lstrip("@") if h else "")
 
 
+def _frames(video_path: str, destino: Path, n: int = 6) -> list[bytes]:
+    """~n frames JPEG espalhados no vídeo (ffmpeg, 1 a cada 2s, cap n). É o que dá
+    OLHOS pro radar: lê o que está na TELA (produto/UI/código). [] se ffmpeg falhar."""
+    padrao = str(destino / "f_%03d.jpg")
+    try:
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(video_path),
+                        "-vf", "fps=1/2,scale=768:-1", "-frames:v", str(n), padrao],
+                       check=True, capture_output=True, timeout=120)
+    except Exception:  # noqa: BLE001 — visão é best-effort; áudio/legenda seguem
+        return []
+    return [p.read_bytes() for p in sorted(destino.glob("f_*.jpg"))[:n]]
+
+
+def _combinar(visao: str, legenda: str, audio: str) -> str:
+    """Junta as 3 fontes ROTULADAS pro LLM saber a origem de cada coisa — o nome do
+    produto vem da VISÃO/legenda (tela), não do áudio (que pode ser só música)."""
+    return "\n".join(filter(None, [
+        ("O QUE APARECE NA TELA (visão): " + visao) if visao else "",
+        ("LEGENDA/TÍTULO: " + legenda) if legenda else "",
+        ("TRANSCRIÇÃO DO ÁUDIO: " + audio) if audio else ""]))
+
+
 def _conta_do_dir(destino: Path) -> str:
     """Lê a conta/autor do post no .info.json que o yt-dlp gravou. '' se não houver.
     Prefere o @handle (channel/uploader_id) ao nome de exibição."""
@@ -289,17 +311,25 @@ def analisar(url: str, origem: str | None = None, instrucao: str = "") -> dict:
 
 def analisar_arquivo(caminho: str, origem: str = "telegram", url_ref: str = "",
                      instrucao: str = "") -> dict:
-    """Pipeline por ARQUIVO local (vídeo/áudio já baixado — ex: enviado no Telegram,
-    sem bot-detection de IG/YT). Extrai áudio → transcreve → insight → GRAVA."""
+    """Pipeline por ARQUIVO local (vídeo enviado no Telegram). VISÃO (frames→Gemini,
+    o que está na TELA) + transcrição do áudio → insight → GRAVA. A visão é a fonte
+    do nome-do-produto (o áudio pode ser só música); análise roda com qualquer uma."""
     from shared_core.ai import transcricao as trans
+    from shared_core.ai import visao
+    texto_audio, visao_txt = "", ""
     with tempfile.TemporaryDirectory(prefix="radar_") as td:
         audio = Path(td) / "audio.mp3"
-        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", caminho,
-                        "-vn", "-acodec", "libmp3lame", "-q:a", "4", str(audio)],
-                       check=True, capture_output=True, timeout=180)
-        texto = trans.transcrever(str(audio))
-    if not texto:
-        raise RuntimeError("transcrição falhou (áudio ilegível ou sem chave Groq)")
+        try:
+            subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", caminho,
+                            "-vn", "-acodec", "libmp3lame", "-q:a", "4", str(audio)],
+                           check=True, capture_output=True, timeout=180)
+            texto_audio = trans.transcrever(str(audio)) or ""
+        except Exception:  # noqa: BLE001 — vídeo mudo/áudio ruim: a visão carrega
+            texto_audio = ""
+        visao_txt, _ = visao.analisar_frames(_frames(caminho, Path(td)))
+    texto = _combinar(visao_txt, "", texto_audio)
+    if not texto.strip():
+        raise RuntimeError("nem visão nem áudio legíveis (sem chave Gemini/Groq?)")
     return _processar(texto, origem, url_ref, instrucao)
 
 
