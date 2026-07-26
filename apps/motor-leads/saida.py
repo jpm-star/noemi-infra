@@ -85,13 +85,21 @@ def gravar(leads: list[dict]) -> dict:
                f"VALUES ({_ph(dialect, len(COLUNAS))}, "
                f"{'%s,%s,%s' if dialect=='pg' else '?,?,?'}) "
                f"ON CONFLICT (place_id) DO UPDATE SET {upd}, atualizado_em=excluded.atualizado_em")
+        # quantos são NOVOS (não existiam) — pro contador do grid (lead novo ≠ repetido)
+        ids = [l.get("place_id") for l in leads if l.get("place_id")]
+        existentes = set()
+        if ids:
+            ph = _ph(dialect, len(ids))
+            existentes = {r[0] for r in conn.execute(
+                f"SELECT place_id FROM leads_clinicas WHERE place_id IN ({ph})", ids)}
+        novos = sum(1 for i in ids if i not in existentes)
         n = 0
         for l in leads:
             params = [_val(l, c) for c in COLUNAS] + ["novo", agora, agora]
             conn.execute(sql, params)
             n += 1
         conn.commit()
-        return {"gravados": n, "dialect": dialect}
+        return {"gravados": n, "novos": novos, "dialect": dialect}
     finally:
         conn.close()
 

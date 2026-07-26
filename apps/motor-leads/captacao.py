@@ -25,19 +25,39 @@ import saida
 import scoring
 
 
+def _enriquecer_paralelo(leads: list[dict], fetch=None) -> list[dict]:
+    """Enriquecimento (fetch de site é o gargalo) em PARALELO — throughput pro grid
+    (1000 leads sequencial = horas; paralelo = minutos). ThreadPool, I/O-bound."""
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=int(os.environ.get("LEADS_WORKERS", "12"))) as ex:
+        enriquecidos = list(ex.map(lambda l: enriquecimento.enriquecer(l, fetch=fetch), leads))
+    return [scoring.pontuar(l) for l in enriquecidos]
+
+
 def rodar(cidades: list[str], categorias=coleta.CATEGORIAS_PADRAO, *, api_key: str = "",
-          limite: int = 20, get=None, fetch=None) -> dict:
-    """Roda o pipeline por cidade (grava cidade_origem). `get`/`fetch` injetáveis
-    (teste). Devolve resumo por cidade + distribuição de tier."""
-    todos: list[dict] = []
-    por_cidade: dict[str, dict] = {}
-    for cidade in cidades:
-        leads = coleta.coletar(cidade, categorias, api_key=api_key, limite=limite, get=get)
-        leads = [scoring.pontuar(enriquecimento.enriquecer(l, fetch=fetch)) for l in leads]
-        saida.gravar(leads)
+          limite: int = 20, get=None, fetch=None, bairros: list[str] | None = None) -> dict:
+    """Pipeline em GRID (cidade × bairro × categoria) → volume, com dedup por place_id
+    entre células, enriquecimento paralelo e HARD-CAP de captação (MAX_LEADS_DIA)."""
+    max_dia = int(os.environ.get("MAX_LEADS_DIA", "0"))  # 0 = sem teto
+    celulas = [(c, b) for c in cidades for b in (bairros or [""])]
+    vistos: set[str] = set()  # dedup cross-célula (place_id) → conta lead NOVO, não repetido
+    todos, por_cidade, novos = [], {}, 0
+    for cidade, bairro in celulas:
+        if max_dia and len(vistos) >= max_dia:
+            break  # hard-cap: para de gastar Places ao bater o teto do dia
+        leads = coleta.coletar(cidade, categorias, api_key=api_key, limite=limite,
+                               get=get, bairro=bairro)
+        leads = [l for l in leads if l["place_id"] not in vistos]  # cross-célula dedup
+        for l in leads:
+            vistos.add(l["place_id"])
+        leads = _enriquecer_paralelo(leads, fetch)
+        res = saida.gravar(leads)
+        novos += res.get("novos", len(leads))
         todos.extend(leads)
-        por_cidade[cidade] = _resumo(leads)
-    return {"total": len(todos), "por_cidade": por_cidade,
+        chave = f"{cidade}/{bairro}" if bairro else cidade
+        por_cidade[chave] = _resumo(leads)
+    return {"total": len(todos), "novos": novos, "celulas": len(por_cidade),
+            "por_cidade": por_cidade,
             "na_fila": sum(1 for l in todos if l["passa_corte"]), "leads": todos}
 
 
@@ -113,7 +133,9 @@ def _demo() -> int:
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description="Motor de captação de leads (Noemi)")
     ap.add_argument("--cidades", default="", help="lista separada por vírgula")
+    ap.add_argument("--bairros", default="", help="grid: bairros por vírgula (célula = bairro×categoria)")
     ap.add_argument("--limite", type=int, default=20)
+    ap.add_argument("--grid", action="store_true", help="usa categorias granulares (volume)")
     ap.add_argument("--demo", action="store_true", help="prova offline sem key")
     args = ap.parse_args(argv)
     if args.demo:
@@ -127,10 +149,13 @@ def main(argv: list[str]) -> int:
     if not cidades:
         print("passe --cidades \"Lins\" (piloto) ou a lista completa")
         return 2
-    res = rodar(cidades, api_key=api_key, limite=args.limite)
+    bairros = [b.strip() for b in args.bairros.split(",") if b.strip()] or None
+    cats = coleta.CATEGORIAS_GRID if args.grid else coleta.CATEGORIAS_PADRAO
+    res = rodar(cidades, cats, api_key=api_key, limite=args.limite, bairros=bairros)
     saida.sincronizar_sheet(res["leads"])
     csvp = saida.exportar_csv(res["leads"], f"data/leads_{'_'.join(cidades)[:40]}.csv")
-    print(f"OK — {res['total']} leads, {res['na_fila']} na fila de ligação. CSV: {csvp}")
+    print(f"OK — {res['total']} leads ({res.get('novos', '?')} NOVOS) em {res.get('celulas', 1)} "
+          f"células, {res['na_fila']} na fila. CSV: {csvp}")
     for cidade, r in res["por_cidade"].items():
         print(f"  {cidade}: {r['n']} leads · {r['na_fila']} fila · tiers {r['tiers']}")
     return 0

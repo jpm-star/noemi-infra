@@ -21,6 +21,12 @@ _CAMPOS = ("name,formatted_phone_number,international_phone_number,website,ratin
 
 CATEGORIAS_PADRAO = ("clínica odontológica", "clínica de estética", "fisioterapia",
                      "clínica médica", "clínica veterinária")
+# grid de volume: termos GRANULARES → cada busca traz resultados distintos (o texto
+# search satura em ~60/query; mais queries segmentadas = mais lead novo por célula).
+CATEGORIAS_GRID = (
+    "dentista", "implante dentário", "ortodontia", "clínica odontológica", "harmonização facial",
+    "clínica de estética", "depilação a laser", "fisioterapia", "pilates clínico", "clínica médica",
+    "dermatologista", "nutricionista", "psicólogo", "clínica veterinária", "pet shop", "quiropraxia")
 
 _DEMORA = ("demora", "demorou", "demorad", "espera", "esperei", "esperar", "fila",
            "atras", "não atende", "nao atende", "não atendem", "ninguém atende",
@@ -46,16 +52,18 @@ def _atividade_recente(reviews: list, agora: float, dias: int = 365) -> bool:
 
 
 def coletar(cidade: str, categorias=CATEGORIAS_PADRAO, *, api_key: str = "",
-            limite: int = 20, get=None, agora: float | None = None) -> list[dict]:
-    """Leads da cidade (dedupe por place_id, ~limite no total). get(url,params)->dict
-    injetável pro teste; default httpx. Marca cidade_origem em cada lead."""
+            limite: int = 20, get=None, agora: float | None = None,
+            bairro: str = "") -> list[dict]:
+    """Leads da cidade (dedupe por place_id, ~limite no total). `bairro` segmenta a
+    busca (célula do grid → mais resultados distintos por área). get injetável (teste)."""
     if not api_key:
         raise FaltaChave("defina GOOGLE_PLACES_API_KEY (Google Cloud → ativar Places API)")
     _get = get or _get_http
     agora = agora if agora is not None else datetime.now(timezone.utc).timestamp()
+    local = f"{bairro}, {cidade}" if bairro else cidade
     por_id: dict[str, dict] = {}
     for cat in categorias:
-        busca = _get(_TEXTSEARCH, {"query": f"{cat} em {cidade}, SP",
+        busca = _get(_TEXTSEARCH, {"query": f"{cat} em {local}, SP",
                                    "language": "pt-BR", "key": api_key})
         for r in (busca.get("results") or []):
             pid = r.get("place_id")
