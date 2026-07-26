@@ -1,0 +1,7 @@
+[Unit]
+Description=Roda o agente de self-análise 1x/dia (04:00)
+[Timer]
+OnCalendar=*-*-* 04:00:00
+Persistent=true
+[Install]
+WantedBy=timers.target

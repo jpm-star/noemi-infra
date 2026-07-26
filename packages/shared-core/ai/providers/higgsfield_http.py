@@ -138,10 +138,25 @@ def generate(asset: dict, config: dict) -> dict:
         raise RuntimeError(f"download de {url[:120]} não é mp4")
     return {
         "bytes": dados, "mime": "video/mp4", "modelo": modelo,
-        "custo_creditos": config.get("custo_estimado"),
+        "custo_creditos": _custo_creditos(modelo),  # crédito REAL do modelo (grava no job)
         "meta": {"url_provider": url, "job_id": job_id, "asset_origem": asset["id"],
                  "modelo_video": modelo, "image_to_video": True, "orquestrador": "http_direto"},
     }
+
+
+# custo real por modelo (bate com as transações da conta; kling3_0 = 7.5). Override
+# por env HIGGS_CUSTO_<MODELO> se um modelo novo tiver preço diferente.
+_CUSTO_MODELO = {"kling3_0": 7.5}
+
+
+def _custo_creditos(modelo: str) -> float:
+    env = os.environ.get(f"HIGGS_CUSTO_{modelo.upper()}")
+    if env:
+        try:
+            return float(env)
+        except ValueError:
+            pass
+    return _CUSTO_MODELO.get(modelo, 7.5)  # default 7.5 (Kling); nunca 0 (protege o caixa)
 
 
 def _primeiro_uuid(texto: str) -> str | None:
