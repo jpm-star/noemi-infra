@@ -12,7 +12,7 @@ import os
 import sqlite3
 import time
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 _AQUI = Path(__file__).resolve().parent
@@ -182,6 +182,7 @@ def _conn():
 
 _ESTADOS = ["queued", "uploading", "processing", "completed", "failed", "cancelled", "retry"]
 _ATIVOS = ("queued", "uploading", "processing", "retry")
+SLA_VIDEO_S = 60  # Motor B promete 1 vídeo/minuto — acima disto é alerta (item 15)
 
 
 def fila() -> dict:
@@ -194,12 +195,30 @@ def fila() -> dict:
                 "SELECT id, produto, estado, tentativas, duracao_s, atualizado_em FROM jobs "
                 "WHERE estado IN ('queued','uploading','processing','retry') "
                 "ORDER BY atualizado_em DESC LIMIT 15")]
+            # lentos que JÁ terminaram acima do SLA (últimas 24h)
+            desde = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+            lentos = c.execute(
+                "SELECT COUNT(*) n FROM jobs WHERE estado='completed' AND duracao_s > ? "
+                "AND atualizado_em > ?", (SLA_VIDEO_S, desde)).fetchone()["n"]
     except sqlite3.Error:
-        return {"online": False, "contagem": {}, "ativos": []}
+        return {"online": False, "contagem": {}, "ativos": [], "sla_video": {}}
     for a in ativos:
         a["id"] = a["id"][:8]
+    # jobs que estão estourando o SLA AGORA (em processing/upload há > 1 min)
+    agora = datetime.now(timezone.utc)
+    estourando = []
+    for a in ativos:
+        if a["estado"] in ("processing", "uploading") and a.get("atualizado_em"):
+            try:
+                elapsed = (agora - datetime.fromisoformat(a["atualizado_em"])).total_seconds()
+            except (ValueError, TypeError):
+                continue
+            if elapsed > SLA_VIDEO_S:
+                estourando.append({"id": a["id"], "s": round(elapsed)})
     return {"online": True, "contagem": cont, "ativos": ativos,
-            "em_andamento": sum(cont[e] for e in _ATIVOS)}
+            "em_andamento": sum(cont[e] for e in _ATIVOS),
+            "sla_video": {"limite_s": SLA_VIDEO_S, "estourando_agora": estourando,
+                          "lentos_24h": lentos}}
 
 
 def _bucket(msg: str) -> str:

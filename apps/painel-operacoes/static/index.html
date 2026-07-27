@@ -349,7 +349,12 @@ function render(d){
   if(!F.online){$("fila").innerHTML='<div class="empty off">banco indisponível</div>';}
   else{
     const c=F.contagem;
-    $("fila").innerHTML=`<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px;font-family:var(--mono);font-size:.8rem">
+    const sv=F.sla_video||{}, est=(sv.estourando_agora||[]), lentos=sv.lentos_24h||0;
+    const slaBanner=(est.length||lentos)?`<div class="err" style="border-color:var(--warn);margin-bottom:9px">
+      <span class="m"><b style="color:var(--warn)">⚠ Motor B > ${sv.limite_s||60}s</b> · `+
+      (est.length?`${est.length} vídeo(s) estourando AGORA (${est.map(e=>e.s+'s').join(', ')})`:``)+
+      (est.length&&lentos?' · ':'')+(lentos?`${lentos} lento(s) nas últimas 24h`:``)+`</span></div>`:'';
+    $("fila").innerHTML=slaBanner+`<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px;font-family:var(--mono);font-size:.8rem">
       <span style="color:var(--cy)">▶ ${F.em_andamento} rodando</span>
       <span style="color:var(--ok)">✓ ${c.completed} ok</span>
       <span style="color:var(--bad)">✗ ${c.failed} falhou</span></div>`+

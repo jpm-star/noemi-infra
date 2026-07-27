@@ -107,6 +107,8 @@ async def processar(job: dict) -> None:
         else:
             out = await asyncio.to_thread(video.generate, origem, cfg)
         duracao_s = round(time.monotonic() - t0, 2)
+        if duracao_s > 60:  # SLA Motor B: 1 vídeo/minuto (item 15). /obs mostra o alerta; aqui fica o rastro.
+            log_span("motor_b.sla_estouro", job=jid, ok=False, dur_s=duracao_s, limite_s=60)
         # Onda 1: acabamento de marca (reframe/watermark/legenda) — best-effort,
         # falha degrada pro vídeo cru, nunca derruba o job.
         pos_meta = await asyncio.to_thread(_finalizar, out, cfg, jid)
