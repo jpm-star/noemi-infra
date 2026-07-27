@@ -14,7 +14,23 @@
 body{background:
   radial-gradient(900px 500px at 85% -10%,rgba(52,226,255,.08),transparent 60%),
   radial-gradient(700px 400px at 0% 110%,rgba(47,230,160,.06),transparent 55%),var(--bg);
-  color:var(--txt);font-family:system-ui,-apple-system,Segoe UI,sans-serif;min-height:100vh;padding:18px 20px 40px}
+  color:var(--txt);font-family:system-ui,-apple-system,Segoe UI,sans-serif;min-height:100vh;padding:0}
+/* === sidebar master única (nav de todos os produtos JPOS) === */
+.side{position:fixed;top:0;left:0;bottom:0;width:212px;z-index:60;overflow-y:auto;
+  background:linear-gradient(180deg,var(--panel2),var(--panel));border-right:1px solid var(--line);
+  padding:18px 12px;display:flex;flex-direction:column;gap:3px}
+.side .logo{display:flex;align-items:center;gap:9px;padding:2px 8px 14px}
+.side .logo .dot{width:10px;height:10px;border-radius:50%;background:var(--cy);box-shadow:0 0 12px var(--cy);animation:pulse 2s infinite}
+.side .logo b{font-size:1rem;letter-spacing:.5px}
+.side .logo small{color:var(--mut);font-size:.58rem;letter-spacing:2px;display:block}
+.side a{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:9px;text-decoration:none;
+  color:var(--mut);font-size:.87rem;font-weight:500;cursor:pointer;transition:background .15s,color .15s}
+.side a:hover{background:rgba(52,226,255,.08);color:var(--txt)}
+.side a.on{background:linear-gradient(135deg,rgba(52,226,255,.16),rgba(52,226,255,.04));color:var(--cy);font-weight:700}
+.side a .ext{margin-left:auto;font-size:.72rem;opacity:.45}
+.side .grp{font-size:.56rem;letter-spacing:.18em;color:var(--mut);text-transform:uppercase;padding:12px 10px 4px;opacity:.65}
+.main{margin-left:212px;padding:18px 22px 40px;min-height:100vh}
+@media(max-width:760px){.side{position:static;width:auto;flex-direction:row;flex-wrap:wrap;bottom:auto;border-right:0;border-bottom:1px solid var(--line)}.main{margin-left:0}.side .grp{display:none}}
 .top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;flex-wrap:wrap}
 .brand{display:flex;align-items:center;gap:11px}
 .brand .dot{width:11px;height:11px;border-radius:50%;background:var(--cy);box-shadow:0 0 14px var(--cy);animation:pulse 2s infinite}
@@ -88,23 +104,32 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
 </style>
 </head>
 <body>
-<a class="voltar-qg" href="#" title="Voltar"
-   onclick="history.length>1?history.back():(document.referrer&&location.assign(document.referrer));return false"
-   style="display:none;position:fixed;top:14px;left:14px;z-index:99;background:rgba(0,0,0,.55);color:#fff;text-decoration:none;padding:7px 13px;border-radius:20px;font-size:.85rem;font-weight:600;backdrop-filter:blur(6px)">‹ Voltar</a>
+<nav class="side">
+  <div class="logo"><span class="dot"></span><div><b>JPOS</b><small>CABINE</small></div></div>
+  <a data-go="inicio">🏠 Início</a>
+  <a href="https://p.jpos.com.br/studio/" target="_blank" rel="noopener">🌐 Site<span class="ext">↗</span></a>
+  <a href="https://videoshiggs.noemi.digital/" target="_blank" rel="noopener">🎬 Vídeos<span class="ext">↗</span></a>
+  <a href="https://motor.noemi.digital/" target="_blank" rel="noopener">💱 Arbitragem<span class="ext">↗</span></a>
+  <a href="https://painel.noemi.digital/" target="_blank" rel="noopener">💬 Noemi<span class="ext">↗</span></a>
+  <a data-go="crm">👥 CRM</a>
+  <a data-go="analise">📊 Análise de Dados</a>
+  <a data-go="config">⚙️ Config</a>
+  <div class="grp">Radar</div>
+  <a href="/obs/radar">📡 Radar de vídeo</a>
+  <a href="/obs/ideias">💡 Caixa de ideias</a>
+</nav>
+<div class="main">
 <div class="top">
-  <div class="brand"><span class="dot"></span><div><b>JPOS</b><small>CABINE DE OPERAÇÃO</small></div></div>
+  <div class="brand"><span class="dot"></span><div><b id="sec-titulo">Início</b><small id="sec-sub">PAINEL DE CONTROLE</small></div></div>
   <div class="meta"><span id="saude"></span><br><span id="upd">—</span></div>
 </div>
 
-<div class="operar v-qg">
-  <span class="op-lab">OPERAR</span>
-  <a class="op op-vid" href="https://videoshiggs.noemi.digital/" target="_blank" rel="noopener">🎬 Fazer um vídeo</a>
-  <a class="op op-site" href="https://go.noemi.digital/studio/" target="_blank" rel="noopener">🌐 Fazer um site</a>
-  <a class="op op-radar" href="/obs/radar">📡 Radar de vídeo</a>
-  <a class="op op-radar" href="/obs/ideias">💡 Caixa de ideias</a>
-  <a class="op" href="https://painel.noemi.digital/" target="_blank" rel="noopener">💬 Noemi SDR</a>
-  <a class="op op-ghost" href="https://go.noemi.digital/studio/combo" target="_blank" rel="noopener">⚡ Onboarding</a>
-  <a class="op" href="/obs">🩺 Observação</a>
+<div class="card v-qg" data-sec="crm" style="margin-bottom:12px;border-color:rgba(52,226,255,.22);background:linear-gradient(180deg,rgba(52,226,255,.05),var(--panel))">
+  <h3>💬 Noemi SDR — CRM de conversas</h3>
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+    <span style="color:var(--mut);font-size:.85rem">Leads, prospecção e handoff estão abaixo. As conversas ao vivo ficam no painel da Noemi.</span>
+    <a href="https://painel.noemi.digital/" target="_blank" rel="noopener" class="op" style="font-size:.85rem;padding:8px 16px">abrir Noemi SDR ↗</a>
+  </div>
 </div>
 
 <div class="card diag v-obs"><h3>💡 Diagnóstico da operação · IA</h3><div id="diag-body" class="empty">analisando…</div></div>
@@ -121,7 +146,7 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
   <div id="leads-bar"></div>
 </div>
 
-<div class="card v-qg" style="margin-bottom:12px">
+<div class="card v-qg" data-sec="crm" style="margin-bottom:12px">
   <h3>📓 Histórico de prospecção <span id="pl-sub" style="color:var(--mut);font-weight:400;font-size:.8rem"></span></h3>
   <details style="margin-bottom:8px">
     <summary style="cursor:pointer;color:var(--cy);font-size:.82rem">＋ registrar approach</summary>
@@ -155,7 +180,7 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
   </details>
 </div>
 
-<div class="card v-qg" style="margin-bottom:12px">
+<div class="card v-qg" data-sec="config" style="margin-bottom:12px">
   <h3>🛡️ Handoff & proteção do chip</h3>
   <div style="display:flex;gap:22px;flex-wrap:wrap">
     <div style="flex:1;min-width:290px">
@@ -181,14 +206,14 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
   </div>
 </div>
 
-<div class="card v-qg" id="aprend-card" style="margin-bottom:12px">
+<div class="card v-qg" data-sec="crm" id="aprend-card" style="margin-bottom:12px">
   <h3>🧠 Aprendizado do agente <span style="color:var(--mut);font-weight:400;font-size:.75rem">(self-análise · read-only)</span></h3>
   <div id="aprend-body" class="empty">carregando…</div>
 </div>
 
 <div class="grid row-mot v-obs" id="motores" style="margin-bottom:12px"></div>
 
-<div class="card v-qg" style="margin-bottom:12px">
+<div class="card v-qg" data-sec="crm" style="margin-bottom:12px">
   <h3>🎯 Prospecção — demos de site <span id="prosp-contador" style="color:var(--mut);font-weight:400"></span></h3>
   <div id="prosp-ctrl" style="display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin-bottom:12px;font-size:.8rem;color:var(--mut)">
     <label>jitter min (s)<br><input id="pc-jmin" type="number" min="5" style="width:70px"></label>
@@ -217,24 +242,40 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
   <div class="card"><h3>Cascata de fallback</h3><div id="fallback"></div></div>
   <div class="card"><h3>Falhas agrupadas</h3><div id="erros"></div></div>
 </div>
-
-<style>
-  body[data-view="obs"] .v-qg{display:none!important}
-  body[data-view="qg"]  .v-obs{display:none!important}
-</style>
+</div><!-- /.main -->
 <script>
-// Modo: raiz (go.noemi.digital/) = QG central (financeiro/prospecção/handoff/operar);
-// /obs = observação (saúde dos motores + radar + IA/VPS). Mesma HTML, seções por view.
-(function(){
-  const OBS = /\/obs\/?$/.test(location.pathname);
-  document.body.dataset.view = OBS ? 'obs' : 'qg';
-  const sub = document.querySelector('.brand small');
-  if(sub) sub.textContent = OBS ? 'OBSERVAÇÃO POR PROJETO' : 'PAINEL DE CONTROLE';
-  // voltar é oculto por padrão (fail-safe): a home / é o TOPO do QG (sem volta).
-  // Só /obs revela o botão (→ raiz). Erro de JS não deixa botão órfão na home.
-  const volta = document.querySelector('.voltar-qg');
-  if(volta && OBS){ volta.setAttribute('href','/'); volta.style.display='block';
-                    document.querySelector('.top').style.paddingLeft='96px'; }
+// === Roteador do sidebar master: mostra só a seção ativa, resto oculto. ===
+// Pertencimento de cada card: data-sec explícito > v-obs(=analise) > v-qg(=inicio).
+// Compat: URL /obs cai em "Análise de Dados"; #hash troca de seção sem recarregar.
+const SECS={
+  inicio:['Início','PAINEL DE CONTROLE'],
+  crm:['CRM','LEADS · PROSPECÇÃO · HANDOFF'],
+  analise:['Análise de Dados','OBSERVABILIDADE · LLM · VPS'],
+  config:['Config','PROSPECÇÃO · CONTATOS · CHIP'],
+};
+function secDe(el){
+  if(el.dataset.sec) return el.dataset.sec;
+  if(el.classList.contains('v-obs')) return 'analise';
+  if(el.classList.contains('v-qg')) return 'inicio';
+  return null;
+}
+function mostrarSec(nome){
+  if(!SECS[nome]) nome='inicio';
+  document.querySelectorAll('.main > .v-qg, .main > .v-obs, .main > [data-sec]').forEach(el=>{
+    el.style.display = secDe(el)===nome ? '' : 'none';
+  });
+  document.querySelectorAll('.side a[data-go]').forEach(a=>a.classList.toggle('on',a.dataset.go===nome));
+  const [t,s]=SECS[nome];
+  const et=document.getElementById('sec-titulo'), es=document.getElementById('sec-sub');
+  if(et)et.textContent=t; if(es)es.textContent=s;
+  if(location.hash.slice(1)!==nome) history.replaceState(null,'','#'+nome);
+}
+document.querySelectorAll('.side a[data-go]').forEach(a=>
+  a.addEventListener('click',e=>{e.preventDefault();mostrarSec(a.dataset.go);}));
+window.addEventListener('hashchange',()=>{const h=location.hash.slice(1);if(SECS[h])mostrarSec(h);});
+(function(){  // seção inicial: hash > pathname /obs > início
+  const h=location.hash.slice(1);
+  mostrarSec(SECS[h]?h:(/\/obs\/?$/.test(location.pathname)?'analise':'inicio'));
 })();
 const $=id=>document.getElementById(id);
 const money=v=>"$"+(v||0).toFixed(v<0.01?6:4);
@@ -255,7 +296,7 @@ function render(d){
   $("upd").textContent = "atualizado agora";
 
   // motores — os operáveis viram cards CLICÁVEIS que abrem a ferramenta
-  const ABRIR={"Motor Vídeo":"https://videoshiggs.noemi.digital/","Motor Site":"https://go.noemi.digital/studio/"};
+  const ABRIR={"Motor Vídeo":"https://videoshiggs.noemi.digital/","Motor Site":"https://p.jpos.com.br/studio/"};
   $("motores").innerHTML = d.motores.map(m=>{
     const url=ABRIR[m.nome];
     const sub=m.detalhe?m.detalhe:(m.ping_ms!=null?m.ping_ms+'ms':'sem resposta');
