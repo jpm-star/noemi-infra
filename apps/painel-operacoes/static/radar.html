@@ -48,22 +48,44 @@ function card(a){
   const tags=(a.tags||'').split(',').filter(Boolean).map(t=>`<span class="pill">${esc(t)}</span>`).join(' ');
   const lst=(arr,cor)=>(Array.isArray(arr)?arr:[]).map(x=>`<span class="pill" style="border-color:${cor};color:${cor}">${esc(x)}</span>`).join(' ');
   const linha=(rot,val)=>val?`<div style="margin-top:6px;font-size:.86rem"><b style="color:var(--mut)">${rot}:</b> ${esc(val)}</div>`:'';
+  const ICM={video:'🎬',site:'🌐',negocio:'💼',produto:'📦',operacao:'⚙️',projeto:'🧪'};
+  const mods=a.modelos&&typeof a.modelos==='object'?Object.entries(a.modelos).filter(([,v])=>v):[];
+  const modHtml=mods.length?`<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)">
+    <b style="color:var(--mut);font-size:.8rem">📐 templates replicáveis:</b>
+    ${mods.map(([k,v])=>`<div style="font-size:.82rem;margin-top:3px">${ICM[k]||'•'} <b>${k}:</b> ${esc(v)}</div>`).join('')}</div>`:'';
   const rico=`
     ${(a.onde_usar&&a.onde_usar.length)?`<div style="margin-top:8px;font-size:.82rem"><b style="color:var(--mut)">onde usar:</b> ${lst(a.onde_usar,'var(--cy)')}</div>`:''}
     ${(a.verticais&&a.verticais.length)?`<div style="margin-top:4px;font-size:.82rem"><b style="color:var(--mut)">verticais:</b> ${lst(a.verticais,'var(--ok)')}</div>`:''}
     ${linha('⚡ axioma',a.axioma)}
     ${linha('🧠 assimilar',a.assimilacao)}
-    ${linha('🔗 vs histórico',a.comparacao)}`;
+    ${linha('🔗 vs histórico',a.comparacao)}
+    ${modHtml}`;
   return `<div class="card an" data-id="${a.id}">
-    <h3>${esc(a.origem||'—')} <span class="score">★${a.score||'?'}</span> <span class="pill">${esc(a.categoria||'?')}</span></h3>
+    <h3><span onclick="event.stopPropagation();filtrarOrigem('${esc(a.origem||'')}')" style="cursor:pointer;text-decoration:underline dotted" title="ver só desta origem">${esc(a.origem||'—')}</span> <span class="score">★${a.score||'?'}</span> <span class="pill">${esc(a.categoria||'?')}</span></h3>
     <div class="meta">${(a.data||'').slice(0,10)} · <a href="${esc(a.url)}" target="_blank" rel="noopener">abrir vídeo ↗</a> ${tags}</div>
     <div class="insight">${esc(a.insight||'')}</div>
     ${rico}
-    <div style="margin-top:8px;font-size:.9rem">
+    <div style="margin-top:8px;font-size:.9rem;display:flex;gap:6px;align-items:center">
       <span onclick="event.stopPropagation();fb(${a.id},1,this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;${a.feedback===1?'background:var(--ok);color:#001':''}">👍</span>
       <span onclick="event.stopPropagation();fb(${a.id},-1,this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;${a.feedback===-1?'background:var(--bad);color:#fff':''}">👎</span>
+      <span onclick="event.stopPropagation();copiar(${a.id},this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;border:1px solid var(--line);font-size:.78rem">📋 copiar</span>
+      <span onclick="event.stopPropagation();deletar(${a.id})" style="cursor:pointer;padding:2px 8px;border-radius:6px;color:var(--bad);font-size:.78rem;margin-left:auto" title="apagar">🗑</span>
       <span class="fb-msg" style="color:var(--mut);font-size:.78rem"></span></div>
     <div class="trans" id="tr-${a.id}">carregando transcrição…</div></div>`;
+}
+function filtrarOrigem(o){const b=$('#busca');if(b){b.value=o;b.dispatchEvent(new Event('input'))}}
+function copiar(id,el){
+  const c=el.closest('.an');
+  const insight=c.querySelector('.insight').textContent.trim();
+  const mods=[...c.querySelectorAll('div')].map(d=>d.textContent)
+    .filter(t=>/^(🎬|🌐|💼|📦|⚙️|🧪)/.test(t.trim()));
+  const txt=insight+(mods.length?'\n\nTemplates:\n'+mods.map(m=>'• '+m.trim()).join('\n'):'');
+  navigator.clipboard.writeText(txt).then(()=>{el.textContent='✓ copiado';setTimeout(()=>el.textContent='📋 copiar',1500)});
+}
+async function deletar(id){
+  if(!confirm('Apagar esta análise?'))return;
+  await fetch('/api/radar/deletar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
+  document.querySelector(`.an[data-id="${id}"]`)?.remove();
 }
 async function fb(id,valor,el){
   await fetch('/api/radar/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,valor})});

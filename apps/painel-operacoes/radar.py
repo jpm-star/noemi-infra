@@ -277,14 +277,46 @@ def _extrair_json(texto: str) -> dict | None:
         return None
 
 
-def analisar(url: str, origem: str | None = None, instrucao: str = "") -> dict:
+def _limpar_url(url: str) -> str:
+    """(1) Higiene: tira tracking (utm_*, igshid, fbclid, si, feature) e fragmento →
+    dedup mais confiável + URL limpa. Preserva os params que identificam o vídeo."""
+    from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+    try:
+        p = urlparse(url)
+    except ValueError:
+        return url
+    lixo = ("utm_", "igshid", "fbclid", "gclid", "si", "feature", "ref", "ref_src")
+    q = [(k, v) for k, v in parse_qsl(p.query)
+         if not any(k == b or k.startswith(b) for b in lixo)]
+    return urlunparse(p._replace(query=urlencode(q), fragment=""))
+
+
+def _ja_analisada(url: str) -> dict | None:
+    """(2) Dedup: se essa URL já foi analisada, devolve a análise existente (evita
+    gastar LLM/Whisper de novo). None se é nova."""
+    from shared_core.storage import db
+    try:
+        with db.conn() as c:
+            r = c.execute("SELECT id FROM video_analises WHERE url = ? ORDER BY id DESC LIMIT 1",
+                          (url,)).fetchone()
+    except Exception:  # noqa: BLE001
+        return None
+    return obter(r["id"]) if r else None
+
+
+def analisar(url: str, origem: str | None = None, instrucao: str = "",
+             forcar: bool = False) -> dict:
     """Pipeline por URL: baixa → transcreve → contexto → insight → GRAVA.
-    `instrucao` = pedido do JP na legenda (replicar/adaptar/comparar) — o LLM
-    responde ISSO especificamente em vez do digest genérico."""
+    `instrucao` = pedido do JP na legenda (replicar/adaptar/comparar). `forcar`=True
+    reanalisa mesmo se a URL já existe (senão devolve a análise anterior — economia)."""
     from shared_core.ai import transcricao as trans
-    url = (url or "").strip()
+    url = _limpar_url((url or "").strip())  # (1) higiene
     if not url.startswith("http"):
         raise ValueError("url inválida")
+    if not forcar:  # (2) dedup: não regasta LLM num link já analisado
+        ja = _ja_analisada(url)
+        if ja:
+            return {**ja, "reaproveitada": True}
     origem_dada = (origem or "").strip()
     legenda, handle = _metadados(url)  # caption/título — funciona mesmo quando a mídia não baixa
     texto_audio = ""
@@ -432,6 +464,32 @@ def set_feedback(aid: int, valor: int) -> bool:
         c.execute("UPDATE video_analises SET feedback=? WHERE id=?", (v, aid))
         c.commit()
     return True
+
+
+def stats() -> dict:
+    """(5) Panorama do radar: total, por categoria, top origens, quantas com visão."""
+    from shared_core.storage import db
+    try:
+        with db.conn() as c:
+            total = c.execute("SELECT COUNT(*) n FROM video_analises").fetchone()["n"]
+            cats = {r["categoria"] or "outro": r["n"] for r in c.execute(
+                "SELECT categoria, COUNT(*) n FROM video_analises GROUP BY categoria ORDER BY n DESC")}
+            origens = [{"origem": r["origem"], "n": r["n"]} for r in c.execute(
+                "SELECT origem, COUNT(*) n FROM video_analises GROUP BY origem ORDER BY n DESC LIMIT 8")]
+            com_visao = c.execute(
+                "SELECT COUNT(*) n FROM video_analises WHERE transcricao LIKE '%NA TELA%'").fetchone()["n"]
+    except Exception:  # noqa: BLE001
+        return {"total": 0, "categorias": {}, "origens": [], "com_visao": 0}
+    return {"total": total, "categorias": cats, "origens": origens, "com_visao": com_visao}
+
+
+def deletar(aid: int) -> bool:
+    """(6) Remove uma análise (limpar teste/lixo do radar)."""
+    from shared_core.storage import db
+    with db.conn() as c:
+        cur = c.execute("DELETE FROM video_analises WHERE id=?", (aid,))
+        c.commit()
+    return cur.rowcount > 0
 
 
 if __name__ == "__main__":  # self-check: origem + json + degradação (sem rede)

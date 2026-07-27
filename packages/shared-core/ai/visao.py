@@ -49,9 +49,15 @@ def analisar_frames(frames: list[bytes], *, prompt: str | None = None,
 
 def _ocr(frames: list[bytes]) -> str:
     """Tesseract em cada frame → texto na tela, dedup entre frames. '' se falhar."""
+    import hashlib
     vistos: set[str] = set()
     unicos: list[str] = []
+    frames_vistos: set[str] = set()  # dedup de frame idêntico (reel repete) → menos OCR
     for b in frames[:8]:
+        h = hashlib.md5(b).hexdigest()
+        if h in frames_vistos:
+            continue
+        frames_vistos.add(h)
         caminho = None
         try:
             with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:

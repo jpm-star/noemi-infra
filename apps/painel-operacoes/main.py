@@ -250,13 +250,28 @@ async def radar_analisar(req: Request) -> JSONResponse:
     url = str(corpo.get("url") or "").strip()
     origem = str(corpo.get("origem") or "").strip() or None
     instrucao = str(corpo.get("instrucao") or "")  # pedido do JP → responde específico
+    forcar = bool(corpo.get("forcar"))  # (6) reanalisar mesmo se já existe
     if not url.startswith("http"):
         return JSONResponse({"ok": False, "erro": "cole um link http(s) válido"}, status_code=400)
     try:  # pipeline pesado (download+STT) roda fora do event loop
-        res = await asyncio.to_thread(radar.analisar, url, origem, instrucao)
+        res = await asyncio.to_thread(radar.analisar, url, origem, instrucao, forcar)
         return JSONResponse({"ok": True, "analise": res})
     except Exception as e:  # noqa: BLE001 — vira erro legível, não 500 cru
         return JSONResponse({"ok": False, "erro": str(e)[:300]}, status_code=422)
+
+
+@app.get("/api/radar/stats")
+def radar_stats() -> JSONResponse:
+    import radar
+    return JSONResponse(radar.stats())
+
+
+@app.post("/api/radar/deletar")
+async def radar_deletar(req: Request) -> JSONResponse:
+    import radar
+    corpo = await req.json()
+    ok = radar.deletar(int(corpo.get("id") or 0))
+    return JSONResponse({"ok": ok})
 
 
 @app.get("/api/radar/analises")
