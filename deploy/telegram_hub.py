@@ -117,25 +117,30 @@ def _processar_msg(m: dict, chat_alvo: str) -> str | None:
     if vid and vid.get("file_id"):
         # teto de 20MB do getFile de bot: avisa ANTES de tentar (reel HD estoura)
         if (vid.get("file_size") or 0) > 20 * 1024 * 1024:
-            _responder(chat, "✗ esse vídeo tem mais de 20MB — o Telegram não deixa o "
-                             "bot baixar arquivo desse tamanho. Manda um trecho mais curto "
-                             "ou comprime (ou manda o link, que eu leio a legenda).")
+            _responder(chat, "✗ vídeo >20MB — é limite do **Telegram** pra bots (não meu, "
+                             "não dá pra subir). Caminho pra vídeo grande: joga no **Google "
+                             "Drive** e me manda o LINK (leio o vídeo inteiro), ou manda o "
+                             "link do **YouTube** (baixo só o áudio). Link não tem limite.")
+            radar.registrar_job(False, origem=conta or "telegram", motivo="arquivo >20MB (limite Telegram)")
             return "arquivo_grande"
         _responder(chat, "🎬 recebi o vídeo, analisando…")
         with tempfile.TemporaryDirectory(prefix="tg_") as td:
             arq, erro = _baixar_arquivo(vid["file_id"], Path(td))
             if not arq:
-                msg = ("✗ esse vídeo passa de 20MB — limite do Telegram pra bots. "
-                       "Manda um trecho curto/comprimido." if erro == "grande"
+                msg = ("✗ vídeo >20MB — limite do Telegram pra bots. Joga no Google Drive "
+                       "e me manda o LINK (sem limite), ou o link do YouTube." if erro == "grande"
                        else "✗ não consegui baixar o arquivo do Telegram — tenta reenviar.")
                 _responder(chat, msg)
+                radar.registrar_job(False, origem=conta or "telegram", motivo=f"download {erro}")
                 return f"download_falhou_{erro}"
             try:
                 a = radar.analisar_arquivo(str(arq), origem=conta or "telegram", instrucao=instr)
                 _responder(chat, _fmt_insight(a))
+                radar.registrar_job(True, origem=a.get("origem") or conta or "telegram", url="(vídeo enviado)")
                 return f"video ok id={a['id']}"
             except Exception as e:  # noqa: BLE001
                 _responder(chat, f"✗ falhou: {str(e)[:200]}")
+                radar.registrar_job(False, origem=conta or "telegram", motivo=str(e)[:150])
                 return "analise_falhou"
     # 2) link no texto
     txt = m.get("text") or m.get("caption") or ""
@@ -146,6 +151,7 @@ def _processar_msg(m: dict, chat_alvo: str) -> str | None:
         try:
             a = radar.analisar(url, origem=conta or None, instrucao=instr)  # legenda > metadado > url
             _responder(chat, _fmt_insight(a))
+            radar.registrar_job(True, origem=a.get("origem") or "", url=url)
             return f"link ok id={a['id']}"
         except Exception as e:  # noqa: BLE001
             # IG/YT bloqueiam IP de datacenter (ou a sessão venceu) → guia pro caminho
@@ -156,6 +162,7 @@ def _processar_msg(m: dict, chat_alvo: str) -> str | None:
                     if "instagram" in url.lower()
                     else "\n\n💡 Se o link não abrir, me manda o vídeo direto que eu analiso.")
             _responder(chat, f"✗ {str(e)[:160]}{dica}")
+            radar.registrar_job(False, origem=conta or "", url=url, motivo=str(e)[:150])
             return "link_falhou"
     return None
 
@@ -194,6 +201,7 @@ if __name__ == "__main__":
                                                "insight": instrucao or "x", "onde_usar": ["a"], "verticais": [], "axioma": "", "assimilacao": ""}
         mod.analisar_arquivo = lambda p, origem=None, url_ref="", instrucao="": {"id": 2, "categoria": "mkt", "score": 4, "insight": "y",
                                                        "onde_usar": [], "verticais": [], "axioma": "", "assimilacao": ""}
+        mod.registrar_job = lambda ok, **k: None
         sys.modules["radar"] = mod
         globals()["_responder"] = lambda c, t: vistos.append(t)
         globals()["_baixar_arquivo"] = lambda fid, d: (Path("/tmp/fake.mp4"), "")

@@ -492,6 +492,42 @@ def deletar(aid: int) -> bool:
     return cur.rowcount > 0
 
 
+def registrar_job(ok: bool, *, origem: str = "", url: str = "", motivo: str = "") -> None:
+    """Log de job do radar (sucesso E falha) → visibilidade no /obs. Fire-and-forget:
+    falha em logar nunca derruba a análise. Guarda os últimos jobs pra status."""
+    from datetime import datetime, timezone
+
+    from shared_core.storage import db
+    try:
+        with db.conn() as c:
+            c.execute("CREATE TABLE IF NOT EXISTS radar_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                      "ts TEXT, ok INTEGER, origem TEXT, url TEXT, motivo TEXT)")
+            c.execute("INSERT INTO radar_jobs (ts,ok,origem,url,motivo) VALUES (?,?,?,?,?)",
+                      (datetime.now(timezone.utc).isoformat(), 1 if ok else 0,
+                       origem[:80], url[:300], motivo[:200]))
+            c.execute("DELETE FROM radar_jobs WHERE id < (SELECT MAX(id)-200 FROM radar_jobs)")  # só últimos 200
+            c.commit()
+    except Exception:  # noqa: BLE001 — log é secundário
+        pass
+
+
+def status_jobs(limite: int = 12) -> dict:
+    """(5) Status do radar pro /obs: últimos jobs (ok/falha/motivo) + taxa de sucesso."""
+    from shared_core.storage import db
+    try:
+        with db.conn() as c:
+            c.execute("CREATE TABLE IF NOT EXISTS radar_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                      "ts TEXT, ok INTEGER, origem TEXT, url TEXT, motivo TEXT)")
+            rows = [dict(r) for r in c.execute(
+                "SELECT ts, ok, origem, url, motivo FROM radar_jobs ORDER BY id DESC LIMIT ?", (limite,))]
+            tot = c.execute("SELECT COUNT(*) n, COALESCE(SUM(ok),0) s FROM radar_jobs").fetchone()
+    except Exception:  # noqa: BLE001
+        return {"jobs": [], "total": 0, "sucesso_pct": None}
+    n = tot["n"] or 0
+    return {"jobs": rows, "total": n,
+            "sucesso_pct": round(100 * tot["s"] / n) if n else None}
+
+
 if __name__ == "__main__":  # self-check: origem + json + degradação (sem rede)
     assert _origem_da_url("https://www.instagram.com/reel/ABC/") == "instagram.com" or \
            _origem_da_url("https://www.instagram.com/lojax/reel/ABC/") == "@lojax"

@@ -47,6 +47,24 @@ def analisar_frames(frames: list[bytes], *, prompt: str | None = None,
     return (ocr, "ocr") if ocr else ("", "sem_visao")
 
 
+def _preproc_ocr(b: bytes) -> bytes:
+    """Pré-processa o frame pro OCR: escala de cinza + upscale 2x (lanczos) +
+    autocontraste → Tesseract lê texto pequeno/overlay muito melhor. Fallback pro
+    bytes cru se PIL não estiver disponível (nunca quebra)."""
+    try:
+        import io
+
+        from PIL import Image, ImageOps
+        im = Image.open(io.BytesIO(b)).convert("L")
+        im = im.resize((im.width * 2, im.height * 2), Image.LANCZOS)
+        im = ImageOps.autocontrast(im, cutoff=2)
+        buf = io.BytesIO()
+        im.save(buf, "PNG")
+        return buf.getvalue()
+    except Exception:  # noqa: BLE001 — sem PIL/erro → OCR no frame original
+        return b
+
+
 def _ocr(frames: list[bytes]) -> str:
     """Tesseract em cada frame → texto na tela, dedup entre frames. '' se falhar."""
     import hashlib
@@ -60,8 +78,8 @@ def _ocr(frames: list[bytes]) -> str:
         frames_vistos.add(h)
         caminho = None
         try:
-            with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
-                f.write(b)
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+                f.write(_preproc_ocr(b))  # upscale+cinza+contraste → Tesseract lê texto pequeno melhor
                 caminho = f.name
             out = subprocess.run(["tesseract", caminho, "stdout", "-l", "por+eng"],
                                  capture_output=True, text=True, timeout=30).stdout

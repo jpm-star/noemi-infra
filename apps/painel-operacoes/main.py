@@ -266,6 +266,13 @@ def radar_stats() -> JSONResponse:
     return JSONResponse(radar.stats())
 
 
+@app.get("/api/radar/status")
+def radar_status() -> JSONResponse:
+    """Status do radar pro /obs: últimos jobs (ok/falha/motivo) + taxa de sucesso."""
+    import radar
+    return JSONResponse(radar.status_jobs())
+
+
 @app.post("/api/radar/deletar")
 async def radar_deletar(req: Request) -> JSONResponse:
     import radar

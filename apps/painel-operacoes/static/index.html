@@ -109,6 +109,11 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
 
 <div class="card diag v-obs"><h3>💡 Diagnóstico da operação · IA</h3><div id="diag-body" class="empty">analisando…</div></div>
 
+<div class="card v-obs" id="radar-status-card" style="margin-bottom:12px">
+  <h3>📡 Radar · últimos jobs <span id="radar-status-sub" style="color:var(--mut);font-weight:400;font-size:.8rem"></span></h3>
+  <div id="radar-status-body" class="empty" style="font-size:.85rem">—</div>
+</div>
+
 <div class="card v-qg" id="leads-card" style="margin-bottom:12px">
   <h3>🎯 Captação de leads <span id="leads-sub" style="color:var(--mut);font-weight:400;font-size:.8rem"></span>
     <a href="/api/leads/export.csv" style="float:right;font-size:.8rem;background:var(--cy);color:#001;padding:4px 12px;border-radius:6px;text-decoration:none;font-weight:600">⬇ exportar CSV</a></h3>
@@ -382,6 +387,17 @@ async function diag(){
     if($("diag-body").querySelector('.dica')===null) $("diag-body").innerHTML='<div class="empty off">IA lenta — reprocessando…</div>';
   }finally{clearTimeout(to);}
 }
+async function radarStatus(){
+  try{const d=await (await fetch('api/radar/status')).json();
+    const j=d.jobs||[];
+    $("radar-status-sub").textContent = d.total?`${d.total} jobs · ${d.sucesso_pct}% ok`:'';
+    $("radar-status-body").innerHTML = j.length ? j.slice(0,8).map(x=>{
+      const ic=x.ok?'<span style="color:var(--ok)">✓</span>':'<span style="color:var(--bad)">✗</span>';
+      const alvo=x.origem||x.url||'—'; const mot=x.ok?'':` · <span style="color:var(--warn)">${(x.motivo||'').slice(0,60)}</span>`;
+      return `<div style="padding:3px 0;border-bottom:1px solid rgba(27,41,66,.4)">${ic} ${alvo}${mot}</div>`;
+    }).join('') : '<div class="empty">sem jobs ainda — manda um vídeo/link pro @noemi_alert_bot</div>';
+  }catch(e){}
+}
 // Prospecção: cada demo vira um card clicável com status colorido (funil de venda).
 const ST={gerada:['b-warn','gerada'],enviada:['b-ok','enviada'],respondida:['b-ok','respondida'],fechada:['b-ok','✓ fechada']};
 async function prospeccao(){
@@ -495,6 +511,7 @@ tick(); setInterval(tick, 4000);
 setInterval(()=>{if(_ultimoTs){const s=Math.round((Date.now()-_ultimoTs)/1000);
   $("upd").textContent = s<2?'atualizado agora':`atualizado há ${s}s`;}},1000);
 diag(); setInterval(diag, 90000);
+radarStatus(); setInterval(radarStatus, 60000);
 prospeccao(); setInterval(prospeccao, 30000);
 prospConfig();
 </script>
