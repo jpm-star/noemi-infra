@@ -25,6 +25,10 @@ _AQUI = Path(__file__).resolve().parent
 sys.path.insert(0, str(_AQUI.parents[1] / "packages"))
 
 CATEGORIAS = {"marketing", "vendas", "produto", "mindset", "operação", "concorrente", "outro"}
+# Motores do JP pra onde um insight pode ser ROTEADO (upgrade c). O Radar deixa de
+# ser só um digest e vira distribuidor: cada sacada ganha o(s) motor(es) onde é
+# acionável, e a Caixa de Ideias consome isso agrupado por motor.
+MOTORES = {"arbitragem", "motor-site", "motor-b", "noemi"}
 
 
 def _origem_da_url(url: str) -> str:
@@ -95,16 +99,31 @@ def _metadados(link: str) -> tuple[str, str]:
 
 
 def _frames(video_path: str, destino: Path, n: int = 6) -> list[bytes]:
-    """~n frames JPEG espalhados no vídeo (ffmpeg, 1 a cada 2s, cap n). É o que dá
-    OLHOS pro radar: lê o que está na TELA (produto/UI/código). [] se ffmpeg falhar."""
+    """~n frames JPEG do vídeo, um por CENA (upgrade a). É o que dá OLHOS pro radar:
+    lê o que está na TELA (produto/UI/código). Amostragem por scene-detect (pega o
+    instante em que a tela MUDA — produto novo, preço, corte) em vez de 1 a cada 2s
+    (que num reel estático devolve o mesmo frame repetido). Cai pra amostragem
+    uniforme se o vídeo tiver poucos cortes. [] se ffmpeg falhar de vez."""
     padrao = str(destino / "f_%03d.jpg")
-    try:
-        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(video_path),
-                        "-vf", "fps=1/2,scale=768:-1", "-frames:v", str(n), padrao],
-                       check=True, capture_output=True, timeout=120)
-    except Exception:  # noqa: BLE001 — visão é best-effort; áudio/legenda seguem
-        return []
-    return [p.read_bytes() for p in sorted(destino.glob("f_*.jpg"))[:n]]
+
+    def _rodar(vf: str) -> list[bytes]:
+        try:
+            subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(video_path),
+                            "-vf", vf, "-vsync", "vfr", "-frames:v", str(n), padrao],
+                           check=True, capture_output=True, timeout=120)
+        except Exception:  # noqa: BLE001 — visão é best-effort; áudio/legenda seguem
+            return []
+        return [p.read_bytes() for p in sorted(destino.glob("f_*.jpg"))[:n]]
+
+    fr = _rodar("select='gt(scene,0.3)',scale=768:-1")  # 1 frame por troca de cena
+    if len(fr) >= 2:
+        return fr
+    for p in destino.glob("f_*.jpg"):  # limpa os poucos da tentativa de cena
+        try:
+            p.unlink()
+        except OSError:
+            pass
+    return _rodar("fps=1/2,scale=768:-1")  # fallback: vídeo estático/sem cortes
 
 
 def _combinar(visao: str, legenda: str, audio: str) -> str:
@@ -188,6 +207,10 @@ _PROMPT_BASE = (
     "Você é o Radar de Vídeo do JP (Noemi OS: SDR/IA no WhatsApp que ele VENDE pra "
     "clínicas/PMEs; também geração de site/vídeo, growth, arbitragem). Dada a TRANSCRIÇÃO "
     "de um vídeo (dica de marketing/vendas/produto) e o histórico, seja AFIADO e prático.\n"
+    "REGRA DE FUSÃO DE SINAIS: as fontes vêm rotuladas (TELA/visão, LEGENDA/título, "
+    "ÁUDIO/transcrição). Se divergirem sobre O QUE é o produto/oferta, priorize "
+    "TELA > LEGENDA > ÁUDIO (o áudio pode ser só música de fundo — não deixe ele "
+    "definir o produto se a tela mostra outra coisa). Produza UMA análise coesa.\n"
     "Responda SOMENTE JSON com as chaves:\n"
     '"insight" (2-4 frases acionáveis — a sacada central, conectando com o histórico), '
     '"resumo" (1 frase), '
@@ -205,6 +228,10 @@ _PROMPT_BASE = (
     '{"video":"gancho/formato específico","site":"seção/oferta específica","negocio":'
     '"como monetiza, concreto","produto":"produto/feature nomeável","operacao":'
     '"automação/passo concreto","projeto":"experimento testável"}), '
+    f'"motores" (lista dos motores do JP onde ESTE insight é acionável, subconjunto '
+    f'de {sorted(MOTORES)} — arbitragem=garimpo/revenda, motor-site=gerador de sites, '
+    f'motor-b=gerador de vídeo, noemi=SDR/IA no WhatsApp. [] se nenhum for claro; '
+    f'NÃO chute — só quando o insight realmente serve pra aquele motor), '
     f'"categoria" (um de {sorted(CATEGORIAS)}), '
     '"score" (inteiro 1-5 de relevância pro JP), '
     '"tags" (lista de 3-6 palavras-chave minúsculas).'
@@ -240,7 +267,7 @@ def _insight(transcricao: str, contexto: list[dict], instrucao: str = "") -> dic
                 "resumo": (frase[0] if frase else "")[:160], "categoria": "outro",
                 "score": 1, "tags": [], "fonte": "extrativo",
                 "onde_usar": [], "verticais": [], "axioma": "", "assimilacao": "", "comparacao": "",
-                "modelos": {}}
+                "modelos": {}, "motores": []}
     cat = str(bruto.get("categoria", "outro")).strip().lower()
     try:
         score = max(1, min(5, int(bruto.get("score", 1))))
@@ -255,8 +282,19 @@ def _insight(transcricao: str, contexto: list[dict], instrucao: str = "") -> dic
         out = {k: str(d.get(k, "")).strip()[:200] for k in
                ("video", "site", "negocio", "produto", "operacao", "projeto")}
         return {k: val for k, val in out.items() if val}  # só os que têm ação real
+
+    def _motores(v):  # roteamento (upgrade c): só os motores válidos, sem duplicar
+        if not isinstance(v, list):
+            return []
+        vistos = []
+        for x in v:
+            m = str(x).strip().lower().replace("_", "-")
+            if m in MOTORES and m not in vistos:
+                vistos.append(m)
+        return vistos
     return {"insight": str(bruto.get("insight", "")).strip()[:1200] or "(sem insight)",
             "modelos": _modelos(bruto.get("modelos")),
+            "motores": _motores(bruto.get("motores")),
             "resumo": str(bruto.get("resumo", "")).strip()[:200],
             "onde_usar": _lista(bruto.get("onde_usar")), "verticais": _lista(bruto.get("verticais")),
             "axioma": str(bruto.get("axioma", "")).strip()[:240],
@@ -370,10 +408,13 @@ def _processar(texto: str, origem: str, url: str, instrucao: str = "") -> dict:
     from shared_core.storage import db
     contexto = _contexto_anterior(origem)
     ins = _insight(texto, contexto, instrucao)
+    # legenda que o JP mandou junto (upgrade d): grava no registro, não só usa no
+    # prompt — pra rastrear DEPOIS o que ele pediu sobre cada vídeo.
+    ins["pedido"] = (instrucao or "").strip()[:400]
     data = datetime.now(timezone.utc).isoformat()
     detalhe = json.dumps({k: ins.get(k) for k in
                           ("onde_usar", "verticais", "axioma", "assimilacao", "comparacao",
-                           "modelos", "fonte")},
+                           "modelos", "motores", "pedido", "fonte")},
                          ensure_ascii=False)
     with db.conn() as c:
         cur = c.execute(
@@ -412,13 +453,17 @@ def _expandir(d: dict) -> dict:
         det = json.loads(d.get("detalhe") or "{}")
         if isinstance(det, dict):
             d.update({k: det.get(k) for k in
-                      ("onde_usar", "verticais", "axioma", "assimilacao", "comparacao", "modelos")})
+                      ("onde_usar", "verticais", "axioma", "assimilacao", "comparacao",
+                       "modelos", "motores", "pedido")})
     except (ValueError, TypeError):
         pass
     return d
 
 
 _DOMINIOS = ("video", "site", "negocio", "produto", "operacao", "projeto")
+# Qual template de domínio melhor serve cada motor (pra Caixa por-motor, upgrade e).
+_MOTOR_DOMINIO = {"arbitragem": ("negocio", "produto"), "motor-site": ("site",),
+                  "motor-b": ("video",), "noemi": ("operacao", "negocio")}
 
 
 def harvest_ideias(limite: int = 300) -> dict:
@@ -427,26 +472,39 @@ def harvest_ideias(limite: int = 300) -> dict:
     rastrear de onde veio. É uma VIEW sobre video_analises — não duplica storage."""
     from shared_core.storage import db
     grupos: dict[str, list] = {k: [] for k in _DOMINIOS}
+    por_motor: dict[str, list] = {m: [] for m in sorted(MOTORES)}
     try:
         with db.conn() as c:
             rows = c.execute(
                 "SELECT id, origem, url, data, score, detalhe FROM video_analises "
                 "ORDER BY COALESCE(feedback,0) DESC, score DESC, id DESC LIMIT ?", (limite,)).fetchall()
     except Exception:  # noqa: BLE001 — sem dados ainda é OK
-        return {"grupos": grupos, "total": 0}
+        return {"grupos": grupos, "por_motor": por_motor, "total": 0}
     total = 0
     for r in rows:
         try:
-            mods = (json.loads(r["detalhe"] or "{}") or {}).get("modelos") or {}
+            det = json.loads(r["detalhe"] or "{}") or {}
         except (ValueError, TypeError):
             continue
+        mods = det.get("modelos") or {}
+        fonte = {"origem": r["origem"], "url": r["url"], "data": r["data"],
+                 "score": r["score"], "aid": r["id"]}
         for dom in _DOMINIOS:
             ideia = (mods.get(dom) or "").strip()
             if ideia:
-                grupos[dom].append({"ideia": ideia, "origem": r["origem"], "url": r["url"],
-                                    "data": r["data"], "score": r["score"], "aid": r["id"]})
+                grupos[dom].append({"ideia": ideia, **fonte})
                 total += 1
-    return {"grupos": grupos, "total": total}
+        # upgrade e: a Caixa CONSOME o roteamento — cada motor ganha a ideia mais
+        # relevante daquele vídeo (o template do domínio que casa com o motor).
+        for motor in (det.get("motores") or []):
+            if motor not in por_motor:
+                continue
+            ideia = next((mods.get(d, "").strip() for d in _MOTOR_DOMINIO.get(motor, ())
+                          if (mods.get(d) or "").strip()),
+                         next((v.strip() for v in mods.values() if (v or "").strip()), ""))
+            if ideia:
+                por_motor[motor].append({"ideia": ideia, **fonte})
+    return {"grupos": grupos, "por_motor": por_motor, "total": total}
 
 
 def obter(aid: int) -> dict | None:
@@ -534,4 +592,26 @@ if __name__ == "__main__":  # self-check: origem + json + degradação (sem rede
     assert _extrair_json('lixo {"a":1} fim') == {"a": 1}
     d = _insight("Primeira frase. Segunda frase. Terceira.", [])  # proxy provavelmente fora
     assert d["categoria"] in CATEGORIAS and 1 <= d["score"] <= 5, d
-    print("radar OK — origem/json/insight degradado:", d["fonte"])
+    assert d["motores"] == [], d  # degradado não roteia pra motor nenhum
+
+    # upgrade c: valida/filtra motores do LLM (whitelist + dedup + normaliza _→-)
+    def _fake_completar(*a, **k):
+        return ('{"insight":"x","categoria":"vendas","score":4,"motores":'
+                '["arbitragem","MOTOR_SITE","inexistente","arbitragem"],'
+                '"modelos":{"site":"landing de leilão","negocio":"revende com 30%"}}')
+    import shared_core.ai.llm_proxy as _lp
+    _orig = _lp.completar
+    _lp.completar = _fake_completar
+    try:
+        r = _insight("qualquer", [])
+        assert r["motores"] == ["arbitragem", "motor-site"], r["motores"]  # dedup+whitelist+normaliza
+    finally:
+        _lp.completar = _orig
+
+    # upgrade e: harvest agrupa por motor usando o template de domínio que casa
+    linha = {"motores": ["arbitragem", "motor-site"],
+             "modelos": {"site": "landing de leilão", "negocio": "revende com 30%"}}
+    dom_arb = next((linha["modelos"].get(dd, "") for dd in _MOTOR_DOMINIO["arbitragem"]
+                    if linha["modelos"].get(dd)), "")
+    assert dom_arb == "revende com 30%", dom_arb  # arbitragem prefere negocio/produto
+    print("radar OK — origem/json/insight degradado:", d["fonte"], "· motores+harvest OK")

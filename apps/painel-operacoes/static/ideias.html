@@ -28,8 +28,15 @@ a{color:var(--cy)}h1{font-size:1.4rem;margin:.2em 0}.sub{color:var(--mut);font-s
 const $ = id => document.getElementById(id);
 const META = {video:['🎬','Vídeo'],site:['🌐','Site'],negocio:['💼','Negócio'],
               produto:['📦','Produto'],operacao:['⚙️','Operação'],projeto:['🧪','Projeto']};
-let DADOS = {grupos:{},total:0}, filtro = 'todos';
+// upgrade e: a Caixa consome o ROTEAMENTO do Radar — ideias agrupadas por motor.
+const MOTOR_META = {'arbitragem':['💱','Arbitragem'],'motor-site':['🌐','Motor Site'],
+                    'motor-b':['🎬','Motor B'],'noemi':['💬','Noemi']};
+let DADOS = {grupos:{},por_motor:{},total:0}, filtro = 'todos', vista = 'dominio';
 
+function ativo(){
+  return vista==='motor' ? {meta:MOTOR_META, g:DADOS.por_motor||{}}
+                         : {meta:META, g:DADOS.grupos||{}};
+}
 function fonte(i){
   const d = (i.data||'').slice(0,10);
   const org = i.origem || '—';
@@ -37,25 +44,31 @@ function fonte(i){
   return `de ${link} · ${d} · ★${i.score??'?'}`;
 }
 function render(){
-  const g = DADOS.grupos||{};
-  const doms = Object.keys(META).filter(d => (filtro==='todos'||filtro===d) && (g[d]||[]).length);
+  const {meta,g} = ativo();
   if(!DADOS.total){ $('lista').innerHTML = `<p class="empty">Ainda sem ideias. Manda vídeos pro Radar (@noemi_alert_bot) que a caixa enche sozinha.</p>`; return; }
-  $('lista').innerHTML = doms.map(d => {
+  const chaves = Object.keys(meta).filter(d => (filtro==='todos'||filtro===d) && (g[d]||[]).length);
+  $('lista').innerHTML = chaves.map(d => {
     const its = g[d]||[];
-    const ic = META[d];
+    const ic = meta[d];
     return `<div class="dom"><h2>${ic[0]} ${ic[1]} <span class="n">${its.length}</span></h2>`+
       its.map(i => `<div class="ideia"><div class="txt">${i.ideia}</div><div class="src">${fonte(i)}</div></div>`).join('')+
     `</div>`;
-  }).join('') || `<p class="empty">nada nesse filtro</p>`;
+  }).join('') || `<p class="empty">nada nesse ${vista==='motor'?'motor':'domínio'}</p>`;
 }
 function pintarFiltros(){
-  const g = DADOS.grupos||{};
+  const {meta,g} = ativo();
   const cnt = d => (g[d]||[]).length;
-  const chips = [['todos','Tudo',DADOS.total]].concat(
-    Object.keys(META).filter(d=>cnt(d)).map(d=>[d,META[d][0]+' '+META[d][1],cnt(d)]));
-  $('filtros').innerHTML = chips.map(([k,l,n])=>
-    `<span class="chip ${k===filtro?'on':''}" onclick="filtro='${k}';pintarFiltros();render()">${l} (${n})</span>`).join('');
+  const total = Object.keys(meta).reduce((s,d)=>s+cnt(d),0);
+  const chips = [['todos','Tudo',total]].concat(
+    Object.keys(meta).filter(d=>cnt(d)).map(d=>[d,meta[d][0]+' '+meta[d][1],cnt(d)]));
+  $('filtros').innerHTML =
+    `<span class="chip ${vista==='dominio'?'on':''}" onclick="setVista('dominio')">📂 Por domínio</span>`+
+    `<span class="chip ${vista==='motor'?'on':''}" onclick="setVista('motor')">🚀 Por motor</span>`+
+    `<span style="flex-basis:100%;height:0"></span>`+
+    chips.map(([k,l,n])=>
+      `<span class="chip ${k===filtro?'on':''}" onclick="filtro='${k}';pintarFiltros();render()">${l} (${n})</span>`).join('');
 }
+window.setVista = v => { vista=v; filtro='todos'; pintarFiltros(); render(); };
 fetch('/api/ideias').then(r=>r.json()).then(d=>{DADOS=d;pintarFiltros();render();})
   .catch(()=>{$('lista').innerHTML='<p class="empty">erro ao carregar</p>';});
 </script>

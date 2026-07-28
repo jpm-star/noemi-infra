@@ -87,6 +87,8 @@ def _baixar_arquivo(file_id: str, destino: Path) -> tuple[Path | None, str]:
 def _fmt_insight(a: dict) -> str:
     """Formata a resposta rica pro Telegram."""
     l = [f"📡 *{a.get('categoria','?')}* · ★{a.get('score','?')}", "", a.get("insight", "")]
+    if a.get("motores"):  # roteamento (upgrade c): pra quais motores isto serve
+        l.append("\n🚀 motores: " + ", ".join(a["motores"]))
     if a.get("onde_usar"):
         l.append("\n🎯 onde usar: " + ", ".join(a["onde_usar"]))
     if a.get("verticais"):
