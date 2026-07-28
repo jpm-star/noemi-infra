@@ -190,8 +190,13 @@ def auto_analise() -> list[dict]:
             c.execute("INSERT INTO auto_insights (ts,nivel,achado,acao,origem,score) VALUES (?,?,?,?,?,?)",
                       (ts, i["nivel"], i["achado"], i["acao"], i["origem"], i["score"]))
         c.commit()
-    # vermelho primeiro, depois por score
-    return sorted(out, key=lambda x: (x["nivel"] != "vermelho", -x["score"]))
+    ordenado = sorted(out, key=lambda x: (x["nivel"] != "vermelho", -x["score"]))
+    try:  # task 3: vermelho dispara alerta de e-mail (INERTE sem credencial, nunca crasha)
+        import alertas
+        alertas.alertar_vermelhos(ordenado)
+    except Exception:  # noqa: BLE001 — alerta é secundário à análise
+        pass
+    return ordenado
 
 
 def listar_auto() -> list[dict]:
