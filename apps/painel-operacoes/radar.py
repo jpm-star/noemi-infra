@@ -430,30 +430,64 @@ def analisar_arquivo(caminho: str, origem: str = "telegram", url_ref: str = "",
     return _processar(texto, origem, url_ref, instrucao)
 
 
-def _processar(texto: str, origem: str, url: str, instrucao: str = "") -> dict:
-    """Núcleo compartilhado: contexto → insight → grava → devolve."""
+# ═══════════════════════════════════════════════════════════════════════════
+# FRONTEIRA fonte↔núcleo (Radar Omnisciente). Um ADAPTER (reel hoje; SDR/site/
+# auto-observação depois) produz uma OBSERVAÇÃO no formato padrão abaixo. O NÚCLEO
+# (processar_observacao → _insight, as 5 camadas) processa QUALQUER fonte sem saber
+# de onde veio. A fonte não conhece o núcleo; o núcleo não conhece a fonte —
+# trocar/somar adapter não reescreve o núcleo. `fonte_tipo` fica gravado pra o
+# cruzamento entre-fontes (um padrão em reel E em conversa do SDR = sinal mais forte).
+# ═══════════════════════════════════════════════════════════════════════════
+FONTES = ("reel", "sdr", "site", "relatorio")  # tipos de adapter (reel = único hoje)
+
+
+def observacao(texto: str, *, origem: str = "", ref: str = "", instrucao: str = "",
+               fonte_tipo: str = "reel") -> dict:
+    """Monta a OBSERVAÇÃO padrão que todo adapter emite pro núcleo. `texto` é o
+    conteúdo já fundido/rotulado (TELA/LEGENDA/ÁUDIO no reel; será conversa no SDR,
+    tráfego no site). `ref` = url/id de rastreio. `fonte_tipo` = de qual adapter veio."""
+    return {"texto": texto, "origem": origem, "ref": ref,
+            "instrucao": instrucao,
+            "fonte_tipo": fonte_tipo if fonte_tipo in FONTES else "reel"}
+
+
+def processar_observacao(obs: dict) -> dict:
+    """NÚCLEO genérico: recebe uma observação padrão (de QUALQUER adapter) → roda as
+    5 camadas (_insight) → grava → devolve. Não sabe da fonte; só do formato padrão."""
     from shared_core.storage import db
+    texto = obs.get("texto", "")
+    origem = obs.get("origem", "")
+    ref = obs.get("ref", "")
+    instrucao = obs.get("instrucao", "")
+    fonte_tipo = obs.get("fonte_tipo", "reel")
     contexto = _contexto_anterior(origem)
     ins = _insight(texto, contexto, instrucao)
-    # legenda que o JP mandou junto (upgrade d): grava no registro, não só usa no
-    # prompt — pra rastrear DEPOIS o que ele pediu sobre cada vídeo.
-    ins["pedido"] = (instrucao or "").strip()[:400]
+    ins["pedido"] = (instrucao or "").strip()[:400]  # upgrade d: grava a legenda/pedido
+    ins["fonte_tipo"] = fonte_tipo                     # de qual adapter veio (cruzamento futuro)
     data = datetime.now(timezone.utc).isoformat()
     detalhe = json.dumps({k: ins.get(k) for k in
                           ("onde_usar", "verticais", "axioma", "assimilacao", "comparacao",
-                           "modelos", "motores", "pedido", "fonte",
+                           "modelos", "motores", "pedido", "fonte", "fonte_tipo",
                            "vertical", "vertical_nova", "marketing", "ferramentas")},
                          ensure_ascii=False)
     with db.conn() as c:
         cur = c.execute(
             "INSERT INTO video_analises (origem, url, data, transcricao, insight, categoria, score, tags, detalhe) "
             "VALUES (?,?,?,?,?,?,?,?,?)",
-            (origem, url, data, texto, ins["insight"], ins["categoria"], ins["score"],
+            (origem, ref, data, texto, ins["insight"], ins["categoria"], ins["score"],
              ",".join(ins["tags"]), detalhe))
         c.commit()
         aid = cur.lastrowid
-    return {"id": aid, "origem": origem, "url": url, "data": data,
+    return {"id": aid, "origem": origem, "url": ref, "data": data,
             "transcricao": texto, "usou_contexto": len(contexto), **ins}
+
+
+def _processar(texto: str, origem: str, url: str, instrucao: str = "") -> dict:
+    """Shim de retrocompat: o adapter de REEL (analisar/analisar_arquivo) chama aqui.
+    Vira uma observação padrão fonte_tipo=reel e delega pro núcleo genérico —
+    comportamento idêntico ao de antes do refactor."""
+    return processar_observacao(observacao(texto, origem=origem, ref=url,
+                                           instrucao=instrucao, fonte_tipo="reel"))
 
 
 def listar(q: str | None = None, limite: int = 40) -> list[dict]:
@@ -482,7 +516,7 @@ def _expandir(d: dict) -> dict:
         if isinstance(det, dict):
             d.update({k: det.get(k) for k in
                       ("onde_usar", "verticais", "axioma", "assimilacao", "comparacao",
-                       "modelos", "motores", "pedido",
+                       "modelos", "motores", "pedido", "fonte_tipo",
                        "vertical", "vertical_nova", "marketing", "ferramentas")})
     except (ValueError, TypeError):
         pass
@@ -666,5 +700,22 @@ if __name__ == "__main__":  # self-check: origem + json + degradação (sem rede
     dom_arb = next((linha["modelos"].get(dd, "") for dd in _MOTOR_DOMINIO["arbitragem"]
                     if linha["modelos"].get(dd)), "")
     assert dom_arb == "revende com 30%", dom_arb  # arbitragem prefere negocio/produto
+
+    # REFACTOR adapter: observacao() monta o formato padrão; fonte_tipo inválido cai p/ reel
+    o = observacao("t", origem="oo", ref="uu", instrucao="pede", fonte_tipo="sdr")
+    assert o == {"texto": "t", "origem": "oo", "ref": "uu", "instrucao": "pede",
+                 "fonte_tipo": "sdr"}, o
+    assert observacao("t", fonte_tipo="inexistente")["fonte_tipo"] == "reel"
+    # o shim _processar delega pro núcleo como observação fonte_tipo=reel (sem tocar DB)
+    _capt = {}
+    _g = globals()
+    _orig_proc = _g["processar_observacao"]
+    _g["processar_observacao"] = lambda obs: _capt.update(obs) or {"id": 0}
+    try:
+        _processar("texto reel", "conta", "http://x", "leg")
+        assert _capt["fonte_tipo"] == "reel" and _capt["ref"] == "http://x" and \
+               _capt["texto"] == "texto reel", _capt  # núcleo recebe o formato padrão
+    finally:
+        _g["processar_observacao"] = _orig_proc
     print("radar OK — degradado:", d["fonte"],
-          "· motores/harvest + Omnisciente cam.1(vertical)/3(marketing)/4(ferramenta) OK")
+          "· cam.1/3/4 + fronteira adapter (observacao/processar_observacao) OK")

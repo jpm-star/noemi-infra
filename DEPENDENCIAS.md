@@ -31,3 +31,10 @@ não documentado. Criado pós-incidente 2026-07-28.
 - `sdr_motor_papai` (Postgres, container): produção do SDR papai. **NÃO tocar em testes.**
   ⚠️ `sdr-motor/backend/tests/conftest.py::_limpa` TRUNCA ~20 tabelas SEM guarda de
   ambiente — rodar pytest apontado pra ele APAGA produção (incidente 2026-07-28).
+
+## Gotcha de teste isolado (descoberto 2026-07-28)
+- `shared_core/storage/db.py::conn()` resolve o path por **`NOEMI_DATA_DIR`** (não
+  `NOEMI_DB`) → `<NOEMI_DATA_DIR|raiz>/data/noemi.db`. Pra testar isolado com DB
+  próprio, setar `NOEMI_DATA_DIR=/tmp/...`. Setar `NOEMI_DB` NÃO isola (é ignorado
+  pelo storage). Rodar da worktree já escreve no `data/noemi.db` DA WORKTREE (isolado
+  do prod), mas o certo é `NOEMI_DATA_DIR` explícito.
