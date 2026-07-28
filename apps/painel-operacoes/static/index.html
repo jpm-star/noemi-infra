@@ -110,7 +110,7 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
   <a href="https://p.jpos.com.br/studio/" target="_blank" rel="noopener">🌐 Site<span class="ext">↗</span></a>
   <a href="https://videoshiggs.noemi.digital/" target="_blank" rel="noopener">🎬 Vídeos<span class="ext">↗</span></a>
   <a href="https://motor.noemi.digital/" target="_blank" rel="noopener">💱 Arbitragem<span class="ext">↗</span></a>
-  <a href="https://painel.noemi.digital/" target="_blank" rel="noopener">💬 Noemi<span class="ext">↗</span></a>
+  <a data-go="noemi">💬 Noemi</a>
   <a data-go="crm">👥 CRM</a>
   <a data-go="analise">📊 Análise de Dados</a>
   <a data-go="config">⚙️ Config</a>
@@ -122,6 +122,25 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
 <div class="top">
   <div class="brand"><span class="dot"></span><div><b id="sec-titulo">Início</b><small id="sec-sub">PAINEL DE CONTROLE</small></div></div>
   <div class="meta"><span id="saude"></span><br><span id="upd">—</span></div>
+</div>
+
+<div class="card" data-sec="noemi" style="margin-bottom:12px;border-color:rgba(52,226,255,.25);background:linear-gradient(180deg,rgba(52,226,255,.06),var(--panel))">
+  <h3>💬 Noemi — recepcionista de IA · projeto operado pela JPOS</h3>
+  <p style="color:var(--mut);font-size:.9rem;margin:2px 0 14px;line-height:1.55">
+    A SDR de IA que atende no WhatsApp 24/7 — qualifica lead, agenda e faz handoff pro humano.
+    É produto vendável <b>e</b> roda aqui dentro do JPOS (dogfood real). A saúde dos canais
+    WhatsApp aparece em <b style="color:var(--cy);cursor:pointer" onclick="mostrarSec('analise')">Análise de Dados</b>.
+  </p>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px">
+    <a class="card mot abrir" href="https://painel.noemi.digital/" target="_blank" rel="noopener" style="flex-direction:column;align-items:stretch;gap:4px">
+      <div class="n">🗂️ Painel de conversas</div><div class="s" style="color:var(--cy)">abrir CRM da Noemi ↗</div></a>
+    <a class="card mot abrir" href="https://painel.noemi.digital/voz" target="_blank" rel="noopener" style="flex-direction:column;align-items:stretch;gap:4px">
+      <div class="n">🎙️ Modo de voz</div><div class="s" style="color:var(--cy)">falar com a Noemi ↗</div></a>
+    <a class="card mot abrir" href="#" onclick="mostrarSec('config');return false" style="flex-direction:column;align-items:stretch;gap:4px">
+      <div class="n">🎯 Prospecção ativa</div><div class="s" style="color:var(--cy)">config no painel →</div></a>
+    <a class="card mot abrir" href="#" onclick="mostrarSec('crm');return false" style="flex-direction:column;align-items:stretch;gap:4px">
+      <div class="n">👥 Leads & handoff</div><div class="s" style="color:var(--cy)">ver no CRM →</div></a>
+  </div>
 </div>
 
 <div class="card v-qg" data-sec="crm" style="margin-bottom:12px;border-color:rgba(52,226,255,.22);background:linear-gradient(180deg,rgba(52,226,255,.05),var(--panel))">
@@ -249,6 +268,7 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
 // Compat: URL /obs cai em "Análise de Dados"; #hash troca de seção sem recarregar.
 const SECS={
   inicio:['Início','PAINEL DE CONTROLE'],
+  noemi:['Noemi','SDR DE IA · PROJETO JPOS'],
   crm:['CRM','LEADS · PROSPECÇÃO · HANDOFF'],
   analise:['Análise de Dados','OBSERVABILIDADE · LLM · VPS'],
   config:['Config','PROSPECÇÃO · CONTATOS · CHIP'],
