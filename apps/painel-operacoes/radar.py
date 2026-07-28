@@ -29,6 +29,12 @@ CATEGORIAS = {"marketing", "vendas", "produto", "mindset", "operação", "concor
 # ser só um digest e vira distribuidor: cada sacada ganha o(s) motor(es) onde é
 # acionável, e a Caixa de Ideias consome isso agrupado por motor.
 MOTORES = {"arbitragem", "motor-site", "motor-b", "noemi"}
+# Verticais catalogadas (Radar Omnisciente cam.1). O LLM encaixa numa destas OU
+# devolve um nome novo => marcado vertical_nova (nunca força encaixe). Lista base
+# das verticais do JP; sincronizar com cartuchos quando crescer.
+VERTICAIS = {"marmoraria", "clinica", "contabilidade", "imobiliaria", "energia_solar",
+             "odontologia", "estetica", "fisioterapia", "harmonizacao", "advocacia",
+             "restaurante", "ecommerce", "dropshipping", "mecanica", "psicologia"}
 
 
 def _origem_da_url(url: str) -> str:
@@ -232,6 +238,14 @@ _PROMPT_BASE = (
     f'de {sorted(MOTORES)} — arbitragem=garimpo/revenda, motor-site=gerador de sites, '
     f'motor-b=gerador de vídeo, noemi=SDR/IA no WhatsApp. [] se nenhum for claro; '
     f'NÃO chute — só quando o insight realmente serve pra aquele motor), '
+    f'"vertical" (a vertical/nicho do conteúdo: um de {sorted(VERTICAIS)} se casar, '
+    f'senão o nome NOVO que você propor em 1 palavra; "" se não der pra dizer — não force), '
+    '"marketing" (o PADRÃO replicável, NÃO a cópia — objeto '
+    '{"angulo":"o ângulo/promessa","hook":"a fisgada dos 3s","oferta":"a estrutura da oferta",'
+    '"cta":"a chamada","funil":"o tipo de funil"}; cada campo curto e concreto, "" se ausente. '
+    'É munição de copy, não plágio do post), '
+    '"ferramentas" (lista de softwares/ferramentas CITADOS ou implicados no conteúdo, '
+    'ex ["Shopify","Ruflo"]; [] se nenhum — cada um vira produto candidato), '
     f'"categoria" (um de {sorted(CATEGORIAS)}), '
     '"score" (inteiro 1-5 de relevância pro JP), '
     '"tags" (lista de 3-6 palavras-chave minúsculas).'
@@ -267,7 +281,8 @@ def _insight(transcricao: str, contexto: list[dict], instrucao: str = "") -> dic
                 "resumo": (frase[0] if frase else "")[:160], "categoria": "outro",
                 "score": 1, "tags": [], "fonte": "extrativo",
                 "onde_usar": [], "verticais": [], "axioma": "", "assimilacao": "", "comparacao": "",
-                "modelos": {}, "motores": []}
+                "modelos": {}, "motores": [], "vertical": "", "vertical_nova": False,
+                "marketing": {}, "ferramentas": []}
     cat = str(bruto.get("categoria", "outro")).strip().lower()
     try:
         score = max(1, min(5, int(bruto.get("score", 1))))
@@ -292,9 +307,21 @@ def _insight(transcricao: str, contexto: list[dict], instrucao: str = "") -> dic
             if m in MOTORES and m not in vistos:
                 vistos.append(m)
         return vistos
+
+    def _mkt(v):  # cam.3: PADRÃO replicável de marketing (angulo/hook/oferta/cta/funil)
+        d = v if isinstance(v, dict) else {}
+        out = {k: str(d.get(k, "")).strip()[:160] for k in
+               ("angulo", "hook", "oferta", "cta", "funil")}
+        return {k: val for k, val in out.items() if val}
+
+    vertical = str(bruto.get("vertical", "")).strip().lower()[:40]
     return {"insight": str(bruto.get("insight", "")).strip()[:1200] or "(sem insight)",
             "modelos": _modelos(bruto.get("modelos")),
             "motores": _motores(bruto.get("motores")),
+            "vertical": vertical,  # cam.1
+            "vertical_nova": bool(vertical) and vertical not in VERTICAIS,
+            "marketing": _mkt(bruto.get("marketing")),  # cam.3
+            "ferramentas": _lista(bruto.get("ferramentas")),  # cam.4
             "resumo": str(bruto.get("resumo", "")).strip()[:200],
             "onde_usar": _lista(bruto.get("onde_usar")), "verticais": _lista(bruto.get("verticais")),
             "axioma": str(bruto.get("axioma", "")).strip()[:240],
@@ -414,7 +441,8 @@ def _processar(texto: str, origem: str, url: str, instrucao: str = "") -> dict:
     data = datetime.now(timezone.utc).isoformat()
     detalhe = json.dumps({k: ins.get(k) for k in
                           ("onde_usar", "verticais", "axioma", "assimilacao", "comparacao",
-                           "modelos", "motores", "pedido", "fonte")},
+                           "modelos", "motores", "pedido", "fonte",
+                           "vertical", "vertical_nova", "marketing", "ferramentas")},
                          ensure_ascii=False)
     with db.conn() as c:
         cur = c.execute(
@@ -454,7 +482,8 @@ def _expandir(d: dict) -> dict:
         if isinstance(det, dict):
             d.update({k: det.get(k) for k in
                       ("onde_usar", "verticais", "axioma", "assimilacao", "comparacao",
-                       "modelos", "motores", "pedido")})
+                       "modelos", "motores", "pedido",
+                       "vertical", "vertical_nova", "marketing", "ferramentas")})
     except (ValueError, TypeError):
         pass
     return d
@@ -473,13 +502,14 @@ def harvest_ideias(limite: int = 300) -> dict:
     from shared_core.storage import db
     grupos: dict[str, list] = {k: [] for k in _DOMINIOS}
     por_motor: dict[str, list] = {m: [] for m in sorted(MOTORES)}
+    ferramentas: dict[str, dict] = {}  # cam.4: produto candidato -> {nome, mencoes, origem, url, aid}
     try:
         with db.conn() as c:
             rows = c.execute(
                 "SELECT id, origem, url, data, score, detalhe FROM video_analises "
                 "ORDER BY COALESCE(feedback,0) DESC, score DESC, id DESC LIMIT ?", (limite,)).fetchall()
     except Exception:  # noqa: BLE001 — sem dados ainda é OK
-        return {"grupos": grupos, "por_motor": por_motor, "total": 0}
+        return {"grupos": grupos, "por_motor": por_motor, "ferramentas": [], "total": 0}
     total = 0
     for r in rows:
         try:
@@ -504,7 +534,18 @@ def harvest_ideias(limite: int = 300) -> dict:
                          next((v.strip() for v in mods.values() if (v or "").strip()), ""))
             if ideia:
                 por_motor[motor].append({"ideia": ideia, **fonte})
-    return {"grupos": grupos, "por_motor": por_motor, "total": total}
+        # cam.4: ferramentas citadas viram produtos candidatos. Dedup por nome; conta
+        # menções (recorrência = sinal de força — 3 fontes citando > 1 fonte).
+        for f in (det.get("ferramentas") or []):
+            chave = str(f).strip().lower()
+            if not chave:
+                continue
+            if chave in ferramentas:
+                ferramentas[chave]["mencoes"] += 1
+            else:
+                ferramentas[chave] = {"nome": str(f).strip()[:60], "mencoes": 1, **fonte}
+    cand = sorted(ferramentas.values(), key=lambda x: x["mencoes"], reverse=True)
+    return {"grupos": grupos, "por_motor": por_motor, "ferramentas": cand, "total": total}
 
 
 def obter(aid: int) -> dict | None:
@@ -593,18 +634,29 @@ if __name__ == "__main__":  # self-check: origem + json + degradação (sem rede
     d = _insight("Primeira frase. Segunda frase. Terceira.", [])  # proxy provavelmente fora
     assert d["categoria"] in CATEGORIAS and 1 <= d["score"] <= 5, d
     assert d["motores"] == [], d  # degradado não roteia pra motor nenhum
+    assert d["vertical"] == "" and d["vertical_nova"] is False and d["ferramentas"] == [], d
 
-    # upgrade c: valida/filtra motores do LLM (whitelist + dedup + normaliza _→-)
+    # upgrade c + Omnisciente cam.1/3/4: valida motores + vertical + marketing + ferramentas
     def _fake_completar(*a, **k):
         return ('{"insight":"x","categoria":"vendas","score":4,"motores":'
                 '["arbitragem","MOTOR_SITE","inexistente","arbitragem"],'
-                '"modelos":{"site":"landing de leilão","negocio":"revende com 30%"}}')
+                '"modelos":{"site":"landing de leilão","negocio":"revende com 30%"},'
+                '"vertical":"Odontologia","marketing":{"angulo":"medo de perder cliente",'
+                '"hook":"3s","oferta":"","cta":"chama no zap"},"ferramentas":["Shopify","Ruflo"]}')
     import shared_core.ai.llm_proxy as _lp
     _orig = _lp.completar
     _lp.completar = _fake_completar
     try:
         r = _insight("qualquer", [])
         assert r["motores"] == ["arbitragem", "motor-site"], r["motores"]  # dedup+whitelist+normaliza
+        assert r["vertical"] == "odontologia" and r["vertical_nova"] is False, r  # cam.1 catalogada
+        assert r["marketing"] == {"angulo": "medo de perder cliente", "hook": "3s",
+                                  "cta": "chama no zap"}, r["marketing"]       # cam.3 (oferta vazia caiu)
+        assert r["ferramentas"] == ["Shopify", "Ruflo"], r["ferramentas"]     # cam.4
+        # vertical fora do catálogo => vertical_nova=True
+        _lp.completar = lambda *a, **k: '{"insight":"y","categoria":"produto","score":3,"vertical":"petshop"}'
+        r2 = _insight("q", [])
+        assert r2["vertical"] == "petshop" and r2["vertical_nova"] is True, r2
     finally:
         _lp.completar = _orig
 
@@ -614,4 +666,5 @@ if __name__ == "__main__":  # self-check: origem + json + degradação (sem rede
     dom_arb = next((linha["modelos"].get(dd, "") for dd in _MOTOR_DOMINIO["arbitragem"]
                     if linha["modelos"].get(dd)), "")
     assert dom_arb == "revende com 30%", dom_arb  # arbitragem prefere negocio/produto
-    print("radar OK — origem/json/insight degradado:", d["fonte"], "· motores+harvest OK")
+    print("radar OK — degradado:", d["fonte"],
+          "· motores/harvest + Omnisciente cam.1(vertical)/3(marketing)/4(ferramenta) OK")

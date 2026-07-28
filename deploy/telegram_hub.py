@@ -86,9 +86,18 @@ def _baixar_arquivo(file_id: str, destino: Path) -> tuple[Path | None, str]:
 
 def _fmt_insight(a: dict) -> str:
     """Formata a resposta rica pro Telegram."""
-    l = [f"📡 *{a.get('categoria','?')}* · ★{a.get('score','?')}", "", a.get("insight", "")]
+    vert = a.get("vertical")
+    cab = f"📡 *{a.get('categoria','?')}* · ★{a.get('score','?')}"
+    if vert:  # cam.1: vertical (marca as NOVAS, não catalogadas)
+        cab += f" · 🏢 {vert}{' (nova!)' if a.get('vertical_nova') else ''}"
+    l = [cab, "", a.get("insight", "")]
     if a.get("motores"):  # roteamento (upgrade c): pra quais motores isto serve
         l.append("\n🚀 motores: " + ", ".join(a["motores"]))
+    if a.get("ferramentas"):  # cam.4: ferramentas = produtos candidatos
+        l.append("🛠️ ferramentas: " + ", ".join(a["ferramentas"]))
+    mkt = a.get("marketing") or {}  # cam.3: padrão de marketing replicável
+    if mkt:
+        l.append("📣 " + " · ".join(f"{k}: {v}" for k, v in mkt.items()))
     if a.get("onde_usar"):
         l.append("\n🎯 onde usar: " + ", ".join(a["onde_usar"]))
     if a.get("verticais"):
