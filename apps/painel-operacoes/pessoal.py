@@ -45,9 +45,25 @@ def _conn() -> sqlite3.Connection:
     return c
 
 
+def _numeros_pessoais() -> set[str]:
+    """Allowlist de números do JP (env NOEMI_PESSOAL_NUMEROS, separado por vírgula).
+    Só dígitos, pra casar independente de formatação (+55, espaços, etc)."""
+    raw = os.environ.get("NOEMI_PESSOAL_NUMEROS", "")
+    return {re.sub(r"\D", "", n) for n in raw.split(",") if re.sub(r"\D", "", n)}
+
+
+def roteia_pessoal(remetente: str) -> bool:
+    """DESAMBIGUAÇÃO no MESMO número Evolution: uma mensagem é PESSOAL (JP) se, e só se,
+    o REMETENTE está na allowlist do JP. É o único critério não-ambíguo — keyword ('Ana')
+    um lead também digita. Sem allowlist configurada => NUNCA roteia como pessoal (fail-safe:
+    nada de cliente vira gasto por engano). É este gate que precisa estar ligado ANTES do canal."""
+    num = re.sub(r"\D", "", remetente or "")
+    return bool(num) and num in _numeros_pessoais()
+
+
 def eh_pessoal(texto: str) -> bool:
-    """Heurística mínima: parece conversa pessoal do JP (Ana/gasto)? (pro roteamento futuro
-    do canal — v1 não toca o canal real)."""
+    """Filtro de CONTEÚDO secundário (parece gasto?). NÃO é o gate de roteamento — o gate
+    é roteia_pessoal(remetente). Serve pra distinguir gasto de outro comando pessoal (futuro)."""
     return bool(_GATILHOS.search(texto or ""))
 
 
@@ -115,6 +131,14 @@ if __name__ == "__main__":  # self-check ISOLADO (LLM mockado, banco isolado)
     from shared_core.ai import llm_proxy
 
     assert eh_pessoal("Ana, gastei 40 no mercado") and not eh_pessoal("qual o clima hoje")
+
+    # GATE de roteamento (desambiguação): só remetente na allowlist é pessoal (fail-safe)
+    os.environ.pop("NOEMI_PESSOAL_NUMEROS", None)
+    assert roteia_pessoal("5511999998888") is False  # sem allowlist => NUNCA pessoal
+    os.environ["NOEMI_PESSOAL_NUMEROS"] = "+55 11 99999-8888"
+    assert roteia_pessoal("5511999998888@s.whatsapp.net") is True   # casa ignorando formatação
+    assert roteia_pessoal("5511777770000") is False                 # lead não entra
+    os.environ.pop("NOEMI_PESSOAL_NUMEROS", None)
 
     # gasto normal → categoriza e grava
     llm_proxy.completar = lambda *a, **k: '{"gasto":true,"valor":40,"categoria":"mercado","descricao":"compras"}'
