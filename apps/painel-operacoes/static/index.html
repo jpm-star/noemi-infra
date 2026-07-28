@@ -131,7 +131,15 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
   <div id="site-origens" style="margin:10px 0"></div>
   <div id="site-analise" class="empty" style="margin-top:8px;font-size:.85rem">abra a aba pra carregar…</div>
   <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
-    <a href="https://p.jpos.com.br/studio/" target="_blank" rel="noopener" class="op" style="font-size:.85rem;padding:8px 16px">🛠️ gerar/editar site (studio) ↗</a>
+    <a href="https://p.jpos.com.br/studio/" target="_blank" rel="noopener" class="op op-ghost" style="font-size:.85rem;padding:8px 16px">🛠️ studio ↗</a>
+  </div>
+  <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
+    <div style="font-size:.8rem;color:var(--mut);margin-bottom:6px">✏️ Editar o site por comando (IA nativa) — propõe, você confirma</div>
+    <div style="display:flex;gap:6px">
+      <input id="se-cmd" placeholder="ex: muda o WhatsApp pra 14 99874-5847" style="flex:1;background:#0c131d;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:7px 10px">
+      <button id="se-go" class="op" style="font-size:.85rem;padding:7px 14px">propor</button>
+    </div>
+    <div id="se-preview" style="margin-top:8px;font-size:.85rem"></div>
   </div>
 </div>
 
@@ -320,6 +328,27 @@ async function siteTab(){
     else $('site-analise').innerHTML='<div class="empty">sem achado forte ainda</div>';
   }catch(e){$('site-analise').innerHTML='';}
 }
+// IA nativa de edição (Item 2): propor → confirmar → aplicar
+document.addEventListener('click',async function(ev){
+  if(ev.target && ev.target.id==='se-go'){
+    const cmd=$('se-cmd').value.trim(); if(!cmd)return;
+    $('se-preview').innerHTML='<span class="empty">a IA está pensando…</span>';
+    try{const p=await (await fetch('api/site/editar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({comando:cmd})})).json();
+      if(!p.suportado){$('se-preview').innerHTML=`<span style="color:var(--warn)">✋ ${p.motivo||'não dá pra editar isso por comando ainda'}</span>`;return;}
+      window._seProp=p;
+      const reg=p.cirurgico?'':' <span style="color:var(--mut)">(muda conteúdo — vou regenerar o site)</span>';
+      $('se-preview').innerHTML=`<div class="dica">✏️ <b>${p.resumo}</b>${reg}<div style="margin-top:6px"><button id="se-apply" class="op" style="font-size:.82rem;padding:6px 12px">confirmar e aplicar</button> <button id="se-cancel" class="op op-ghost" style="font-size:.82rem;padding:6px 12px">cancelar</button></div></div>`;
+    }catch(e){$('se-preview').innerHTML='<span style="color:var(--bad)">erro ao interpretar</span>';}
+  }
+  else if(ev.target && ev.target.id==='se-apply'){
+    const p=window._seProp; if(!p)return; ev.target.textContent='aplicando…';
+    try{const r=await (await fetch('api/site/editar/aplicar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({campo:p.campo,valor_novo:p.valor_novo})})).json();
+      $('se-preview').innerHTML=r.ok?(r.precisa_regenerar?'<span style="color:var(--ok)">✓ salvo no cartucho — regeneração do site fica pra um passo seguinte (conteúdo)</span>':'<span style="color:var(--ok)">✓ aplicado e publicado no site (mudança cirúrgica)</span>'):`<span style="color:var(--bad)">erro: ${r.erro||''}</span>`;
+      $('se-cmd').value='';
+    }catch(e){$('se-preview').innerHTML='<span style="color:var(--bad)">erro ao aplicar</span>';}
+  }
+  else if(ev.target && ev.target.id==='se-cancel'){$('se-preview').innerHTML='';}
+});
 document.querySelectorAll('.side a[data-go]').forEach(a=>
   a.addEventListener('click',e=>{e.preventDefault();mostrarSec(a.dataset.go);}));
 window.addEventListener('hashchange',()=>{const h=location.hash.slice(1);if(SECS[h])mostrarSec(h);});
