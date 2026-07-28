@@ -325,6 +325,8 @@ async def beacon_registrar(req: Request) -> Response:
     (fora do basic_auth), reescrita pra cá pelo Caddy."""
     import json as _json
 
+    from fastapi import Response as _Resp
+
     import beacon as _bcn
     try:
         d = _json.loads((await req.body()).decode("utf-8") or "{}")
@@ -332,7 +334,7 @@ async def beacon_registrar(req: Request) -> Response:
         d = {}
     _bcn.registrar(str(d.get("site", "jpos")), str(d.get("evento", "")),
                    str(d.get("origem", "")), str(d.get("path", "")))
-    return Response(status_code=204)
+    return _Resp(status_code=204)
 
 
 @app.get("/api/site/resumo")
