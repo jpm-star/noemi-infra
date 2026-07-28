@@ -42,7 +42,7 @@ PROMPT = """Você é um analista que examina as interações de um negócio loca
 3. Classifica cada achado como OPORTUNIDADE (algo que, se agir, converte mais) ou RISCO (algo que, se ignorar, perde cliente/vendas).
 4. Se o dado for insuficiente ou ambíguo pra afirmar um padrão, diga isso explicitamente — nunca invente tendência que os dados não sustentam.
 5. Tom: direto, sem jargão de analista, sem "considerando os dados apresentados" — fala como quem já olhou e vai direto no que importa. Adapta ao tom do negócio ({tom}).
-6. Todo insight vem com UMA ação sugerida, concreta, que o dono consegue fazer sozinho sem saber nada de tecnologia (não "otimize seu funil" — sim "responde mais rápido quem pergunta de preço às sextas, é quando mais gente pergunta e some").
+6. Todo insight vem com UMA ação NO NÍVEL DO DONO — algo que ele faz HOJE com as próprias mãos, sem saber nada de tecnologia e sem contratar/instalar nada. PROIBIDO ação de nível técnico: NUNCA "crie um sistema", "use um software/CRM", "automatize", "integre", "monte um processo", "otimize o funil". SIM: responder, ligar, perguntar, mudar horário de atendimento, avisar o cliente, mandar o orçamento antes de tal hora, guardar o número. Ex. ruim: "crie um sistema pra acompanhar orçamentos". Ex. bom: "todo orçamento que você pedir, responde no mesmo dia — hoje muita gente pergunta e some antes de você voltar".
 7. Máximo 3 insights por rodada. Se não achar 3 com qualidade, entrega menos — nunca enche com achado fraco só pra bater número.
 
 Responda SOMENTE JSON: {{"insights":[{{"tipo":"oportunidade"|"risco","insight":"<o padrão + implicação>","acao":"<1 ação concreta pro dono>","score":<0-10 = recorrência × relevância × originalidade>,"recorrencia":"<quantas vezes o padrão apareceu>"}}]}}. Se dados insuficientes: {{"insights":[],"nota":"<por que não dá pra afirmar padrão>"}}."""
@@ -124,6 +124,86 @@ def analisar_cliente(cliente: str, conversas: list[str], vertical: str, tom: str
                            fonte_tipo="sdr_cliente")
     obs.update(cliente=cliente, vertical=vertical, tom=tom)
     return radar.processar_observacao(obs)  # núcleo dispatcha p/ processar_cliente
+
+
+# ── Auto-análise (task 2): a MESMA skill apontada PRA DENTRO — o JP analisando a
+# própria operação. Fonte = o banco de 62 vídeos já processados pelo Radar. Níveis
+# AMARELO (vale melhorar, sem prazo) / VERMELHO (urgência: prob alta × raio alto).
+PROMPT_AUTO = """Você é o analista da operação de growth/IA do JP (JPOS: Radar de conteúdo, geração de site/vídeo, SDR Noemi, arbitragem). O banco abaixo são análises de vídeos/reels que o Radar dele coletou. Extraia PADRÕES CONCRETOS E RECORRENTES que viram MOVIMENTO OPERACIONAL — não conselho genérico. Regras DURAS:
+1. Cada achado TEM que citar algo NOMEÁVEL do banco: uma ferramenta/produto que apareceu (ex: se 'Ruflo' ou 'Shopify' aparece, cite o nome), uma vertical/nicho recorrente (ex: imobiliária, dropshipping), uma conta/origem repetida, uma estrutura de oferta que se repete. PROIBIDO platitude tipo "desenvolva uma estratégia de marketing", "crie conteúdo de valor", "melhore a conversão" — isso é RUÍDO, descarta.
+2. RECORRÊNCIA manda: algo que aparece 3+ vezes no banco é sinal forte; 1x não é padrão. Diga quantas vezes apareceu.
+3. Traduza o padrão em MOVIMENTO do JP: "ferramenta X citada 3x → candidata a construir/clonar", "vertical Y recorrente → priorizar cartucho Y", "oferta tipo Z valida 4x → usar no site/copy".
+4. VERMELHO = urgência real (algo recorrente que é risco/dependência/janela fechando: prob alta × raio alto). AMARELO = oportunidade que vale mas sem prazo.
+5. Se o banco não sustenta um padrão nomeável, entrega MENOS achados — nunca enche com genérico.
+6. origem = o nome real do banco que gerou (ferramenta/vertical/conta), não "análise de marketing".
+Responda SOMENTE JSON: {"itens":[{"nivel":"vermelho"|"amarelo","achado":"<padrão nomeável + recorrência>","acao":"<movimento concreto do JP>","origem":"<nome real do banco>","score":<0-10>}]}."""
+
+
+def _digest_banco(limite: int = 80) -> str:
+    """Resumo do banco de análises do Radar (insight+categoria+origem) pro auto-analista."""
+    from shared_core.storage import db
+    linhas = []
+    with db.conn() as c:
+        for r in c.execute("SELECT origem,categoria,score,substr(insight,1,180) i "
+                           "FROM video_analises ORDER BY id DESC LIMIT ?", (limite,)):
+            linhas.append(f"[{r['categoria']}/★{r['score']}] {r['origem']}: {r['i']}")
+    return "\n".join(linhas)
+
+
+def auto_analise() -> list[dict]:
+    """Roda a skill pra dentro sobre o banco do Radar → lista amarelo/vermelho. Groq-only.
+    GRAVA em auto_insights (substitui a rodada anterior — é um retrato do estado atual)."""
+    from shared_core.ai import llm_proxy
+    from shared_core.storage import db
+    digest = _digest_banco()
+    if not digest.strip():
+        return []
+    txt = llm_proxy.completar(f"{PROMPT_AUTO}\n\nBANCO DO RADAR:\n{digest[:12000]}",
+                              model="analise", max_tokens=1000, temperature=0.3,
+                              permitir_anthropic=False)
+    m = re.search(r"\{.*\}", txt or "", re.S)
+    try:
+        itens = (json.loads(m.group(0)) if m else {}).get("itens") or []
+    except (ValueError, TypeError):
+        itens = []
+    out = []
+    for it in itens[:8]:
+        if not isinstance(it, dict) or not str(it.get("achado", "")).strip():
+            continue
+        try:
+            score = max(0, min(10, int(it.get("score", 0))))
+        except (TypeError, ValueError):
+            score = 0
+        nivel = "vermelho" if str(it.get("nivel", "")).strip().lower() == "vermelho" else "amarelo"
+        # vermelho sempre sobe; amarelo passa por um gate mais frouxo (>=5)
+        if nivel == "amarelo" and score < 5:
+            continue
+        out.append({"nivel": nivel, "achado": str(it["achado"]).strip()[:500],
+                    "acao": str(it.get("acao", "")).strip()[:300],
+                    "origem": str(it.get("origem", "")).strip()[:120], "score": score})
+    ts = datetime.now(timezone.utc).isoformat()
+    with db.conn() as c:
+        c.execute("CREATE TABLE IF NOT EXISTS auto_insights (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                  "ts TEXT, nivel TEXT, achado TEXT, acao TEXT, origem TEXT, score INT)")
+        c.execute("DELETE FROM auto_insights")  # retrato atual, não histórico
+        for i in out:
+            c.execute("INSERT INTO auto_insights (ts,nivel,achado,acao,origem,score) VALUES (?,?,?,?,?,?)",
+                      (ts, i["nivel"], i["achado"], i["acao"], i["origem"], i["score"]))
+        c.commit()
+    # vermelho primeiro, depois por score
+    return sorted(out, key=lambda x: (x["nivel"] != "vermelho", -x["score"]))
+
+
+def listar_auto() -> list[dict]:
+    """Retrato atual da auto-análise (pro /obs/ideias). Read-only."""
+    from shared_core.storage import db
+    with db.conn() as c:
+        c.execute("CREATE TABLE IF NOT EXISTS auto_insights (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                  "ts TEXT, nivel TEXT, achado TEXT, acao TEXT, origem TEXT, score INT)")
+        rows = [dict(r) for r in c.execute(
+            "SELECT nivel,achado,acao,origem,score FROM auto_insights "
+            "ORDER BY (nivel='vermelho') DESC, score DESC")]
+    return rows
 
 
 def listar_insights(cliente: str, limite: int = 12) -> list[dict]:

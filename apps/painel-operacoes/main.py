@@ -301,6 +301,31 @@ def ideias_dados() -> JSONResponse:
     return JSONResponse(radar.harvest_ideias())
 
 
+@app.get("/api/auto-analise")
+def auto_analise_dados() -> JSONResponse:
+    """Auto-análise (task 2): retrato atual amarelo/vermelho da própria operação."""
+    import insight_engine
+    return JSONResponse({"itens": insight_engine.listar_auto()})
+
+
+@app.post("/api/auto-analise/rodar")
+async def auto_analise_rodar() -> JSONResponse:
+    """Reanalisa o banco do Radar agora (Groq-only). Substitui o retrato anterior."""
+    import asyncio
+
+    import insight_engine
+    itens = await asyncio.to_thread(insight_engine.auto_analise)
+    return JSONResponse({"itens": itens, "n": len(itens)})
+
+
+@app.get("/insights/{cliente}", response_class=HTMLResponse)
+def insights_cliente(cliente: str) -> str:
+    """UI cliente-facing do Insight Engine (task 1). Fora do basic_auth do JP — é a
+    página que o subdomínio do cliente aponta. Só leitura (cards já gerados)."""
+    import insight_engine
+    return insight_engine.render_cards(cliente)
+
+
 @app.get("/api/leads/export.csv")
 def leads_export() -> Response:
     from fastapi.responses import Response as _R
