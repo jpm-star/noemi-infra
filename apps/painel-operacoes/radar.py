@@ -438,7 +438,7 @@ def analisar_arquivo(caminho: str, origem: str = "telegram", url_ref: str = "",
 # trocar/somar adapter não reescreve o núcleo. `fonte_tipo` fica gravado pra o
 # cruzamento entre-fontes (um padrão em reel E em conversa do SDR = sinal mais forte).
 # ═══════════════════════════════════════════════════════════════════════════
-FONTES = ("reel", "sdr", "site", "relatorio")  # tipos de adapter (reel = único hoje)
+FONTES = ("reel", "sdr", "sdr_cliente", "site", "relatorio")  # tipos de adapter (reel + sdr_cliente hoje)
 
 
 def observacao(texto: str, *, origem: str = "", ref: str = "", instrucao: str = "",
@@ -453,7 +453,12 @@ def observacao(texto: str, *, origem: str = "", ref: str = "", instrucao: str = 
 
 def processar_observacao(obs: dict) -> dict:
     """NÚCLEO genérico: recebe uma observação padrão (de QUALQUER adapter) → roda as
-    5 camadas (_insight) → grava → devolve. Não sabe da fonte; só do formato padrão."""
+    camadas de análise → grava → devolve. Não sabe da fonte; só do formato padrão.
+    Dispatch por fonte_tipo: cada adapter pode ter seu cérebro (reel = _insight/Groq;
+    sdr_cliente = Insight Engine/Groq-only). O downstream (gate, storage) é do adapter."""
+    if obs.get("fonte_tipo") == "sdr_cliente":  # tier 1 cliente-facing (Groq-only)
+        import insight_engine
+        return insight_engine.processar_cliente(obs)
     from shared_core.storage import db
     texto = obs.get("texto", "")
     origem = obs.get("origem", "")

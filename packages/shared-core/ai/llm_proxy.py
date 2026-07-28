@@ -67,7 +67,7 @@ def _post(model: str, prompt: str, max_tokens: int, temperature: float) -> str |
 
 
 def completar(prompt: str, *, model: str = "analise", max_tokens: int = 400,
-              temperature: float = 0) -> str | None:
+              temperature: float = 0, permitir_anthropic: bool = True) -> str | None:
     """Texto do proxy pro prompt (chat/completions). None se o proxy estiver
     fora/erro/timeout. `model` é o nome lógico do config (analise/motor-b).
     Repete em 429/5xx (respeitando Retry-After) até LITELLM_RETRIES; se forem
@@ -89,7 +89,9 @@ def completar(prompt: str, *, model: str = "analise", max_tokens: int = 400,
         except (urllib.error.URLError, TimeoutError, ValueError, KeyError, IndexError, OSError):
             return None
     # Gate cross-provider: Groq esgotou por 429 seguidos → última cartada Anthropic.
-    if n_429 >= _GATE_429 and os.environ.get("ANTHROPIC_API_KEY"):
+    # permitir_anthropic=False TRAVA isso (caminho cliente do Insight Engine: Groq-only
+    # por construção, pra não custar token Anthropic por cliente e matar a margem do tier 1).
+    if permitir_anthropic and n_429 >= _GATE_429 and os.environ.get("ANTHROPIC_API_KEY"):
         try:
             return _post("fallback-anthropic", prompt, max_tokens, temperature)
         except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError,
@@ -159,4 +161,13 @@ if __name__ == "__main__":  # self-check: 429 duas vezes → 200 (sem sleep real
     urllib.request.urlopen = _so_429
     assert completar("x", model="motor-b") is None and chamadas["n"] == 3, chamadas
 
-    print("llm_proxy OK — 429×2→200; 401 degrada em 1; gate 3×429+key→Anthropic; sem key→None")
+    # TRAVA-CUSTO: mesmo com key + 3×429, permitir_anthropic=False NÃO tenta Anthropic
+    chamadas["n"] = 0
+    os.environ["ANTHROPIC_API_KEY"] = "sk-teste"
+    urllib.request.urlopen = _so_429  # sempre 429
+    _r = completar("x", model="motor-b", permitir_anthropic=False)
+    assert _r is None and chamadas["n"] == 3, chamadas  # 3 tentativas Groq, ZERO Anthropic
+    os.environ.pop("ANTHROPIC_API_KEY", None)
+
+    print("llm_proxy OK — 429×2→200; 401 degrada em 1; gate 3×429+key→Anthropic; "
+          "sem key→None; permitir_anthropic=False trava (Groq-only)")
