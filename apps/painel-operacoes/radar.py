@@ -443,6 +443,21 @@ def analisar_imagem(caminho: str, origem: str = "telegram", instrucao: str = "")
     return _processar(texto, origem, "(imagem enviada)", instrucao)
 
 
+def analisar_site(url: str, origem: str = "") -> dict:
+    """Adapter SITE (Item 8, fonte_tipo=site): busca a página, extrai o texto e joga no
+    NÚCLEO genérico → insight/vertical/motores/ferramentas → Caixa de Ideias, como qualquer
+    fonte. Dogfood: o próprio site vira fonte analisada pela IA. (Interação de visitante vem
+    com o beacon do Item 5; aqui é o CONTEÚDO.)"""
+    import urllib.request
+    html = urllib.request.urlopen(url, timeout=15).read().decode("utf-8", "replace")
+    semtags = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", html, flags=re.S)
+    texto = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", semtags)).strip()
+    if not texto:
+        raise RuntimeError("página sem texto legível")
+    obs = observacao(texto[:9000], origem=origem or _origem_da_url(url), ref=url, fonte_tipo="site")
+    return processar_observacao(obs)
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # FRONTEIRA fonte↔núcleo (Radar Omnisciente). Um ADAPTER (reel hoje; SDR/site/
 # auto-observação depois) produz uma OBSERVAÇÃO no formato padrão abaixo. O NÚCLEO
