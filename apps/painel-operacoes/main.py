@@ -318,6 +318,30 @@ async def auto_analise_rodar() -> JSONResponse:
     return JSONResponse({"itens": itens, "n": len(itens)})
 
 
+@app.post("/api/beacon")
+async def beacon_registrar(req: Request) -> Response:
+    """Beacon público do site (Item 5): registra view/cta. Body JSON (sendBeacon).
+    204 sempre — tracking nunca falha pro visitante. Rota exposta em jpos.com.br/beacon
+    (fora do basic_auth), reescrita pra cá pelo Caddy."""
+    import json as _json
+
+    import beacon as _bcn
+    try:
+        d = _json.loads((await req.body()).decode("utf-8") or "{}")
+    except (ValueError, UnicodeDecodeError):
+        d = {}
+    _bcn.registrar(str(d.get("site", "jpos")), str(d.get("evento", "")),
+                   str(d.get("origem", "")), str(d.get("path", "")))
+    return Response(status_code=204)
+
+
+@app.get("/api/site/resumo")
+def site_resumo(site: str = "jpos") -> JSONResponse:
+    """Dado bruto de tráfego pra aba Site (visitas/cta/conversão/origens)."""
+    import beacon as _bcn
+    return JSONResponse(_bcn.resumo(site))
+
+
 @app.get("/insights/{cliente}", response_class=HTMLResponse)
 def insights_cliente(cliente: str) -> str:
     """UI cliente-facing do Insight Engine (task 1). Fora do basic_auth do JP — é a
