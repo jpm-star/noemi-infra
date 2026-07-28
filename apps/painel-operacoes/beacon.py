@@ -73,6 +73,30 @@ def resumo(site: str) -> dict:
             "conversao_pct": round(cta / views * 100, 1) if views else 0.0, "origens": top}
 
 
+def analise(site: str, minimo: int = 20) -> dict:
+    """Interpreta o tráfego (padrão Insight Engine: achado, não dado bruto). Groq-only.
+    Abaixo de `minimo` visitas → 'acumulando' (não inventa padrão com pouco dado)."""
+    r = resumo(site)
+    if r["visitas"] < minimo:
+        return {**r, "status": "acumulando", "faltam": minimo - r["visitas"], "achados": []}
+    from shared_core.ai import llm_proxy
+    ctx = (f"visitas={r['visitas']} · cliques no CTA={r['cliques_cta']} · conversão={r['conversao_pct']}% · "
+           f"origens={r['origens']}")
+    prompt = ("Você analisa o tráfego de uma landing. Dado o resumo, dê no MÁXIMO 2 achados REAIS "
+              "(padrão + ação nível-dono), oportunidade ou risco. Ex: conversão baixa vinda do Instagram → "
+              "revisar a copy pra esse público. Sem platitude. "
+              'SOMENTE JSON {"achados":[{"tipo":"oportunidade|risco","achado":"","acao":""}]}.\n\n' + ctx)
+    txt = llm_proxy.completar(prompt, model="analise", max_tokens=400, temperature=0.3, permitir_anthropic=False)
+    import json
+    import re as _re
+    m = _re.search(r"\{.*\}", txt or "", _re.S)
+    try:
+        ach = json.loads(m.group(0)).get("achados", [])[:2] if m else []
+    except (ValueError, TypeError):
+        ach = []
+    return {**r, "status": "ok", "achados": ach}
+
+
 if __name__ == "__main__":  # self-check ISOLADO (banco temp)
     import os
     os.environ["NOEMI_DATA_DIR"] = "/root/.claude/jobs/f7137c43/tmp/beacon_selftest"

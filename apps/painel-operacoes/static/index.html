@@ -107,7 +107,7 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
 <nav class="side">
   <div class="logo"><span class="dot"></span><div><b>JPOS</b><small>CABINE</small></div></div>
   <a data-go="inicio">🏠 Início</a>
-  <a href="https://p.jpos.com.br/studio/" target="_blank" rel="noopener">🌐 Site<span class="ext">↗</span></a>
+  <a data-go="site">🌐 Site</a>
   <a href="https://videoshiggs.noemi.digital/" target="_blank" rel="noopener">🎬 Vídeos<span class="ext">↗</span></a>
   <a href="https://motor.noemi.digital/" target="_blank" rel="noopener">💱 Arbitragem<span class="ext">↗</span></a>
   <a data-go="noemi">💬 Noemi</a>
@@ -122,6 +122,17 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
 <div class="top">
   <div class="brand"><span class="dot"></span><div><b id="sec-titulo">Início</b><small id="sec-sub">PAINEL DE CONTROLE</small></div></div>
   <div class="meta"><span id="saude"></span><br><span id="upd">—</span></div>
+</div>
+
+<div class="card" data-sec="site" style="margin-bottom:12px;border-color:rgba(52,226,255,.25);background:linear-gradient(180deg,rgba(52,226,255,.06),var(--panel))">
+  <h3>🌐 Site — jpos.com.br
+    <a href="https://jpos.com.br" target="_blank" rel="noopener" style="float:right;font-size:.8rem;color:var(--cy);text-decoration:none">ver site ↗</a></h3>
+  <div id="site-kpis" class="grid" style="margin:8px 0"></div>
+  <div id="site-origens" style="margin:10px 0"></div>
+  <div id="site-analise" class="empty" style="margin-top:8px;font-size:.85rem">abra a aba pra carregar…</div>
+  <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+    <a href="https://p.jpos.com.br/studio/" target="_blank" rel="noopener" class="op" style="font-size:.85rem;padding:8px 16px">🛠️ gerar/editar site (studio) ↗</a>
+  </div>
 </div>
 
 <div class="card" data-sec="noemi" style="margin-bottom:12px;border-color:rgba(52,226,255,.25);background:linear-gradient(180deg,rgba(52,226,255,.06),var(--panel))">
@@ -268,6 +279,7 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
 // Compat: URL /obs cai em "Análise de Dados"; #hash troca de seção sem recarregar.
 const SECS={
   inicio:['Início','PAINEL DE CONTROLE'],
+  site:['Site','TRÁFEGO · CONVERSÃO · CONTROLE'],
   noemi:['Noemi','SDR DE IA · PROJETO JPOS'],
   crm:['CRM','LEADS · PROSPECÇÃO · HANDOFF'],
   analise:['Análise de Dados','OBSERVABILIDADE · LLM · VPS'],
@@ -289,6 +301,24 @@ function mostrarSec(nome){
   const et=document.getElementById('sec-titulo'), es=document.getElementById('sec-sub');
   if(et)et.textContent=t; if(es)es.textContent=s;
   if(location.hash.slice(1)!==nome) history.replaceState(null,'','#'+nome);
+  if(nome==='site') siteTab();  // lazy: análise Groq só quando a aba Site abre
+}
+let _siteAnaliseFeita=false;
+async function siteTab(){
+  try{const r=await (await fetch('api/site/resumo?site=jpos')).json();
+    $('site-kpis').innerHTML=[
+      `<div class="card kpi"><div class="v">${r.visitas}</div><div class="l">visitas</div></div>`,
+      `<div class="card kpi"><div class="v" style="color:var(--cy)">${r.cliques_cta}</div><div class="l">cliques no CTA</div></div>`,
+      `<div class="card kpi"><div class="v" style="color:var(--ok)">${r.conversao_pct}%</div><div class="l">conversão (CTA/visita)</div></div>`].join('');
+    const og=Object.entries(r.origens||{}), mx=Math.max(1,...og.map(x=>x[1]));
+    $('site-origens').innerHTML=og.length?'<div style="font-size:.72rem;color:var(--mut);margin-bottom:4px">ORIGEM DO TRÁFEGO</div>'+og.map(([k,v])=>`<div class="bar-row"><span class="lab">${k}</span><span class="bar"><i style="width:${100*v/mx}%"></i></span><span class="num">${v}</span></div>`).join(''):'';
+  }catch(e){}
+  if(_siteAnaliseFeita) return; _siteAnaliseFeita=true;
+  try{const a=await (await fetch('api/site/analise?site=jpos')).json();
+    if(a.status==='acumulando') $('site-analise').innerHTML=`<div class="empty">a análise da IA aparece com +${a.faltam} visitas — não inventa padrão com pouco dado</div>`;
+    else if(a.achados&&a.achados.length) $('site-analise').innerHTML='<b style="color:var(--mut);font-size:.72rem">ANÁLISE DA IA</b>'+a.achados.map(x=>`<div class="dica">${x.tipo==='risco'?'⚠️':'💡'} ${x.achado}<div style="color:var(--ok);font-size:.85rem">→ ${x.acao||''}</div></div>`).join('');
+    else $('site-analise').innerHTML='<div class="empty">sem achado forte ainda</div>';
+  }catch(e){$('site-analise').innerHTML='';}
 }
 document.querySelectorAll('.side a[data-go]').forEach(a=>
   a.addEventListener('click',e=>{e.preventDefault();mostrarSec(a.dataset.go);}));

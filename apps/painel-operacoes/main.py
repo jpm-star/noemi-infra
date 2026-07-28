@@ -344,6 +344,15 @@ def site_resumo(site: str = "jpos") -> JSONResponse:
     return JSONResponse(_bcn.resumo(site))
 
 
+@app.get("/api/site/analise")
+async def site_analise(site: str = "jpos") -> JSONResponse:
+    """Tráfego INTERPRETADO por IA (padrão Insight Engine) pra aba Site. Groq-only."""
+    import asyncio
+
+    import beacon as _bcn
+    return JSONResponse(await asyncio.to_thread(_bcn.analise, site))
+
+
 @app.get("/insights/{cliente}", response_class=HTMLResponse)
 def insights_cliente(cliente: str) -> str:
     """UI cliente-facing do Insight Engine (task 1). Fora do basic_auth do JP — é a
