@@ -430,6 +430,19 @@ def analisar_arquivo(caminho: str, origem: str = "telegram", url_ref: str = "",
     return _processar(texto, origem, url_ref, instrucao)
 
 
+def analisar_imagem(caminho: str, origem: str = "telegram", instrucao: str = "") -> dict:
+    """Pipeline por IMAGEM (foto enviada no Telegram) — visão (OCR/Gemini) da imagem +
+    a legenda/pedido do JP → insight → GRAVA. Sem ffmpeg/áudio (é imagem). Se o OCR vier
+    vazio, a legenda ainda ancora a análise (a foto raramente vem sem contexto)."""
+    from shared_core.ai import visao
+    with open(caminho, "rb") as f:
+        visao_txt, _ = visao.analisar_frames([f.read()])
+    texto = _combinar(visao_txt, (instrucao or "").strip(), "")  # legenda = o que o JP escreveu
+    if not texto.strip():
+        raise RuntimeError("imagem sem texto legível e sem legenda — manda com uma legenda de contexto")
+    return _processar(texto, origem, "(imagem enviada)", instrucao)
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # FRONTEIRA fonte↔núcleo (Radar Omnisciente). Um ADAPTER (reel hoje; SDR/site/
 # auto-observação depois) produz uma OBSERVAÇÃO no formato padrão abaixo. O NÚCLEO
