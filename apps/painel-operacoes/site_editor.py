@@ -25,8 +25,28 @@ CAMPOS = {
     "escopo": "lista de serviços",
     "catalogo": "planos e o que cada um inclui",
 }
-# Quais mudam só HTML determinístico (patch cirúrgico, preserva a copy) vs precisam regenerar.
-_CIRURGICO = {"whatsapp_dono", "nome_empresa"}
+# Campos que aplicam CIRURGICAMENTE (patcham só a parte afetada do HTML, preservam a copy):
+# whatsapp/nome = string simples; catalogo = reconstrói só a seção (determinística). Os demais
+# (diferenciais → cards gerados por Groq) precisam regenerar via motor — sinalizado no retorno.
+_CIRURGICO = {"whatsapp_dono", "nome_empresa", "catalogo"}
+
+
+def _secao_catalogo(catalogo: list) -> str:
+    """Reconstrói SÓ a seção de catálogo do HTML a partir do cartucho (determinística —
+    mesmo formato do _bloco_catalogo do motor). É o que permite editar o catálogo por
+    comando sem regenerar o site inteiro."""
+    import html as _h
+    cards = []
+    for it in catalogo if isinstance(catalogo, list) else []:
+        if not isinstance(it, dict) or not str(it.get("tier", "")).strip():
+            continue
+        preco = str(it.get("preco_ref", "")).strip()
+        lis = "".join(f"<li>{_h.escape(str(x))}</li>" for x in (it.get("inclui") or []) if str(x).strip())
+        cards.append(f'<article class="cat-card"><h3>{_h.escape(str(it["tier"]))}</h3>'
+                     f'{f"<div class=cat-preco>{_h.escape(preco)}</div>" if preco else ""}'
+                     f'<ul>{lis}</ul></article>')
+    return ('<section class="catalogo reveal" id="o-que-inclui"><h2 class="sec-titulo">Os planos JPOS</h2>'
+            f'<div class="cat-grid">{"".join(cards)}</div></section>')
 
 
 def interpretar(comando: str, cartucho: dict) -> dict:
@@ -78,6 +98,9 @@ def aplicar(cartucho_path: str, campo: str, valor_novo, deploy_html: str | None 
             h = re.sub(r"wa\.me/\d+", f"wa.me/{so_digitos}", h)  # todos os CTAs
         elif campo == "nome_empresa":
             h = h.replace(str(antigo), str(valor_novo)) if antigo else h
+        elif campo == "catalogo":  # reconstrói só a seção de catálogo (determinística)
+            h = re.sub(r'<section class="catalogo reveal" id="o-que-inclui">.*?</section>',
+                       lambda _m: _secao_catalogo(valor_novo), h, count=1, flags=re.S)
         Path(deploy_html).write_text(h, encoding="utf-8")
         patched = True
     return {"campo": campo, "aplicado": True, "cirurgico_patch": patched,
@@ -109,11 +132,16 @@ if __name__ == "__main__":  # self-check ISOLADO (LLM mockado + patch em arquivo
     p2 = interpretar("troca a foto do hero", cart)
     assert not p2["suportado"] and "foto" in p2["motivo"], p2
 
-    # comando de conteúdo (catalogo) → suportado mas precisa regenerar
-    llm_proxy.completar = lambda *a, **k: '{"suportado":true,"campo":"catalogo","valor_novo":[{"tier":"Novo"}],"resumo":"muda planos"}'
+    # comando de conteúdo (catalogo) → CIRÚRGICO: reconstrói só a seção de catálogo
+    html_p.write_text('<section class="catalogo reveal" id="o-que-inclui"><h2>x</h2>'
+                      '<div class="cat-grid"><article class="cat-card"><h3>Velho</h3></article></div></section>',
+                      encoding="utf-8")
+    llm_proxy.completar = lambda *a, **k: '{"suportado":true,"campo":"catalogo","valor_novo":[{"tier":"Novo","inclui":["item A"]}],"resumo":"muda planos"}'
     p3 = interpretar("renomeia o 1º plano", cart)
-    assert p3["suportado"] and not p3["cirurgico"], p3
-    r3 = aplicar(str(cart_p), "catalogo", [{"tier": "Novo"}])
-    assert r3["precisa_regenerar"] and not r3["cirurgico_patch"], r3
+    assert p3["suportado"] and p3["cirurgico"], p3
+    r3 = aplicar(str(cart_p), "catalogo", [{"tier": "Novo", "inclui": ["item A"]}], str(html_p))
+    assert r3["cirurgico_patch"] and not r3["precisa_regenerar"], r3
+    hh = html_p.read_text()
+    assert "Novo" in hh and "item A" in hh and "Velho" not in hh, "seção de catálogo não foi reconstruída"
     print("site_editor OK — interpreta comando (Groq), confirma antes, patch cirúrgico (whatsapp/nome), "
           "content→regenera, não-suportado→recusa")
