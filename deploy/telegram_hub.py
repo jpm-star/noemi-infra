@@ -86,7 +86,18 @@ def _baixar_arquivo(file_id: str, destino: Path) -> tuple[Path | None, str]:
 
 def _fmt_insight(a: dict) -> str:
     """Formata a resposta rica pro Telegram."""
-    l = [f"📡 *{a.get('categoria','?')}* · ★{a.get('score','?')}", "", a.get("insight", "")]
+    vert = a.get("vertical")
+    cab = f"📡 *{a.get('categoria','?')}* · ★{a.get('score','?')}"
+    if vert:  # cam.1: vertical (marca as NOVAS, não catalogadas)
+        cab += f" · 🏢 {vert}{' (nova!)' if a.get('vertical_nova') else ''}"
+    l = [cab, "", a.get("insight", "")]
+    if a.get("motores"):  # roteamento (upgrade c): pra quais motores isto serve
+        l.append("\n🚀 motores: " + ", ".join(a["motores"]))
+    if a.get("ferramentas"):  # cam.4: ferramentas = produtos candidatos
+        l.append("🛠️ ferramentas: " + ", ".join(a["ferramentas"]))
+    mkt = a.get("marketing") or {}  # cam.3: padrão de marketing replicável
+    if mkt:
+        l.append("📣 " + " · ".join(f"{k}: {v}" for k, v in mkt.items()))
     if a.get("onde_usar"):
         l.append("\n🎯 onde usar: " + ", ".join(a["onde_usar"]))
     if a.get("verticais"):
@@ -142,6 +153,25 @@ def _processar_msg(m: dict, chat_alvo: str) -> str | None:
                 _responder(chat, f"✗ falhou: {str(e)[:200]}")
                 radar.registrar_job(False, origem=conta or "telegram", motivo=str(e)[:150])
                 return "analise_falhou"
+    # 1b) FOTO (imagem enviada) → visão/OCR → radar. Cada msg = 1 foto (manda as 30 seguidas).
+    foto = m.get("photo")
+    if isinstance(foto, list) and foto and (foto[-1] or {}).get("file_id"):
+        _responder(chat, "🖼️ recebi a imagem, analisando…")
+        with tempfile.TemporaryDirectory(prefix="tg_img_") as td:
+            arq, erro = _baixar_arquivo(foto[-1]["file_id"], Path(td))  # maior resolução
+            if not arq:
+                _responder(chat, "✗ não consegui baixar a imagem — tenta reenviar.")
+                radar.registrar_job(False, origem=conta or "telegram", motivo=f"download img {erro}")
+                return f"img_download_falhou_{erro}"
+            try:
+                a = radar.analisar_imagem(str(arq), origem=conta or "telegram", instrucao=instr)
+                _responder(chat, _fmt_insight(a))
+                radar.registrar_job(True, origem=a.get("origem") or conta or "telegram", url="(imagem)")
+                return f"imagem ok id={a['id']}"
+            except Exception as e:  # noqa: BLE001
+                _responder(chat, f"✗ falhou: {str(e)[:200]}")
+                radar.registrar_job(False, origem=conta or "telegram", motivo=str(e)[:150])
+                return "img_analise_falhou"
     # 2) link no texto
     txt = m.get("text") or m.get("caption") or ""
     links = _URL_RE.findall(txt)
@@ -201,12 +231,14 @@ if __name__ == "__main__":
                                                "insight": instrucao or "x", "onde_usar": ["a"], "verticais": [], "axioma": "", "assimilacao": ""}
         mod.analisar_arquivo = lambda p, origem=None, url_ref="", instrucao="": {"id": 2, "categoria": "mkt", "score": 4, "insight": "y",
                                                        "onde_usar": [], "verticais": [], "axioma": "", "assimilacao": ""}
+        mod.analisar_imagem = lambda p, origem=None, instrucao="": {"id": 3, "categoria": "produto", "score": 4, "insight": "img", "onde_usar": [], "verticais": [], "axioma": "", "assimilacao": ""}
         mod.registrar_job = lambda ok, **k: None
         sys.modules["radar"] = mod
         globals()["_responder"] = lambda c, t: vistos.append(t)
         globals()["_baixar_arquivo"] = lambda fid, d: (Path("/tmp/fake.mp4"), "")
         assert "link ok" in _processar_msg({"chat": {"id": "1"}, "text": "olha https://youtu.be/x"}, "1")
         assert "video ok" in _processar_msg({"chat": {"id": "1"}, "video": {"file_id": "F"}}, "1")
+        assert "imagem ok" in _processar_msg({"chat": {"id": "1"}, "photo": [{"file_id": "s"}, {"file_id": "L"}]}, "1")
         assert _processar_msg({"chat": {"id": "9"}, "text": "https://x.com"}, "1") is None  # outro chat
         assert _processar_msg({"chat": {"id": "1"}, "text": "oi sem link"}, "1") is None
         print("telegram_hub OK — roteia link/vídeo, ignora outro chat e texto sem link")

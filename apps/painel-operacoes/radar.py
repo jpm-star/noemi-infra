@@ -25,6 +25,16 @@ _AQUI = Path(__file__).resolve().parent
 sys.path.insert(0, str(_AQUI.parents[1] / "packages"))
 
 CATEGORIAS = {"marketing", "vendas", "produto", "mindset", "operação", "concorrente", "outro"}
+# Motores do JP pra onde um insight pode ser ROTEADO (upgrade c). O Radar deixa de
+# ser só um digest e vira distribuidor: cada sacada ganha o(s) motor(es) onde é
+# acionável, e a Caixa de Ideias consome isso agrupado por motor.
+MOTORES = {"arbitragem", "motor-site", "motor-b", "noemi"}
+# Verticais catalogadas (Radar Omnisciente cam.1). O LLM encaixa numa destas OU
+# devolve um nome novo => marcado vertical_nova (nunca força encaixe). Lista base
+# das verticais do JP; sincronizar com cartuchos quando crescer.
+VERTICAIS = {"marmoraria", "clinica", "contabilidade", "imobiliaria", "energia_solar",
+             "odontologia", "estetica", "fisioterapia", "harmonizacao", "advocacia",
+             "restaurante", "ecommerce", "dropshipping", "mecanica", "psicologia"}
 
 
 def _origem_da_url(url: str) -> str:
@@ -95,16 +105,31 @@ def _metadados(link: str) -> tuple[str, str]:
 
 
 def _frames(video_path: str, destino: Path, n: int = 6) -> list[bytes]:
-    """~n frames JPEG espalhados no vídeo (ffmpeg, 1 a cada 2s, cap n). É o que dá
-    OLHOS pro radar: lê o que está na TELA (produto/UI/código). [] se ffmpeg falhar."""
+    """~n frames JPEG do vídeo, um por CENA (upgrade a). É o que dá OLHOS pro radar:
+    lê o que está na TELA (produto/UI/código). Amostragem por scene-detect (pega o
+    instante em que a tela MUDA — produto novo, preço, corte) em vez de 1 a cada 2s
+    (que num reel estático devolve o mesmo frame repetido). Cai pra amostragem
+    uniforme se o vídeo tiver poucos cortes. [] se ffmpeg falhar de vez."""
     padrao = str(destino / "f_%03d.jpg")
-    try:
-        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(video_path),
-                        "-vf", "fps=1/2,scale=768:-1", "-frames:v", str(n), padrao],
-                       check=True, capture_output=True, timeout=120)
-    except Exception:  # noqa: BLE001 — visão é best-effort; áudio/legenda seguem
-        return []
-    return [p.read_bytes() for p in sorted(destino.glob("f_*.jpg"))[:n]]
+
+    def _rodar(vf: str) -> list[bytes]:
+        try:
+            subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(video_path),
+                            "-vf", vf, "-vsync", "vfr", "-frames:v", str(n), padrao],
+                           check=True, capture_output=True, timeout=120)
+        except Exception:  # noqa: BLE001 — visão é best-effort; áudio/legenda seguem
+            return []
+        return [p.read_bytes() for p in sorted(destino.glob("f_*.jpg"))[:n]]
+
+    fr = _rodar("select='gt(scene,0.3)',scale=768:-1")  # 1 frame por troca de cena
+    if len(fr) >= 2:
+        return fr
+    for p in destino.glob("f_*.jpg"):  # limpa os poucos da tentativa de cena
+        try:
+            p.unlink()
+        except OSError:
+            pass
+    return _rodar("fps=1/2,scale=768:-1")  # fallback: vídeo estático/sem cortes
 
 
 def _combinar(visao: str, legenda: str, audio: str) -> str:
@@ -188,6 +213,10 @@ _PROMPT_BASE = (
     "Você é o Radar de Vídeo do JP (Noemi OS: SDR/IA no WhatsApp que ele VENDE pra "
     "clínicas/PMEs; também geração de site/vídeo, growth, arbitragem). Dada a TRANSCRIÇÃO "
     "de um vídeo (dica de marketing/vendas/produto) e o histórico, seja AFIADO e prático.\n"
+    "REGRA DE FUSÃO DE SINAIS: as fontes vêm rotuladas (TELA/visão, LEGENDA/título, "
+    "ÁUDIO/transcrição). Se divergirem sobre O QUE é o produto/oferta, priorize "
+    "TELA > LEGENDA > ÁUDIO (o áudio pode ser só música de fundo — não deixe ele "
+    "definir o produto se a tela mostra outra coisa). Produza UMA análise coesa.\n"
     "Responda SOMENTE JSON com as chaves:\n"
     '"insight" (2-4 frases acionáveis — a sacada central, conectando com o histórico), '
     '"resumo" (1 frase), '
@@ -205,6 +234,18 @@ _PROMPT_BASE = (
     '{"video":"gancho/formato específico","site":"seção/oferta específica","negocio":'
     '"como monetiza, concreto","produto":"produto/feature nomeável","operacao":'
     '"automação/passo concreto","projeto":"experimento testável"}), '
+    f'"motores" (lista dos motores do JP onde ESTE insight é acionável, subconjunto '
+    f'de {sorted(MOTORES)} — arbitragem=garimpo/revenda, motor-site=gerador de sites, '
+    f'motor-b=gerador de vídeo, noemi=SDR/IA no WhatsApp. [] se nenhum for claro; '
+    f'NÃO chute — só quando o insight realmente serve pra aquele motor), '
+    f'"vertical" (a vertical/nicho do conteúdo: um de {sorted(VERTICAIS)} se casar, '
+    f'senão o nome NOVO que você propor em 1 palavra; "" se não der pra dizer — não force), '
+    '"marketing" (o PADRÃO replicável, NÃO a cópia — objeto '
+    '{"angulo":"o ângulo/promessa","hook":"a fisgada dos 3s","oferta":"a estrutura da oferta",'
+    '"cta":"a chamada","funil":"o tipo de funil"}; cada campo curto e concreto, "" se ausente. '
+    'É munição de copy, não plágio do post), '
+    '"ferramentas" (lista de softwares/ferramentas CITADOS ou implicados no conteúdo, '
+    'ex ["Shopify","Ruflo"]; [] se nenhum — cada um vira produto candidato), '
     f'"categoria" (um de {sorted(CATEGORIAS)}), '
     '"score" (inteiro 1-5 de relevância pro JP), '
     '"tags" (lista de 3-6 palavras-chave minúsculas).'
@@ -240,7 +281,8 @@ def _insight(transcricao: str, contexto: list[dict], instrucao: str = "") -> dic
                 "resumo": (frase[0] if frase else "")[:160], "categoria": "outro",
                 "score": 1, "tags": [], "fonte": "extrativo",
                 "onde_usar": [], "verticais": [], "axioma": "", "assimilacao": "", "comparacao": "",
-                "modelos": {}}
+                "modelos": {}, "motores": [], "vertical": "", "vertical_nova": False,
+                "marketing": {}, "ferramentas": []}
     cat = str(bruto.get("categoria", "outro")).strip().lower()
     try:
         score = max(1, min(5, int(bruto.get("score", 1))))
@@ -255,8 +297,31 @@ def _insight(transcricao: str, contexto: list[dict], instrucao: str = "") -> dic
         out = {k: str(d.get(k, "")).strip()[:200] for k in
                ("video", "site", "negocio", "produto", "operacao", "projeto")}
         return {k: val for k, val in out.items() if val}  # só os que têm ação real
+
+    def _motores(v):  # roteamento (upgrade c): só os motores válidos, sem duplicar
+        if not isinstance(v, list):
+            return []
+        vistos = []
+        for x in v:
+            m = str(x).strip().lower().replace("_", "-")
+            if m in MOTORES and m not in vistos:
+                vistos.append(m)
+        return vistos
+
+    def _mkt(v):  # cam.3: PADRÃO replicável de marketing (angulo/hook/oferta/cta/funil)
+        d = v if isinstance(v, dict) else {}
+        out = {k: str(d.get(k, "")).strip()[:160] for k in
+               ("angulo", "hook", "oferta", "cta", "funil")}
+        return {k: val for k, val in out.items() if val}
+
+    vertical = str(bruto.get("vertical", "")).strip().lower()[:40]
     return {"insight": str(bruto.get("insight", "")).strip()[:1200] or "(sem insight)",
             "modelos": _modelos(bruto.get("modelos")),
+            "motores": _motores(bruto.get("motores")),
+            "vertical": vertical,  # cam.1
+            "vertical_nova": bool(vertical) and vertical not in VERTICAIS,
+            "marketing": _mkt(bruto.get("marketing")),  # cam.3
+            "ferramentas": _lista(bruto.get("ferramentas")),  # cam.4
             "resumo": str(bruto.get("resumo", "")).strip()[:200],
             "onde_usar": _lista(bruto.get("onde_usar")), "verticais": _lista(bruto.get("verticais")),
             "axioma": str(bruto.get("axioma", "")).strip()[:240],
@@ -365,26 +430,82 @@ def analisar_arquivo(caminho: str, origem: str = "telegram", url_ref: str = "",
     return _processar(texto, origem, url_ref, instrucao)
 
 
-def _processar(texto: str, origem: str, url: str, instrucao: str = "") -> dict:
-    """Núcleo compartilhado: contexto → insight → grava → devolve."""
+def analisar_imagem(caminho: str, origem: str = "telegram", instrucao: str = "") -> dict:
+    """Pipeline por IMAGEM (foto enviada no Telegram) — visão (OCR/Gemini) da imagem +
+    a legenda/pedido do JP → insight → GRAVA. Sem ffmpeg/áudio (é imagem). Se o OCR vier
+    vazio, a legenda ainda ancora a análise (a foto raramente vem sem contexto)."""
+    from shared_core.ai import visao
+    with open(caminho, "rb") as f:
+        visao_txt, _ = visao.analisar_frames([f.read()])
+    texto = _combinar(visao_txt, (instrucao or "").strip(), "")  # legenda = o que o JP escreveu
+    if not texto.strip():
+        raise RuntimeError("imagem sem texto legível e sem legenda — manda com uma legenda de contexto")
+    return _processar(texto, origem, "(imagem enviada)", instrucao)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# FRONTEIRA fonte↔núcleo (Radar Omnisciente). Um ADAPTER (reel hoje; SDR/site/
+# auto-observação depois) produz uma OBSERVAÇÃO no formato padrão abaixo. O NÚCLEO
+# (processar_observacao → _insight, as 5 camadas) processa QUALQUER fonte sem saber
+# de onde veio. A fonte não conhece o núcleo; o núcleo não conhece a fonte —
+# trocar/somar adapter não reescreve o núcleo. `fonte_tipo` fica gravado pra o
+# cruzamento entre-fontes (um padrão em reel E em conversa do SDR = sinal mais forte).
+# ═══════════════════════════════════════════════════════════════════════════
+FONTES = ("reel", "sdr", "sdr_cliente", "site", "relatorio")  # tipos de adapter (reel + sdr_cliente hoje)
+
+
+def observacao(texto: str, *, origem: str = "", ref: str = "", instrucao: str = "",
+               fonte_tipo: str = "reel") -> dict:
+    """Monta a OBSERVAÇÃO padrão que todo adapter emite pro núcleo. `texto` é o
+    conteúdo já fundido/rotulado (TELA/LEGENDA/ÁUDIO no reel; será conversa no SDR,
+    tráfego no site). `ref` = url/id de rastreio. `fonte_tipo` = de qual adapter veio."""
+    return {"texto": texto, "origem": origem, "ref": ref,
+            "instrucao": instrucao,
+            "fonte_tipo": fonte_tipo if fonte_tipo in FONTES else "reel"}
+
+
+def processar_observacao(obs: dict) -> dict:
+    """NÚCLEO genérico: recebe uma observação padrão (de QUALQUER adapter) → roda as
+    camadas de análise → grava → devolve. Não sabe da fonte; só do formato padrão.
+    Dispatch por fonte_tipo: cada adapter pode ter seu cérebro (reel = _insight/Groq;
+    sdr_cliente = Insight Engine/Groq-only). O downstream (gate, storage) é do adapter."""
+    if obs.get("fonte_tipo") == "sdr_cliente":  # tier 1 cliente-facing (Groq-only)
+        import insight_engine
+        return insight_engine.processar_cliente(obs)
     from shared_core.storage import db
+    texto = obs.get("texto", "")
+    origem = obs.get("origem", "")
+    ref = obs.get("ref", "")
+    instrucao = obs.get("instrucao", "")
+    fonte_tipo = obs.get("fonte_tipo", "reel")
     contexto = _contexto_anterior(origem)
     ins = _insight(texto, contexto, instrucao)
+    ins["pedido"] = (instrucao or "").strip()[:400]  # upgrade d: grava a legenda/pedido
+    ins["fonte_tipo"] = fonte_tipo                     # de qual adapter veio (cruzamento futuro)
     data = datetime.now(timezone.utc).isoformat()
     detalhe = json.dumps({k: ins.get(k) for k in
                           ("onde_usar", "verticais", "axioma", "assimilacao", "comparacao",
-                           "modelos", "fonte")},
+                           "modelos", "motores", "pedido", "fonte", "fonte_tipo",
+                           "vertical", "vertical_nova", "marketing", "ferramentas")},
                          ensure_ascii=False)
     with db.conn() as c:
         cur = c.execute(
             "INSERT INTO video_analises (origem, url, data, transcricao, insight, categoria, score, tags, detalhe) "
             "VALUES (?,?,?,?,?,?,?,?,?)",
-            (origem, url, data, texto, ins["insight"], ins["categoria"], ins["score"],
+            (origem, ref, data, texto, ins["insight"], ins["categoria"], ins["score"],
              ",".join(ins["tags"]), detalhe))
         c.commit()
         aid = cur.lastrowid
-    return {"id": aid, "origem": origem, "url": url, "data": data,
+    return {"id": aid, "origem": origem, "url": ref, "data": data,
             "transcricao": texto, "usou_contexto": len(contexto), **ins}
+
+
+def _processar(texto: str, origem: str, url: str, instrucao: str = "") -> dict:
+    """Shim de retrocompat: o adapter de REEL (analisar/analisar_arquivo) chama aqui.
+    Vira uma observação padrão fonte_tipo=reel e delega pro núcleo genérico —
+    comportamento idêntico ao de antes do refactor."""
+    return processar_observacao(observacao(texto, origem=origem, ref=url,
+                                           instrucao=instrucao, fonte_tipo="reel"))
 
 
 def listar(q: str | None = None, limite: int = 40) -> list[dict]:
@@ -412,13 +533,18 @@ def _expandir(d: dict) -> dict:
         det = json.loads(d.get("detalhe") or "{}")
         if isinstance(det, dict):
             d.update({k: det.get(k) for k in
-                      ("onde_usar", "verticais", "axioma", "assimilacao", "comparacao", "modelos")})
+                      ("onde_usar", "verticais", "axioma", "assimilacao", "comparacao",
+                       "modelos", "motores", "pedido", "fonte_tipo",
+                       "vertical", "vertical_nova", "marketing", "ferramentas")})
     except (ValueError, TypeError):
         pass
     return d
 
 
 _DOMINIOS = ("video", "site", "negocio", "produto", "operacao", "projeto")
+# Qual template de domínio melhor serve cada motor (pra Caixa por-motor, upgrade e).
+_MOTOR_DOMINIO = {"arbitragem": ("negocio", "produto"), "motor-site": ("site",),
+                  "motor-b": ("video",), "noemi": ("operacao", "negocio")}
 
 
 def harvest_ideias(limite: int = 300) -> dict:
@@ -427,26 +553,51 @@ def harvest_ideias(limite: int = 300) -> dict:
     rastrear de onde veio. É uma VIEW sobre video_analises — não duplica storage."""
     from shared_core.storage import db
     grupos: dict[str, list] = {k: [] for k in _DOMINIOS}
+    por_motor: dict[str, list] = {m: [] for m in sorted(MOTORES)}
+    ferramentas: dict[str, dict] = {}  # cam.4: produto candidato -> {nome, mencoes, origem, url, aid}
     try:
         with db.conn() as c:
             rows = c.execute(
                 "SELECT id, origem, url, data, score, detalhe FROM video_analises "
                 "ORDER BY COALESCE(feedback,0) DESC, score DESC, id DESC LIMIT ?", (limite,)).fetchall()
     except Exception:  # noqa: BLE001 — sem dados ainda é OK
-        return {"grupos": grupos, "total": 0}
+        return {"grupos": grupos, "por_motor": por_motor, "ferramentas": [], "total": 0}
     total = 0
     for r in rows:
         try:
-            mods = (json.loads(r["detalhe"] or "{}") or {}).get("modelos") or {}
+            det = json.loads(r["detalhe"] or "{}") or {}
         except (ValueError, TypeError):
             continue
+        mods = det.get("modelos") or {}
+        fonte = {"origem": r["origem"], "url": r["url"], "data": r["data"],
+                 "score": r["score"], "aid": r["id"]}
         for dom in _DOMINIOS:
             ideia = (mods.get(dom) or "").strip()
             if ideia:
-                grupos[dom].append({"ideia": ideia, "origem": r["origem"], "url": r["url"],
-                                    "data": r["data"], "score": r["score"], "aid": r["id"]})
+                grupos[dom].append({"ideia": ideia, **fonte})
                 total += 1
-    return {"grupos": grupos, "total": total}
+        # upgrade e: a Caixa CONSOME o roteamento — cada motor ganha a ideia mais
+        # relevante daquele vídeo (o template do domínio que casa com o motor).
+        for motor in (det.get("motores") or []):
+            if motor not in por_motor:
+                continue
+            ideia = next((mods.get(d, "").strip() for d in _MOTOR_DOMINIO.get(motor, ())
+                          if (mods.get(d) or "").strip()),
+                         next((v.strip() for v in mods.values() if (v or "").strip()), ""))
+            if ideia:
+                por_motor[motor].append({"ideia": ideia, **fonte})
+        # cam.4: ferramentas citadas viram produtos candidatos. Dedup por nome; conta
+        # menções (recorrência = sinal de força — 3 fontes citando > 1 fonte).
+        for f in (det.get("ferramentas") or []):
+            chave = str(f).strip().lower()
+            if not chave:
+                continue
+            if chave in ferramentas:
+                ferramentas[chave]["mencoes"] += 1
+            else:
+                ferramentas[chave] = {"nome": str(f).strip()[:60], "mencoes": 1, **fonte}
+    cand = sorted(ferramentas.values(), key=lambda x: x["mencoes"], reverse=True)
+    return {"grupos": grupos, "por_motor": por_motor, "ferramentas": cand, "total": total}
 
 
 def obter(aid: int) -> dict | None:
@@ -534,4 +685,55 @@ if __name__ == "__main__":  # self-check: origem + json + degradação (sem rede
     assert _extrair_json('lixo {"a":1} fim') == {"a": 1}
     d = _insight("Primeira frase. Segunda frase. Terceira.", [])  # proxy provavelmente fora
     assert d["categoria"] in CATEGORIAS and 1 <= d["score"] <= 5, d
-    print("radar OK — origem/json/insight degradado:", d["fonte"])
+    assert d["motores"] == [], d  # degradado não roteia pra motor nenhum
+    assert d["vertical"] == "" and d["vertical_nova"] is False and d["ferramentas"] == [], d
+
+    # upgrade c + Omnisciente cam.1/3/4: valida motores + vertical + marketing + ferramentas
+    def _fake_completar(*a, **k):
+        return ('{"insight":"x","categoria":"vendas","score":4,"motores":'
+                '["arbitragem","MOTOR_SITE","inexistente","arbitragem"],'
+                '"modelos":{"site":"landing de leilão","negocio":"revende com 30%"},'
+                '"vertical":"Odontologia","marketing":{"angulo":"medo de perder cliente",'
+                '"hook":"3s","oferta":"","cta":"chama no zap"},"ferramentas":["Shopify","Ruflo"]}')
+    import shared_core.ai.llm_proxy as _lp
+    _orig = _lp.completar
+    _lp.completar = _fake_completar
+    try:
+        r = _insight("qualquer", [])
+        assert r["motores"] == ["arbitragem", "motor-site"], r["motores"]  # dedup+whitelist+normaliza
+        assert r["vertical"] == "odontologia" and r["vertical_nova"] is False, r  # cam.1 catalogada
+        assert r["marketing"] == {"angulo": "medo de perder cliente", "hook": "3s",
+                                  "cta": "chama no zap"}, r["marketing"]       # cam.3 (oferta vazia caiu)
+        assert r["ferramentas"] == ["Shopify", "Ruflo"], r["ferramentas"]     # cam.4
+        # vertical fora do catálogo => vertical_nova=True
+        _lp.completar = lambda *a, **k: '{"insight":"y","categoria":"produto","score":3,"vertical":"petshop"}'
+        r2 = _insight("q", [])
+        assert r2["vertical"] == "petshop" and r2["vertical_nova"] is True, r2
+    finally:
+        _lp.completar = _orig
+
+    # upgrade e: harvest agrupa por motor usando o template de domínio que casa
+    linha = {"motores": ["arbitragem", "motor-site"],
+             "modelos": {"site": "landing de leilão", "negocio": "revende com 30%"}}
+    dom_arb = next((linha["modelos"].get(dd, "") for dd in _MOTOR_DOMINIO["arbitragem"]
+                    if linha["modelos"].get(dd)), "")
+    assert dom_arb == "revende com 30%", dom_arb  # arbitragem prefere negocio/produto
+
+    # REFACTOR adapter: observacao() monta o formato padrão; fonte_tipo inválido cai p/ reel
+    o = observacao("t", origem="oo", ref="uu", instrucao="pede", fonte_tipo="sdr")
+    assert o == {"texto": "t", "origem": "oo", "ref": "uu", "instrucao": "pede",
+                 "fonte_tipo": "sdr"}, o
+    assert observacao("t", fonte_tipo="inexistente")["fonte_tipo"] == "reel"
+    # o shim _processar delega pro núcleo como observação fonte_tipo=reel (sem tocar DB)
+    _capt = {}
+    _g = globals()
+    _orig_proc = _g["processar_observacao"]
+    _g["processar_observacao"] = lambda obs: _capt.update(obs) or {"id": 0}
+    try:
+        _processar("texto reel", "conta", "http://x", "leg")
+        assert _capt["fonte_tipo"] == "reel" and _capt["ref"] == "http://x" and \
+               _capt["texto"] == "texto reel", _capt  # núcleo recebe o formato padrão
+    finally:
+        _g["processar_observacao"] = _orig_proc
+    print("radar OK — degradado:", d["fonte"],
+          "· cam.1/3/4 + fronteira adapter (observacao/processar_observacao) OK")

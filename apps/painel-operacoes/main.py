@@ -301,6 +301,101 @@ def ideias_dados() -> JSONResponse:
     return JSONResponse(radar.harvest_ideias())
 
 
+@app.get("/api/auto-analise")
+def auto_analise_dados() -> JSONResponse:
+    """Auto-análise (task 2): retrato atual amarelo/vermelho da própria operação."""
+    import insight_engine
+    return JSONResponse({"itens": insight_engine.listar_auto()})
+
+
+@app.post("/api/auto-analise/rodar")
+async def auto_analise_rodar() -> JSONResponse:
+    """Reanalisa o banco do Radar agora (Groq-only). Substitui o retrato anterior."""
+    import asyncio
+
+    import insight_engine
+    itens = await asyncio.to_thread(insight_engine.auto_analise)
+    return JSONResponse({"itens": itens, "n": len(itens)})
+
+
+@app.post("/api/beacon")
+async def beacon_registrar(req: Request) -> Response:
+    """Beacon público do site (Item 5): registra view/cta. Body JSON (sendBeacon).
+    204 sempre — tracking nunca falha pro visitante. Rota exposta em jpos.com.br/beacon
+    (fora do basic_auth), reescrita pra cá pelo Caddy."""
+    import json as _json
+
+    from fastapi import Response as _Resp
+
+    import beacon as _bcn
+    try:
+        d = _json.loads((await req.body()).decode("utf-8") or "{}")
+    except (ValueError, UnicodeDecodeError):
+        d = {}
+    _bcn.registrar(str(d.get("site", "jpos")), str(d.get("evento", "")),
+                   str(d.get("origem", "")), str(d.get("path", "")))
+    return _Resp(status_code=204)
+
+
+@app.get("/api/site/resumo")
+def site_resumo(site: str = "jpos") -> JSONResponse:
+    """Dado bruto de tráfego pra aba Site (visitas/cta/conversão/origens)."""
+    import beacon as _bcn
+    return JSONResponse(_bcn.resumo(site))
+
+
+@app.get("/api/site/analise")
+async def site_analise(site: str = "jpos") -> JSONResponse:
+    """Tráfego INTERPRETADO por IA (padrão Insight Engine) pra aba Site. Groq-only."""
+    import asyncio
+
+    import beacon as _bcn
+    return JSONResponse(await asyncio.to_thread(_bcn.analise, site))
+
+
+_CART_JPOS = "/root/noemi-infra/data/cartucho_jpos.json"
+_HTML_JPOS = "/var/www/jpos/index.html"
+
+
+@app.post("/api/site/editar")
+async def site_editar(req: Request) -> JSONResponse:
+    """IA nativa (Item 2): comando NL → PROPOSTA de mudança (não aplica; devolve preview)."""
+    import asyncio
+    import json as _j
+
+    import site_editor
+    try:
+        d = _j.loads((await req.body()).decode("utf-8") or "{}")
+        cart = _j.loads(open(_CART_JPOS, encoding="utf-8").read())
+    except (ValueError, OSError):
+        return JSONResponse({"suportado": False, "motivo": "cartucho não encontrado / comando inválido"})
+    prop = await asyncio.to_thread(site_editor.interpretar, str(d.get("comando", "")), cart)
+    return JSONResponse(prop)
+
+
+@app.post("/api/site/editar/aplicar")
+async def site_editar_aplicar(req: Request) -> JSONResponse:
+    """Aplica a mudança CONFIRMADA (nunca sem confirmação do front)."""
+    import asyncio
+    import json as _j
+
+    import site_editor
+    d = _j.loads((await req.body()).decode("utf-8") or "{}")
+    campo = str(d.get("campo", ""))
+    if campo not in site_editor.CAMPOS:
+        return JSONResponse({"ok": False, "erro": "campo não editável"})
+    r = await asyncio.to_thread(site_editor.aplicar, _CART_JPOS, campo, d.get("valor_novo"), _HTML_JPOS)
+    return JSONResponse({"ok": True, **r})
+
+
+@app.get("/insights/{cliente}", response_class=HTMLResponse)
+def insights_cliente(cliente: str) -> str:
+    """UI cliente-facing do Insight Engine (task 1). Fora do basic_auth do JP — é a
+    página que o subdomínio do cliente aponta. Só leitura (cards já gerados)."""
+    import insight_engine
+    return insight_engine.render_cards(cliente)
+
+
 @app.get("/api/leads/export.csv")
 def leads_export() -> Response:
     from fastapi.responses import Response as _R
