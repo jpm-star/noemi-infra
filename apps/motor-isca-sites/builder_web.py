@@ -37,7 +37,7 @@ os.environ.setdefault("SITE_ORQUESTRADOR", "stub")   # sem LLM (Camada 2 adiada)
 os.environ.setdefault("SITE_GERADOR", "template")
 os.environ.setdefault("SITE_DEPLOY", "local")
 os.environ.setdefault("SITE_OUT_DIR", "/var/www/sites")
-os.environ.setdefault("SITE_BASE_URL", "https://go.noemi.digital")
+os.environ.setdefault("SITE_BASE_URL", "https://p.jpos.com.br")
 
 from app.pipeline import montar_site  # noqa: E402
 
@@ -147,7 +147,7 @@ def _tela_principal(resultado_html: str = "") -> str:
 border-radius:12px;text-decoration:none;color:#fff;font-weight:700;
 background:linear-gradient(135deg,var(--roxo),#5b7cff)'>⚡ Onboarding rápido (3 perguntas)</a>
 <h2>Novo site</h2>
-<div class='sub'>Briefing → site publicado em go.noemi.digital, na hora.</div>
+<div class='sub'>Briefing → site publicado em p.jpos.com.br, na hora.</div>
 <form method='post' action='/studio/gerar'>
 <label>Nome do negócio *</label><input name='nome' required placeholder='Escritório Contábil Silva'>
 <div class='row'><div><label>Segmento *</label><input name='nicho' required placeholder='contabilidade'></div>
@@ -204,28 +204,55 @@ def principal(request: Request):
     return HTMLResponse(_tela_principal())
 
 
+# "Variar design": presets de PALETA pré-definidos (sem LLM, sem CSS novo). cor_primaria
+# já cascateia todo o esquema de cor no template — trocar a cor = variação visual na hora.
+# preset 0 respeita a cor que o JP digitou (ou o tema); 1/2 forçam paletas alternativas.
+_PRESETS = [("Padrão", None), ("Esmeralda", "#0e9f6e"), ("Violeta", "#7c3aed")]
+
+
 @app.post("/studio/gerar", response_class=HTMLResponse)
 def gerar(request: Request, nome: str = Form(...), nicho: str = Form(...), whatsapp: str = Form(...),
-          diferenciais: str = Form(""), publico: str = Form(""), cor: str = Form("")):
+          diferenciais: str = Form(""), publico: str = Form(""), cor: str = Form(""),
+          preset: str = Form("0")):
     if not _logado(request):
         return _para_login()
+    try:
+        p = int(preset) % len(_PRESETS)
+    except (TypeError, ValueError):
+        p = 0
+    nome_preset, cor_preset = _PRESETS[p]
+    cor_final = (cor.strip() or None) if p == 0 else cor_preset   # preset 0 = cor do JP/tema
     briefing = {
         "nome_empresa": nome.strip(), "nicho": nicho.strip(), "whatsapp": whatsapp.strip(),
         "diferenciais": [d.strip() for d in diferenciais.splitlines() if d.strip()],
-        "publico": publico.strip(), "cor_primaria": cor.strip() or None,
+        "publico": publico.strip(), "cor_primaria": cor_final,
     }
     try:
         r = montar_site(briefing)
-    except Exception as e:
+    except Exception:
         bloco = "<div class='res err'>Não deu pra gerar o site agora. Confira os campos e tente de novo.</div>"
         return HTMLResponse(_tela_principal(bloco))
     url = r.deploy.url
     slug = re.sub(r".*/([^/]+)/?$", r"\1", url.rstrip("/"))
     _registrar_site(nome.strip(), nicho.strip(), slug, url)
     _aplicar_og(r, nicho.strip(), slug)
-    bloco = (f"<div class='res'>✅ <b>Publicado.</b><br>"
+    prox = (p + 1) % len(_PRESETS)
+    # ?v= força o navegador a recarregar o preview (mesmo slug sobrescrito no disco)
+    preview = f"{url}?v={p}"
+    variar = (
+        f"<form method='post' action='/studio/gerar' style='margin-top:10px'>"
+        f"<input type='hidden' name='nome' value='{_esc(nome)}'>"
+        f"<input type='hidden' name='nicho' value='{_esc(nicho)}'>"
+        f"<input type='hidden' name='whatsapp' value='{_esc(whatsapp)}'>"
+        f"<input type='hidden' name='publico' value='{_esc(publico)}'>"
+        f"<input type='hidden' name='diferenciais' value='{_esc(diferenciais)}'>"
+        f"<input type='hidden' name='cor' value='{_esc(cor)}'>"
+        f"<input type='hidden' name='preset' value='{prox}'>"
+        f"<button>🎨 Variar design (paleta {p + 1}/{len(_PRESETS)}: {_esc(nome_preset)} → próxima: {_esc(_PRESETS[prox][0])})</button>"
+        f"</form>")
+    bloco = (f"<div class='res'>✅ <b>Publicado.</b> Paleta: <b>{_esc(nome_preset)}</b><br>"
              f"<a href='{_esc(url)}' target='_blank' rel='noopener'>{_esc(url)}</a>"
-             f"<iframe src='{_esc(url)}' title='preview'></iframe></div>")
+             f"<iframe src='{_esc(preview)}' title='preview'></iframe>{variar}</div>")
     return HTMLResponse(_tela_principal(bloco))
 
 
@@ -314,7 +341,7 @@ def _aplicar_og(r, nicho: str, slug: str) -> None:
     try:
         og.aplicar(r.brief.nome_empresa, r.brief.subheadline, nicho, slug,
                    os.environ.get("SITE_OUT_DIR", "/var/www/sites"),
-                   os.environ.get("SITE_BASE_URL", "https://go.noemi.digital"))
+                   os.environ.get("SITE_BASE_URL", "https://p.jpos.com.br"))
     except Exception:
         pass
 
