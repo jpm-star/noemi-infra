@@ -48,10 +48,11 @@ def coletar_dados() -> dict:
     c = _ro(_NOEMI_DB)
     if c:
         try:
-            # prioriza análises VALIDADAS pelo JP (feedback=1, sinal do 2.1) e score alto
+            # prioriza análises VALIDADAS pelo JP (feedback=1, sinal do 2.1) e score alto.
+            # score agora é 0-10 (unificado): >=7 = as fortes pela rubrica (era >=4 na escala 1-5)
             radar = [dict(r) for r in c.execute(
                 "SELECT origem,categoria,score,feedback,substr(insight,1,160) insight "
-                "FROM video_analises WHERE score>=4 OR feedback=1 "
+                "FROM video_analises WHERE score>=7 OR feedback=1 "
                 "ORDER BY COALESCE(feedback,0) DESC, score DESC, id DESC LIMIT 30")]
         except sqlite3.Error:
             pass

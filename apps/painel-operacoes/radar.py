@@ -1,5 +1,9 @@
 """Radar de Vídeo — analisa um link (yt-dlp → Whisper → insight) e GUARDA.
 
+⚠️ ESTE é o Radar REAL do JPOS (serviço vivo: telegram_hub → aqui → noemi.db).
+NÃO confundir com /root/radar-reels/radar_reels.py — aquele é CLI morto/duplicado
+(ver §0 de RADAR_DOC_COMPLETA.md). Toda melhoria de Radar acontece AQUI.
+
 Memória persistente: cada análise vai pra tabela video_analises (storage.conn).
 Ao gerar um insight novo, injeta no prompt um resumo das análises anteriores da
 MESMA origem (conta/concorrente) + as mais recentes — o LLM "aprende" padrão ao
@@ -247,7 +251,12 @@ _PROMPT_BASE = (
     '"ferramentas" (lista de softwares/ferramentas CITADOS ou implicados no conteúdo, '
     'ex ["Shopify","Ruflo"]; [] se nenhum — cada um vira produto candidato), '
     f'"categoria" (um de {sorted(CATEGORIAS)}), '
-    '"score" (inteiro 1-5 de relevância pro JP), '
+    '"score" (inteiro 0-10 de relevância pro JP, RUBRICA DURA — não infle: '
+    '8-10 = nomeia uma tática/estrutura ESPECÍFICA e replicável que o JP ainda NÃO faz '
+    '(raro, reserve mesmo); 4-7 = útil mas parcial (tática conhecida, ou específica de '
+    'baixo impacto) — a MAIORIA do conteúdo cai aqui; 1-3 = genérico/óbvio/motivacional '
+    'sem ação concreta; 0 = ruído/irrelevante. Distribua de verdade: se tudo virar 8-10 '
+    'o número não serve pra nada), '
     '"tags" (lista de 3-6 palavras-chave minúsculas).'
 )
 
@@ -284,10 +293,10 @@ def _insight(transcricao: str, contexto: list[dict], instrucao: str = "") -> dic
                 "modelos": {}, "motores": [], "vertical": "", "vertical_nova": False,
                 "marketing": {}, "ferramentas": []}
     cat = str(bruto.get("categoria", "outro")).strip().lower()
-    try:
-        score = max(1, min(5, int(bruto.get("score", 1))))
+    try:  # escala 0-10 (unificada com auto_insights); rubrica dura vive no prompt
+        score = max(0, min(10, int(bruto.get("score", 0))))
     except (TypeError, ValueError):
-        score = 1
+        score = 0
 
     def _lista(v):
         return [str(x).strip()[:40] for x in v if str(x).strip()][:5] if isinstance(v, list) else []
@@ -684,7 +693,7 @@ if __name__ == "__main__":  # self-check: origem + json + degradação (sem rede
            _origem_da_url("https://www.instagram.com/lojax/reel/ABC/") == "@lojax"
     assert _extrair_json('lixo {"a":1} fim') == {"a": 1}
     d = _insight("Primeira frase. Segunda frase. Terceira.", [])  # proxy provavelmente fora
-    assert d["categoria"] in CATEGORIAS and 1 <= d["score"] <= 5, d
+    assert d["categoria"] in CATEGORIAS and 0 <= d["score"] <= 10, d
     assert d["motores"] == [], d  # degradado não roteia pra motor nenhum
     assert d["vertical"] == "" and d["vertical_nova"] is False and d["ferramentas"] == [], d
 
