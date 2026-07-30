@@ -251,6 +251,25 @@ async def tracker_importar(req: Request) -> JSONResponse:
     return JSONResponse(tracker.importar_de_leads(n))
 
 
+# -- Caixa de Ideias (Fase 0 KOS): busca semântica + dedup sobre video_analises. ----
+@app.get("/api/kb/buscar")
+def kb_buscar(q: str = "", k: int = 8) -> JSONResponse:
+    import kb_busca
+    return JSONResponse({"q": q, "resultados": kb_busca.buscar(q, k) if q.strip() else []})
+
+
+@app.post("/api/kb/indexar")
+async def kb_indexar() -> JSONResponse:
+    import kb_busca
+    return JSONResponse(kb_busca.indexar())
+
+
+@app.get("/api/kb/duplicados")
+def kb_duplicados(threshold: float = 0.95) -> JSONResponse:
+    import kb_busca
+    return JSONResponse({"pares": kb_busca.duplicados(threshold)})
+
+
 @app.get("/api/tracker/fila")
 def tracker_fila() -> JSONResponse:
     # Aba Prospecção (desenho A): fila do dia AO VIVO — view filtrada, nada se move.
