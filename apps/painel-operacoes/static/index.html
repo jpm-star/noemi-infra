@@ -186,14 +186,15 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
 
 <div class="card v-qg" data-sec="crm" id="tracker-card" style="margin-bottom:12px">
   <h3>📋 Tracker de prospecção <span id="tk-sub" style="color:var(--mut);font-weight:400;font-size:.8rem"></span></h3>
-  <div style="font-size:.78rem;color:var(--mut);margin-bottom:8px">Preencha as colunas brancas. <span style="color:var(--cy)">Último contato</span> preenche sozinho quando você registra um approach (whatsapp / email / ligação) no histórico abaixo — não edita à mão.</div>
-  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;font-size:.82rem">
-    <button id="tk-add" class="op" style="font-size:.82rem;padding:6px 14px">＋ novo prospect</button>
-    <button id="tk-imp" class="op op-ghost" style="font-size:.82rem;padding:6px 14px">⬇ puxar melhores leads</button>
-    <input id="tk-impn" type="number" value="30" min="1" max="200" style="width:60px;background:#0c131d;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:5px 8px" title="quantos leads puxar">
+  <div style="font-size:.78rem;color:var(--mut);margin-bottom:8px">Leads ligáveis ordenados por tier (T1→T4). 50 por página. Clique <b>📝</b> pra anotar sobre o lead. <span style="color:var(--cy)">Último contato</span> preenche sozinho quando você registra um approach (whatsapp / email / ligação) no histórico abaixo. CNPJ / razão social: colunas prontas — preenchimento é manual/enriquecimento (não vem do Google).</div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px;font-size:.82rem">
+    <button id="tk-add" class="op" style="font-size:.82rem;padding:6px 14px">＋ novo lead</button>
+    <button id="tk-imp" class="op op-ghost" style="font-size:.82rem;padding:6px 14px">⬇ puxar leads</button>
+    <input id="tk-impn" type="number" value="500" min="1" max="500" style="width:64px;background:#0c131d;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:5px 8px" title="quantos leads puxar (máx 500)">
     <span id="tk-msg" style="color:var(--ok);font-size:.8rem"></span>
   </div>
-  <div style="overflow-x:auto"><table id="tk-tab" style="width:100%;border-collapse:collapse;font-size:.8rem;min-width:1180px"></table></div>
+  <div id="tk-nav"></div>
+  <div style="overflow-x:auto"><table id="tk-tab" style="width:100%;border-collapse:collapse;font-size:.8rem;min-width:1320px"></table></div>
   <details style="margin-top:14px">
     <summary style="cursor:pointer;color:var(--cy);font-size:.82rem">👥 sócios / decisores por empresa</summary>
     <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:end;margin-top:8px;font-size:.76rem;color:var(--mut)">
@@ -639,13 +640,15 @@ $('pl-save').onclick=async()=>{
   if(r.ok){['pl-emp','pl-tel','pl-obj','pl-fal'].forEach(i=>$(i).value='');plLoad();tick();}
 };
 plLoad();
-// === Tracker de prospecção (a planilha do JP: prospects + sócios) ==========
+// === Tracker de prospecção (board de leads: paginado, editável, com anotação) ===
 let TK={prospects:[],socios:[],status:['A contatar'],tiers:['T1','T2','T3','T4']};
-const TKCOLS=[['empresa','Empresa',180],['cnpj','CNPJ',130],['segmento','Segmento',120],
-  ['cidade_uf','Cidade/UF',100],['contato','Contato',120],['cargo','Cargo',110],
-  ['telefone','Telefone',120],['tier','Tier',62,'tier'],['sinal','Sinal detectado',180],
-  ['status','Status',132,'status'],['proxima_acao','Próxima ação',150],['data_proxima_acao','Data próx.',130,'date']];
+let TKPG=0; const TKPP=50; const TKOPEN=new Set();  // página atual, 50/pág, cards abertos
+const TKCOLS=[['empresa','Empresa',180],['razao_social','Razão social',170],['cnpj','CNPJ',150],
+  ['segmento','Segmento',120],['cidade_uf','Cidade/UF',100],['contato','Contato',120],['cargo','Cargo',110],
+  ['telefone','Telefone',120],['tier','Tier',62,'tier'],['sinal','Sinal detectado',170],
+  ['status','Status',132,'status'],['proxima_acao','Próxima ação',140],['data_proxima_acao','Data próx.',130,'date']];
 const TKST='background:#0c131d;color:var(--txt);border:1px solid var(--line);border-radius:5px;padding:4px 6px;font-size:.78rem';
+const esc=s=>String(s||'').replace(/</g,'&lt;');
 function tkCell(p,c){const[k,,w,tipo]=c;const v=String(p[k]||'').replace(/"/g,'&quot;');const st=`width:${w}px;${TKST}`;
   if(tipo==='tier')return `<select data-k="${k}" style="${st}"><option value=""></option>`+TK.tiers.map(t=>`<option ${p[k]===t?'selected':''}>${t}</option>`).join('')+`</select>`;
   if(tipo==='status')return `<select data-k="${k}" style="${st}">`+TK.status.map(s=>`<option ${p[k]===s?'selected':''}>${s}</option>`).join('')+`</select>`;
@@ -655,15 +658,30 @@ function tkFlash(m){$('tk-msg').textContent=m;setTimeout(()=>{if($('tk-msg').tex
 async function tkLoad(){try{const d=await (await fetch('/api/tracker')).json();
   TK={prospects:d.prospects||[],socios:d.socios||[],status:d.status||TK.status,tiers:d.tiers||TK.tiers};
   const R=d.resumo||{};
-  $('tk-sub').textContent=R.prospects?`${R.prospects} prospects · ${R.contatados} contatados · ${R.a_contatar} a contatar · ${R.fechados||0} fechados`:'';
+  $('tk-sub').textContent=R.prospects?`${R.prospects} leads · ${R.contatados} contatados · ${R.a_contatar} a contatar · ${R.fechados||0} fechados`:'';
+  const maxpg=Math.max(0,Math.ceil(TK.prospects.length/TKPP)-1); if(TKPG>maxpg)TKPG=maxpg;
   tkRenderProspects();tkRenderSocios();}catch(e){}}
+function tkNav(){const n=TK.prospects.length,pgs=Math.ceil(n/TKPP)||1;
+  return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0;font-size:.8rem">
+    <button class="tk-pg" data-d="-1" ${TKPG<=0?'disabled':''} style="padding:4px 11px;cursor:pointer">◀</button>
+    <span style="color:var(--mut)">pág <b>${TKPG+1}</b>/${pgs} · leads ${n?TKPG*TKPP+1:0}–${Math.min(n,(TKPG+1)*TKPP)} de ${n}</span>
+    <button class="tk-pg" data-d="1" ${TKPG>=pgs-1?'disabled':''} style="padding:4px 11px;cursor:pointer">▶</button></div>`;}
 function tkRenderProspects(){const t=$('tk-tab');
-  const head='<tr style="text-align:left;color:var(--mut);font-size:.72rem">'+TKCOLS.map(c=>`<th style="padding:4px 6px;font-weight:600">${c[1]}</th>`).join('')+'<th style="padding:4px 6px;color:var(--cy)">Último contato</th><th></th></tr>';
-  if(!TK.prospects.length){t.innerHTML=head+`<tr><td colspan="${TKCOLS.length+2}" style="padding:14px;color:var(--mut)">nenhum prospect — clique <b>＋ novo prospect</b> ou <b>puxar melhores leads</b></td></tr>`;return;}
-  t.innerHTML=head+TK.prospects.map(p=>{
+  const head='<tr style="text-align:left;color:var(--mut);font-size:.72rem"><th></th>'+TKCOLS.map(c=>`<th style="padding:4px 6px;font-weight:600">${c[1]}</th>`).join('')+'<th style="padding:4px 6px;color:var(--cy)">Último contato</th><th></th></tr>';
+  $('tk-nav').innerHTML=TK.prospects.length?tkNav():'';
+  if(!TK.prospects.length){t.innerHTML=head+`<tr><td colspan="${TKCOLS.length+3}" style="padding:14px;color:var(--mut)">nenhum lead — clique <b>⬇ puxar leads</b> pra trazer os ligáveis (T1→T4, 50/página)</td></tr>`;return;}
+  const page=TK.prospects.slice(TKPG*TKPP,(TKPG+1)*TKPP);
+  t.innerHTML=head+page.map(p=>{
     const cont=p.contatado?`<span class="pill" style="color:var(--ok)">${p.canal_ultimo_contato||'contato'} · ${p.data_ultimo_contato}</span>`:'<span style="color:var(--mut)">—</span>';
-    return `<tr data-id="${p.id}" style="border-top:1px solid var(--line)">`+TKCOLS.map(c=>`<td style="padding:3px 4px">${tkCell(p,c)}</td>`).join('')+
-      `<td style="padding:3px 6px;white-space:nowrap">${cont}</td><td style="padding:3px 8px"><span class="tk-del" title="remover" style="cursor:pointer;color:var(--bad)">✕</span></td></tr>`;}).join('');}
+    let linha=`<tr data-id="${p.id}" style="border-top:1px solid var(--line)"><td style="padding:3px 4px"><span class="tk-note" title="anotar" style="cursor:pointer">${TKOPEN.has(p.id)?'▾':'📝'}</span></td>`+TKCOLS.map(c=>`<td style="padding:3px 4px">${tkCell(p,c)}</td>`).join('')+
+      `<td style="padding:3px 6px;white-space:nowrap">${cont}</td><td style="padding:3px 8px"><span class="tk-del" title="remover" style="cursor:pointer;color:var(--bad)">✕</span></td></tr>`;
+    if(TKOPEN.has(p.id)){const soc=TK.socios.filter(s=>s.prospect_id===p.id);
+      linha+=`<tr class="tk-det" data-id="${p.id}"><td></td><td colspan="${TKCOLS.length+2}" style="padding:6px 10px 12px;background:rgba(52,226,255,.05)">
+        <div style="font-size:.75rem;color:var(--mut);margin-bottom:3px">📝 anotações sobre <b>${esc(p.empresa)}</b>${p.sinal?` · <span style="color:var(--warn)">${esc(p.sinal)}</span>`:''}</div>
+        <textarea class="tk-notas" placeholder="o que rolou na ligação, objeção, quem decide, retorno combinado…" style="width:100%;min-height:64px;${TKST}">${esc(p.notas)}</textarea>
+        <div style="margin-top:6px;font-size:.74rem;color:var(--mut)">sócios: ${soc.length?soc.map(s=>esc(s.nome)+(s.poder_decisao==='Sim'?' ⭐':'')).join(', '):'—'} <span style="color:var(--cy)">(adicione na seção 👥 abaixo)</span></div>
+      </td></tr>`;}
+    return linha;}).join('');}
 function tkRenderSocios(){
   $('so-emp').innerHTML=TK.prospects.map(p=>`<option value="${p.id}">${String(p.empresa||'(sem nome)').replace(/</g,'&lt;')}</option>`).join('')||'<option value="">— cadastre um prospect —</option>';
   const nome=id=>{const p=TK.prospects.find(x=>x.id===id);return p?(p.empresa||'—'):'—';};
@@ -672,14 +690,24 @@ function tkRenderSocios(){
     ${s.telefone?`<span style="color:var(--mut)">📞 ${s.telefone}</span>`:''} <span class="pill" style="color:${s.poder_decisao==='Sim'?'var(--ok)':'var(--mut)'}">decide: ${s.poder_decisao||'?'}</span>
     ${s.obs?`<span style="color:var(--mut)">${s.obs}</span>`:''}<span class="so-del" title="remover" style="margin-left:auto;cursor:pointer;color:var(--bad)">✕</span></div>`).join(''):'<div class="empty">nenhum sócio cadastrado</div>';}
 async function tkPost(url,body){return fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});}
-$('tk-tab').addEventListener('change',async e=>{const tr=e.target.closest('tr[data-id]');if(!tr||!e.target.dataset.k)return;
-  const body={id:+tr.dataset.id};tr.querySelectorAll('[data-k]').forEach(el=>body[el.dataset.k]=el.value);
-  await tkPost('/api/tracker/prospect',body);tkFlash('salvo ✓');});
-$('tk-tab').addEventListener('click',async e=>{if(!e.target.classList.contains('tk-del'))return;
-  const tr=e.target.closest('tr[data-id]');if(!tr||!confirm('Remover este prospect (e seus sócios)?'))return;
-  await tkPost('/api/tracker/prospect/deletar',{id:+tr.dataset.id});tkLoad();});
-$('tk-add').onclick=async()=>{await tkPost('/api/tracker/prospect',{empresa:''});tkLoad();};
-$('tk-imp').onclick=async()=>{$('tk-msg').textContent='puxando…';const r=await (await tkPost('/api/tracker/importar',{limite:+$('tk-impn').value||30})).json();tkFlash(r.inseridos!=null?`+${r.inseridos} leads`:(r.erro||'ok'));tkLoad();};
+$('tk-tab').addEventListener('change',async e=>{
+  const tr=e.target.closest('tr[data-id]');if(!tr)return;const id=+tr.dataset.id;
+  if(e.target.classList.contains('tk-notas')){await tkPost('/api/tracker/prospect',{id,notas:e.target.value});
+    const p=TK.prospects.find(x=>x.id===id);if(p)p.notas=e.target.value;tkFlash('anotação salva ✓');return;}
+  if(!e.target.dataset.k)return;
+  const body={id};tr.querySelectorAll('[data-k]').forEach(el=>body[el.dataset.k]=el.value);
+  await tkPost('/api/tracker/prospect',body);
+  const p=TK.prospects.find(x=>x.id===id);if(p)Object.assign(p,body);  // mantém edição ao paginar
+  tkFlash('salvo ✓');});
+$('tk-tab').addEventListener('click',async e=>{
+  const tr=e.target.closest('tr[data-id]');if(!tr)return;const id=+tr.dataset.id;
+  if(e.target.classList.contains('tk-note')){TKOPEN.has(id)?TKOPEN.delete(id):TKOPEN.add(id);tkRenderProspects();return;}
+  if(e.target.classList.contains('tk-del')){if(!confirm('Remover este lead (e seus sócios)?'))return;
+    await tkPost('/api/tracker/prospect/deletar',{id});tkLoad();}});
+$('tk-nav').addEventListener('click',e=>{const b=e.target.closest('.tk-pg');if(!b||b.disabled)return;
+  TKPG+=+b.dataset.d;TKOPEN.clear();tkRenderProspects();window.scrollTo({top:$('tracker-card').offsetTop-10,behavior:'smooth'});});
+$('tk-add').onclick=async()=>{TKPG=0;await tkPost('/api/tracker/prospect',{empresa:''});tkLoad();};
+$('tk-imp').onclick=async()=>{$('tk-msg').textContent='puxando…';const r=await (await tkPost('/api/tracker/importar',{limite:+$('tk-impn').value||500})).json();tkFlash(r.inseridos!=null?`+${r.inseridos} leads`:(r.erro||'ok'));tkLoad();};
 $('so-add').onclick=async()=>{if(!$('so-nome').value.trim())return $('so-nome').focus();
   await tkPost('/api/tracker/socio',{prospect_id:+$('so-emp').value||0,empresa:($('so-emp').selectedOptions[0]||{}).textContent||'',nome:$('so-nome').value,cargo:$('so-cargo').value,telefone:$('so-tel').value,poder_decisao:$('so-dec').value,obs:$('so-obs').value});
   ['so-nome','so-cargo','so-tel','so-obs'].forEach(i=>$(i).value='');tkLoad();};
