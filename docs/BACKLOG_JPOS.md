@@ -3,9 +3,9 @@
 Compilado 2026-07-30 (fim de um dia de call). NÃO executar às pressas — material de decisão.
 
 ## Risco / segurança (topo)
-1. **Allowlist `EVERYTHING` + `defaultMode: auto`** no `settings.json` — ainda sem revisão. Maior passivo aberto. Decisão de risco própria, não embutir em handoff de correção.
-2. **Restore do Postgres (WAL) nunca testado ponta-a-ponta** — base backup existe, replay não validado. Backup é hipótese até um restore real passar.
-3. **Guard no `conftest.py`** — abortar suíte se DSN não terminar em `_test`. Ataca a causa raiz do incidente que truncou prod. Ainda não feito.
+1. **Allowlist `EVERYTHING` + `defaultMode: auto`** no `settings.json` — ✅ ENDURECIDO (2026-07-30): adicionada `permissions.deny` com 21 padrões destrutivos (`rm -rf`, force-push, `git reset --hard`, `systemctl stop/disable/mask`, `docker rm/stop/kill/down`, `dd`, `chmod 777`, `| sh|bash`). Mantido `auto` p/ não travar operação. PENDENTE fuller: trocar `EVERYTHING` por allowlist positiva tool-a-tool (exige sessão interativa).
+2. **Restore do Postgres (WAL) nunca testado ponta-a-ponta** — ✅ FERRAMENTA PRONTA: `infra/test_wal_restore.sh` (restaura em cluster scratch isolado, compara contagens; não toca prod). Falta rodar com o base backup real.
+3. **Guard no `conftest.py`** — ✅ FEITO: `conftest.py` raiz aborta a suíte se env de banco aponta pra prod (sem `_test`); escape hatch `ALLOW_PROD_DB=1`.
 4. **Isolamento do `sdr_motor_papai`** em instância própria (hoje divide cluster com Evolution — se o disco enche, os dois entram em read-only juntos). Pendente.
 5. **Key CNPJá exposta 3× no chat** — revogar no painel CNPJá e gerar nova (ação do JP). Removida do `.env` por higiene.
 
