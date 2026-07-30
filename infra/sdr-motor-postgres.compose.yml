@@ -1,0 +1,19 @@
+# Instância Postgres DEDICADA pro SDR Motor — isola do cluster do Evolution.
+# Sobe com: docker compose -f infra/sdr-motor-postgres.compose.yml -p sdrmotor up -d
+# Depois: rode deploy/isolate_sdr_motor.sh (dump da origem) + APPLY=1 (restore aqui) +
+# repontar DATABASE_URL de cada app SDR + reiniciar. Só então dropar da origem Evolution.
+services:
+  sdr-motor-db:
+    image: postgres:15
+    container_name: sdr-motor-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${SDR_PG_USER:-sdrmotor}
+      POSTGRES_PASSWORD: ${SDR_PG_PASSWORD:?defina SDR_PG_PASSWORD}
+      POSTGRES_DB: postgres
+    ports:
+      - "127.0.0.1:5433:5432"   # porta separada da do Evolution (5432)
+    volumes:
+      - sdrmotor_pgdata:/var/lib/postgresql/data   # volume/disco ISOLADO
+volumes:
+  sdrmotor_pgdata:
