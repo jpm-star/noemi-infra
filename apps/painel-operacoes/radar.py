@@ -272,9 +272,14 @@ def _insight(transcricao: str, contexto: list[dict], instrucao: str = "") -> dic
     """LLM (via proxy sancionado, com retry) → dict validado. Degrada pra resumo
     extrativo se o proxy estiver fora — nunca crasha a análise."""
     from shared_core.ai import llm_proxy
-    txt = llm_proxy.completar(_prompt(transcricao, contexto, instrucao), model="analise",
-                              max_tokens=800, temperature=0.3)
+    prompt = _prompt(transcricao, contexto, instrucao)
+    # 1600 tokens: o schema denso (15 campos) trunca em 800, sobretudo no Claude (mais
+    # verboso) — JSON incompleto = parse falha = extrativo. 1600 fecha com folga.
+    txt = llm_proxy.completar(prompt, model="analise", max_tokens=1600, temperature=0.3)
     bruto = _extrair_json(txt) if txt else None
+    if not bruto:  # Groq falhou (TPD diário / fallback flaky) → Claude DIRETO antes de degradar.
+        txt = llm_proxy.completar(prompt, model="fallback-anthropic", max_tokens=1600, temperature=0.3)
+        bruto = _extrair_json(txt) if txt else None
     if not bruto:  # proxy fora / saída ilegível → resumo extrativo honesto
         frase = re.split(r"(?<=[.!?])\s+", transcricao.strip())[:2]
         return {"insight": " ".join(frase)[:400] or "(sem insight — LLM indisponível)",
