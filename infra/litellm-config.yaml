@@ -17,6 +17,14 @@ model_list:
     litellm_params:
       model: groq/llama-3.3-70b-versatile
       api_key: os.environ/GROQ_API_KEY_RESERVA
+  # fallback CROSS-PROVIDER: Claude (Anthropic) quando o Groq estoura o TPD DIÁRIO
+  # (100k/dia por org, as 2 chaves Groq dividem o mesmo teto). O insight denso
+  # (10 campos) merece o modelo forte — não o 8b da Groq. O código do llm_proxy já
+  # chama model="fallback-anthropic" após o gate de 429; agora ele existe de verdade.
+  - model_name: fallback-anthropic
+    litellm_params:
+      model: anthropic/claude-haiku-4-5-20251001
+      api_key: os.environ/ANTHROPIC_API_KEY
 # Ollama (fallback local, 3B/CPU) NÃO entra no proxy de propósito: manter o
 # Ollama em loopback (127.0.0.1) é mais seguro que expô-lo à bridge do Docker. O
 # fallback pro local acontece no NÍVEL DO APP (shared-core/ai/local_llm.py) —
@@ -25,7 +33,7 @@ model_list:
 litellm_settings:
   # cascata no proxy: primário (Groq key 1) → reserva (Groq key 2). O 3º nível
   # (Ollama local → regras determinísticas) fica no app (classificacao.py).
-  fallbacks: [{"analise": ["groq-reserva"]}, {"motor-b": ["groq-reserva"]}]
+  fallbacks: [{"analise": ["groq-reserva", "fallback-anthropic"]}, {"motor-b": ["groq-reserva"]}]
   drop_params: true          # ignora params que um provider não suporta
   request_timeout: 40
   cache: true                # cache de prompt em memória (hit rate era 0%) — corta
