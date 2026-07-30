@@ -37,13 +37,19 @@ def _db() -> sqlite3.Connection:
     c.row_factory = sqlite3.Row
     c.execute("PRAGMA journal_mode=WAL")
     c.execute("""CREATE TABLE IF NOT EXISTS tracker_prospects (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, empresa TEXT, cnpj TEXT, segmento TEXT,
-        cidade_uf TEXT, contato TEXT, cargo TEXT, telefone TEXT, tier TEXT, sinal TEXT,
-        status TEXT DEFAULT 'A contatar', proxima_acao TEXT, data_proxima_acao TEXT,
-        criado_em TEXT, atualizado_em TEXT)""")
+        id INTEGER PRIMARY KEY AUTOINCREMENT, empresa TEXT, razao_social TEXT, cnpj TEXT,
+        segmento TEXT, cidade_uf TEXT, contato TEXT, cargo TEXT, telefone TEXT, tier TEXT,
+        sinal TEXT, status TEXT DEFAULT 'A contatar', proxima_acao TEXT, data_proxima_acao TEXT,
+        notas TEXT, criado_em TEXT, atualizado_em TEXT)""")
     c.execute("""CREATE TABLE IF NOT EXISTS tracker_socios (
         id INTEGER PRIMARY KEY AUTOINCREMENT, prospect_id INTEGER, empresa TEXT,
         nome TEXT, cargo TEXT, telefone TEXT, poder_decisao TEXT, obs TEXT)""")
+    # migração aditiva pra bancos criados antes das colunas razao_social/notas
+    for col in ("razao_social", "notas"):
+        try:
+            c.execute(f"ALTER TABLE tracker_prospects ADD COLUMN {col} TEXT")
+        except sqlite3.OperationalError:
+            pass  # coluna já existe
     c.commit()
     return c
 
@@ -67,37 +73,43 @@ def _contato_por_tel(c: sqlite3.Connection) -> dict[str, dict]:
     return fora
 
 
-_CAMPOS_PROSPECT = ("empresa", "cnpj", "segmento", "cidade_uf", "contato", "cargo",
-                    "telefone", "tier", "sinal", "status", "proxima_acao", "data_proxima_acao")
+_CAMPOS_PROSPECT = ("empresa", "razao_social", "cnpj", "segmento", "cidade_uf", "contato", "cargo",
+                    "telefone", "tier", "sinal", "status", "proxima_acao", "data_proxima_acao", "notas")
+
+
+_LIMITES = {"empresa": 120, "razao_social": 140, "cnpj": 20, "segmento": 60, "cidade_uf": 60,
+            "contato": 80, "cargo": 60, "telefone": 30, "tier": 4, "sinal": 300, "status": 40,
+            "proxima_acao": 200, "data_proxima_acao": 10, "notas": 2000}
 
 
 def _saneia_prospect(d: dict) -> dict:
-    limites = {"empresa": 120, "cnpj": 20, "segmento": 60, "cidade_uf": 60, "contato": 80,
-               "cargo": 60, "telefone": 30, "tier": 4, "sinal": 300, "status": 40,
-               "proxima_acao": 200, "data_proxima_acao": 10}
-    return {k: str(d.get(k) or "")[:limites[k]] for k in _CAMPOS_PROSPECT}
+    return {k: str(d.get(k) or "")[:_LIMITES[k]] for k in _CAMPOS_PROSPECT}
 
 
 def prospect_salvar(d: dict) -> dict:
-    """Upsert 1 prospect. id presente = update; ausente = insert. Devolve a linha."""
-    campos = _saneia_prospect(d)
-    if not campos["status"]:
-        campos["status"] = "A contatar"
+    """Upsert 1 prospect. id presente = update PARCIAL (só os campos enviados, pra um
+    POST parcial — ex: só notas — não zerar as outras colunas); ausente = insert."""
     agora = datetime.now(timezone.utc).isoformat()
     pid = d.get("id")
     with _db() as c:
         if pid:
-            sets = ", ".join(f"{k}=?" for k in _CAMPOS_PROSPECT)
-            c.execute(f"UPDATE tracker_prospects SET {sets}, atualizado_em=? WHERE id=?",
-                      (*campos.values(), agora, int(pid)))
-        else:
-            cols = ", ".join(_CAMPOS_PROSPECT)
-            ph = ", ".join("?" for _ in _CAMPOS_PROSPECT)
-            cur = c.execute(f"INSERT INTO tracker_prospects ({cols}, criado_em, atualizado_em) "
-                            f"VALUES ({ph}, ?, ?)", (*campos.values(), agora, agora))
-            pid = cur.lastrowid
+            enviados = {k: str(d[k] or "")[:_LIMITES[k]] for k in _CAMPOS_PROSPECT if k in d}
+            if enviados:
+                sets = ", ".join(f"{k}=?" for k in enviados)
+                c.execute(f"UPDATE tracker_prospects SET {sets}, atualizado_em=? WHERE id=?",
+                          (*enviados.values(), agora, int(pid)))
+            c.commit()
+            row = c.execute("SELECT * FROM tracker_prospects WHERE id=?", (int(pid),)).fetchone()
+            return dict(row) if row else {"id": int(pid), **enviados}
+        campos = _saneia_prospect(d)
+        if not campos["status"]:
+            campos["status"] = "A contatar"
+        cols = ", ".join(_CAMPOS_PROSPECT)
+        ph = ", ".join("?" for _ in _CAMPOS_PROSPECT)
+        cur = c.execute(f"INSERT INTO tracker_prospects ({cols}, criado_em, atualizado_em) "
+                        f"VALUES ({ph}, ?, ?)", (*campos.values(), agora, agora))
         c.commit()
-    return {**campos, "id": int(pid)}
+        return {**campos, "id": int(cur.lastrowid)}
 
 
 def prospect_deletar(pid: int) -> dict:
@@ -112,7 +124,10 @@ def prospects_listar() -> list[dict]:
     """Prospects + a coluna de contato derivada do log (a parte automática)."""
     with _db() as c:
         contatos = _contato_por_tel(c)
-        rows = c.execute("SELECT * FROM tracker_prospects ORDER BY id").fetchall()
+        # ordem de prospecção: T1 primeiro, T3/T4 por último; empate = ordem de entrada
+        rows = c.execute("SELECT * FROM tracker_prospects ORDER BY CASE tier "
+                         "WHEN 'T1' THEN 0 WHEN 'T2' THEN 1 WHEN 'T3' THEN 2 WHEN 'T4' THEN 3 "
+                         "ELSE 4 END, id").fetchall()
     saida = []
     for r in rows:
         p = dict(r)
@@ -161,23 +176,28 @@ def importar_de_leads(limite: int = 30) -> dict:
     """Puxa os melhores leads_clinicas (passa_corte, maior score) pro tracker — pra
     não começar vazio. Pula telefones já no tracker (não duplica). Best-effort: se a
     tabela de leads não existe, devolve 0."""
-    limite = max(1, min(200, int(limite)))
+    limite = max(1, min(500, int(limite)))
     agora = datetime.now(timezone.utc).isoformat()
     inseridos = 0
     with _db() as c:
         ja = {_tel8(r["telefone"]) for r in c.execute("SELECT telefone FROM tracker_prospects")}
         try:
+            # ordem T1→T2→T3→T4 (T3/T4 por último), depois maior score. Sem cap de origem:
+            # varre a base toda e filtra ligável/duplicado aqui.
             leads = c.execute(
                 "SELECT nome, categoria, cidade_origem, telefone, tier_sugerido, motivo_da_dor "
-                "FROM leads_clinicas WHERE passa_corte=1 ORDER BY score_final DESC LIMIT ?",
-                (limite * 3,)).fetchall()  # margem: alguns caem no filtro de duplicado
+                "FROM leads_clinicas WHERE passa_corte=1 ORDER BY CASE tier_sugerido "
+                "WHEN 'T1' THEN 0 WHEN 'T2' THEN 1 WHEN 'T3' THEN 2 WHEN 'T4' THEN 3 ELSE 4 END, "
+                "score_final DESC").fetchall()
         except sqlite3.Error:
             return {"ok": False, "inseridos": 0, "erro": "leads_clinicas indisponível"}
         for l in leads:
             if inseridos >= limite:
                 break
             k = _tel8(l["telefone"])
-            if k and k in ja:
+            if not k or len(re.sub(r"\D", "", l["telefone"] or "")) < 10:
+                continue  # só ligável
+            if k in ja:
                 continue
             ja.add(k)
             c.execute("INSERT INTO tracker_prospects (empresa,cnpj,segmento,cidade_uf,contato,"
@@ -215,9 +235,16 @@ if __name__ == "__main__":  # self-check: usa DB temporário, não toca o real
     p = prospect_salvar({"empresa": "Clínica X", "telefone": "(14) 99999-8877", "tier": "T2"})
     assert p["id"] and p["status"] == "A contatar"
     p2 = prospect_salvar({"id": p["id"], "empresa": "Clínica X", "telefone": "(14) 99999-8877",
-                          "status": "Em conversa", "tier": "T2"})
-    assert p2["id"] == p["id"]
-    assert prospects_listar()[0]["status"] == "Em conversa"
+                          "status": "Em conversa", "tier": "T2", "razao_social": "Clínica X Ltda",
+                          "cnpj": "00.000.000/0001-00", "notas": "sócio decide sozinho"})
+    assert p2["id"] == p["id"] and p2["razao_social"] == "Clínica X Ltda" and p2["notas"]
+    l0 = prospects_listar()[0]
+    assert l0["status"] == "Em conversa" and l0["cnpj"] == "00.000.000/0001-00" and l0["notas"]
+    # update PARCIAL (só notas) não pode zerar empresa/telefone/cnpj
+    prospect_salvar({"id": p["id"], "notas": "ligou, pediu retorno terça"})
+    l1 = prospects_listar()[0]
+    assert l1["empresa"] == "Clínica X" and l1["cnpj"] == "00.000.000/0001-00"
+    assert l1["notas"] == "ligou, pediu retorno terça"
     # 2) contato derivado: sem log = não contatado
     assert prospects_listar()[0]["contatado"] is False
     # simula um approach no log (mesmo DB) por email → tracker reflete sozinho
@@ -238,7 +265,12 @@ if __name__ == "__main__":  # self-check: usa DB temporário, não toca o real
     # 4) resumo conta o contatado
     r = resumo()
     assert r["prospects"] == 1 and r["contatados"] == 1 and r["socios"] == 1
-    # 5) delete leva os sócios junto
+    # 5) ordenação por tier: T1 vem antes de T2 (T3/T4 por último)
+    prospect_salvar({"empresa": "Alfa T1", "telefone": "(11) 90000-0001", "tier": "T1"})
+    prospect_salvar({"empresa": "Zeta T4", "telefone": "(11) 90000-0004", "tier": "T4"})
+    tiers = [x["tier"] for x in prospects_listar()]
+    assert tiers[0] == "T1" and tiers[-1] == "T4", tiers
+    # 6) delete leva os sócios junto
     prospect_deletar(p["id"])
-    assert prospects_listar() == [] and socios_listar() == []
+    assert len(prospects_listar()) == 2 and socios_listar() == []
     print("tracker OK — prospect upsert, contato derivado do log (auto-fill), sócios, resumo, delete")
