@@ -1,0 +1,7 @@
+[Unit]
+Description=Evolution — alerta de disco + tamanho do DB (read-only)
+[Service]
+Type=oneshot
+WorkingDirectory=/root/noemi-infra
+EnvironmentFile=/root/noemi-infra/infra/.env
+ExecStart=/usr/bin/bash /root/noemi-infra/deploy/evolution_disk_alert.sh
