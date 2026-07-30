@@ -172,6 +172,41 @@ def socios_listar() -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def _norm(s) -> str:
+    return re.sub(r"\s+", " ", str(s or "").strip().lower())
+
+
+def enriquecer_cnpj(pid: int, cnpj_str: str, buscar) -> dict:
+    """DADO um CNPJ, preenche razão social do prospect + adiciona o QSA como sócios.
+    `buscar` é injetado (cnpj.buscar em prod, mock no teste) — mantém o módulo puro."""
+    pid = int(pid or 0)
+    if not pid:
+        return {"ok": False, "erro": "prospect inválido"}
+    r = buscar(cnpj_str)
+    if not r.get("ok"):
+        return r
+    prospect_salvar({"id": pid, "cnpj": r.get("cnpj") or re.sub(r"\D", "", cnpj_str),
+                     "razao_social": r.get("razao_social") or ""})
+    with _db() as c:
+        row = c.execute("SELECT empresa FROM tracker_prospects WHERE id=?", (pid,)).fetchone()
+        emp = row["empresa"] if row else ""
+        existentes = {_norm(s["nome"]) for s in c.execute(
+            "SELECT nome FROM tracker_socios WHERE prospect_id=?", (pid,))}
+    add = 0
+    for s in r.get("qsa", []):
+        if _norm(s["nome"]) in existentes:
+            continue  # não duplica sócio já cadastrado
+        socio_salvar({"prospect_id": pid, "empresa": emp, "nome": s["nome"],
+                      "cargo": s.get("qualificacao", ""),
+                      "poder_decisao": "Sim" if s.get("decide") else "Compartilhado"})
+        existentes.add(_norm(s["nome"]))
+        add += 1
+    return {"ok": True, "razao_social": r.get("razao_social") or "", "socios_adicionados": add,
+            "qsa_disponivel": r.get("qsa_disponivel", False),
+            "aviso": None if r.get("qsa_disponivel") else
+            "QSA não disponível via API (comum em MEI/regime simplificado)"}
+
+
 def importar_de_leads(limite: int = 30) -> dict:
     """Puxa os melhores leads_clinicas (passa_corte, maior score) pro tracker — pra
     não começar vazio. Pula telefones já no tracker (não duplica). Best-effort: se a
@@ -265,6 +300,16 @@ if __name__ == "__main__":  # self-check: usa DB temporário, não toca o real
     # 4) resumo conta o contatado
     r = resumo()
     assert r["prospects"] == 1 and r["contatados"] == 1 and r["socios"] == 1
+    # 4b) enriquecer_cnpj com buscar MOCKADO (sem rede): razão social + QSA como sócios
+    mock = lambda _c: {"ok": True, "cnpj": "11222333000181", "razao_social": "CLINICA X LTDA",
+                       "qsa_disponivel": True, "qsa": [
+                           {"nome": "Dr. Fulano", "qualificacao": "Sócio", "decide": False},
+                           {"nome": "Ana Nova", "qualificacao": "Administrador", "decide": True}]}
+    e = enriquecer_cnpj(p["id"], "11.222.333/0001-81", mock)
+    assert e["ok"] and e["razao_social"] == "CLINICA X LTDA"
+    assert e["socios_adicionados"] == 1  # "Dr. Fulano" já existe (passo 3) → só "Ana Nova"
+    assert prospects_listar()[0]["razao_social"] == "CLINICA X LTDA"
+    assert any(s["nome"] == "Ana Nova" and s["poder_decisao"] == "Sim" for s in socios_listar())
     # 5) ordenação por tier: T1 vem antes de T2 (T3/T4 por último)
     prospect_salvar({"empresa": "Alfa T1", "telefone": "(11) 90000-0001", "tier": "T1"})
     prospect_salvar({"empresa": "Zeta T4", "telefone": "(11) 90000-0004", "tier": "T4"})
