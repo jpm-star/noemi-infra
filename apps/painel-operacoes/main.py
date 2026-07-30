@@ -14,7 +14,7 @@ _AQUI = Path(__file__).resolve().parent
 sys.path.insert(0, str(_AQUI))
 sys.path.insert(0, str(_AQUI.parents[1] / "packages"))  # shared_core (llm_proxy)
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 
 import agg
@@ -343,6 +343,54 @@ def radar_obter(aid: int) -> JSONResponse:
     return JSONResponse(a or {"erro": "não encontrada"}, status_code=200 if a else 404)
 
 
+# -- Radar Grátis (PÚBLICO, sem auth): upload de vídeo → insight. 15MB, 10/dia. -----
+@app.post("/api/radar/publico")
+async def radar_publico_analisar(request: Request,
+                                 arquivo: UploadFile = File(...), email: str = Form("")) -> JSONResponse:
+    import os
+    import tempfile
+
+    import radar_publico
+    xff = request.headers.get("x-forwarded-for", "")
+    ip = (xff.split(",")[0].strip() if xff else (request.client.host if request.client else "")) or "?"
+    portao = radar_publico.pode_usar(ip)
+    if not portao["ok"]:
+        return JSONResponse(portao, status_code=429)
+    # lê com teto rígido de 15MB (aborta streaming se exceder — não estoura memória/disco)
+    dados = b""
+    while True:
+        chunk = await arquivo.read(262144)
+        if not chunk:
+            break
+        dados += chunk
+        if len(dados) > radar_publico.MAX_BYTES:
+            return JSONResponse({"ok": False, "erro": "Vídeo acima de 15MB. Corte um trecho menor e tente de novo."},
+                                status_code=413)
+    if len(dados) < 1000:
+        return JSONResponse({"ok": False, "erro": "Arquivo vazio ou muito pequeno."}, status_code=400)
+    suf = (os.path.splitext(arquivo.filename or "video.mp4")[1] or ".mp4")[:6]
+    tmp = tempfile.NamedTemporaryFile(prefix="radarpub_", suffix=suf, delete=False)
+    try:
+        tmp.write(dados)
+        tmp.close()
+        resultado = radar_publico.analisar(tmp.name)
+    except Exception as e:  # noqa: BLE001 — erro honesto pro usuário, nunca 500 cru
+        return JSONResponse({"ok": False, "erro": str(e)[:200]}, status_code=200)
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            pass
+    radar_publico.registrar_uso(email, ip, resultado)
+    return JSONResponse({"ok": True, **resultado})
+
+
+@app.get("/api/radar/publico/leads")
+def radar_publico_leads() -> JSONResponse:
+    import radar_publico
+    return JSONResponse({"leads": radar_publico.leads()})
+
+
 @app.get("/api/ideias")
 def ideias_dados() -> JSONResponse:
     """Caixa de ideias: templates replicáveis colhidos de todas as análises do radar."""
@@ -480,6 +528,12 @@ def radar_pagina() -> str:
 @app.get("/obs/ideias", response_class=HTMLResponse)
 def ideias_pagina() -> str:
     return (_AQUI / "static" / "ideias.html").read_text(encoding="utf-8")
+
+
+# Radar Grátis — página PÚBLICA (liberada no Caddy sem basic-auth). Self-serve.
+@app.get("/radar-gratis", response_class=HTMLResponse)
+def radar_gratis_pagina() -> str:
+    return (_AQUI / "static" / "radar-gratis.html").read_text(encoding="utf-8")
 
 
 # / = QG central (painel de controle); /obs = observação. Mesma HTML, view por JS.
