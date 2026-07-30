@@ -210,6 +210,47 @@ async def proslog_registrar(req: Request) -> JSONResponse:
     return JSONResponse({"ok": True, "entrada": proslog.registrar(corpo)})
 
 
+# -- Tracker de prospecção: a planilha do JP (prospects + sócios + resumo). ------
+# Status manual; "última ligação/canal" derivado do prospeccao_log (preenche só).
+@app.get("/api/tracker")
+def tracker_dados() -> JSONResponse:
+    import tracker
+    return JSONResponse({"prospects": tracker.prospects_listar(), "socios": tracker.socios_listar(),
+                         "resumo": tracker.resumo(), "status": list(tracker.STATUS),
+                         "tiers": list(tracker.TIERS)})
+
+
+@app.post("/api/tracker/prospect")
+async def tracker_prospect_salvar(req: Request) -> JSONResponse:
+    import tracker
+    return JSONResponse({"ok": True, "prospect": tracker.prospect_salvar(await req.json())})
+
+
+@app.post("/api/tracker/prospect/deletar")
+async def tracker_prospect_deletar(req: Request) -> JSONResponse:
+    import tracker
+    return JSONResponse(tracker.prospect_deletar(int((await req.json()).get("id") or 0)))
+
+
+@app.post("/api/tracker/socio")
+async def tracker_socio_salvar(req: Request) -> JSONResponse:
+    import tracker
+    return JSONResponse({"ok": True, "socio": tracker.socio_salvar(await req.json())})
+
+
+@app.post("/api/tracker/socio/deletar")
+async def tracker_socio_deletar(req: Request) -> JSONResponse:
+    import tracker
+    return JSONResponse(tracker.socio_deletar(int((await req.json()).get("id") or 0)))
+
+
+@app.post("/api/tracker/importar")
+async def tracker_importar(req: Request) -> JSONResponse:
+    import tracker
+    n = int((await req.json()).get("limite") or 30)
+    return JSONResponse(tracker.importar_de_leads(n))
+
+
 # -- Handoff de contato: quem a IA atende (lista editável, não hardcoded) -------
 @app.get("/api/contatos")
 def contatos_listar() -> JSONResponse:

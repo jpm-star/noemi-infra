@@ -184,6 +184,31 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
   <div id="leads-bar"></div>
 </div>
 
+<div class="card v-qg" data-sec="crm" id="tracker-card" style="margin-bottom:12px">
+  <h3>📋 Tracker de prospecção <span id="tk-sub" style="color:var(--mut);font-weight:400;font-size:.8rem"></span></h3>
+  <div style="font-size:.78rem;color:var(--mut);margin-bottom:8px">Preencha as colunas brancas. <span style="color:var(--cy)">Último contato</span> preenche sozinho quando você registra um approach (whatsapp / email / ligação) no histórico abaixo — não edita à mão.</div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;font-size:.82rem">
+    <button id="tk-add" class="op" style="font-size:.82rem;padding:6px 14px">＋ novo prospect</button>
+    <button id="tk-imp" class="op op-ghost" style="font-size:.82rem;padding:6px 14px">⬇ puxar melhores leads</button>
+    <input id="tk-impn" type="number" value="30" min="1" max="200" style="width:60px;background:#0c131d;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:5px 8px" title="quantos leads puxar">
+    <span id="tk-msg" style="color:var(--ok);font-size:.8rem"></span>
+  </div>
+  <div style="overflow-x:auto"><table id="tk-tab" style="width:100%;border-collapse:collapse;font-size:.8rem;min-width:1180px"></table></div>
+  <details style="margin-top:14px">
+    <summary style="cursor:pointer;color:var(--cy);font-size:.82rem">👥 sócios / decisores por empresa</summary>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:end;margin-top:8px;font-size:.76rem;color:var(--mut)">
+      <label>empresa<br><select id="so-emp" style="min-width:150px;background:#0c131d;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:5px 8px"></select></label>
+      <label>nome do sócio<br><input id="so-nome" style="width:140px"></label>
+      <label>cargo/part.<br><input id="so-cargo" style="width:120px"></label>
+      <label>tel direto<br><input id="so-tel" style="width:110px"></label>
+      <label>decisão<br><select id="so-dec"><option>Sim</option><option>Não</option><option>Compartilhado</option></select></label>
+      <label>obs<br><input id="so-obs" style="width:160px"></label>
+      <button id="so-add" style="padding:6px 14px;background:var(--ok);color:#001;border:0;border-radius:6px;cursor:pointer;font-weight:600">＋ add</button>
+    </div>
+    <div id="so-lista" style="margin-top:8px"></div>
+  </details>
+</div>
+
 <div class="card v-qg" data-sec="crm" style="margin-bottom:12px">
   <h3>📓 Histórico de prospecção <span id="pl-sub" style="color:var(--mut);font-weight:400;font-size:.8rem"></span></h3>
   <details style="margin-bottom:8px">
@@ -613,6 +638,53 @@ $('pl-save').onclick=async()=>{
   if(r.ok){['pl-emp','pl-tel','pl-obj','pl-fal'].forEach(i=>$(i).value='');plLoad();tick();}
 };
 plLoad();
+// === Tracker de prospecção (a planilha do JP: prospects + sócios) ==========
+let TK={prospects:[],socios:[],status:['A contatar'],tiers:['T1','T2','T3','T4']};
+const TKCOLS=[['empresa','Empresa',180],['cnpj','CNPJ',130],['segmento','Segmento',120],
+  ['cidade_uf','Cidade/UF',100],['contato','Contato',120],['cargo','Cargo',110],
+  ['telefone','Telefone',120],['tier','Tier',62,'tier'],['sinal','Sinal detectado',180],
+  ['status','Status',132,'status'],['proxima_acao','Próxima ação',150],['data_proxima_acao','Data próx.',130,'date']];
+const TKST='background:#0c131d;color:var(--txt);border:1px solid var(--line);border-radius:5px;padding:4px 6px;font-size:.78rem';
+function tkCell(p,c){const[k,,w,tipo]=c;const v=String(p[k]||'').replace(/"/g,'&quot;');const st=`width:${w}px;${TKST}`;
+  if(tipo==='tier')return `<select data-k="${k}" style="${st}"><option value=""></option>`+TK.tiers.map(t=>`<option ${p[k]===t?'selected':''}>${t}</option>`).join('')+`</select>`;
+  if(tipo==='status')return `<select data-k="${k}" style="${st}">`+TK.status.map(s=>`<option ${p[k]===s?'selected':''}>${s}</option>`).join('')+`</select>`;
+  if(tipo==='date')return `<input data-k="${k}" type="date" value="${v}" style="${st}">`;
+  return `<input data-k="${k}" value="${v}" style="${st}">`;}
+function tkFlash(m){$('tk-msg').textContent=m;setTimeout(()=>{if($('tk-msg').textContent===m)$('tk-msg').textContent='';},1800);}
+async function tkLoad(){try{const d=await (await fetch('/api/tracker')).json();
+  TK={prospects:d.prospects||[],socios:d.socios||[],status:d.status||TK.status,tiers:d.tiers||TK.tiers};
+  const R=d.resumo||{};
+  $('tk-sub').textContent=R.prospects?`${R.prospects} prospects · ${R.contatados} contatados · ${R.a_contatar} a contatar · ${R.fechados||0} fechados`:'';
+  tkRenderProspects();tkRenderSocios();}catch(e){}}
+function tkRenderProspects(){const t=$('tk-tab');
+  const head='<tr style="text-align:left;color:var(--mut);font-size:.72rem">'+TKCOLS.map(c=>`<th style="padding:4px 6px;font-weight:600">${c[1]}</th>`).join('')+'<th style="padding:4px 6px;color:var(--cy)">Último contato</th><th></th></tr>';
+  if(!TK.prospects.length){t.innerHTML=head+`<tr><td colspan="${TKCOLS.length+2}" style="padding:14px;color:var(--mut)">nenhum prospect — clique <b>＋ novo prospect</b> ou <b>puxar melhores leads</b></td></tr>`;return;}
+  t.innerHTML=head+TK.prospects.map(p=>{
+    const cont=p.contatado?`<span class="pill" style="color:var(--ok)">${p.canal_ultimo_contato||'contato'} · ${p.data_ultimo_contato}</span>`:'<span style="color:var(--mut)">—</span>';
+    return `<tr data-id="${p.id}" style="border-top:1px solid var(--line)">`+TKCOLS.map(c=>`<td style="padding:3px 4px">${tkCell(p,c)}</td>`).join('')+
+      `<td style="padding:3px 6px;white-space:nowrap">${cont}</td><td style="padding:3px 8px"><span class="tk-del" title="remover" style="cursor:pointer;color:var(--bad)">✕</span></td></tr>`;}).join('');}
+function tkRenderSocios(){
+  $('so-emp').innerHTML=TK.prospects.map(p=>`<option value="${p.id}">${String(p.empresa||'(sem nome)').replace(/</g,'&lt;')}</option>`).join('')||'<option value="">— cadastre um prospect —</option>';
+  const nome=id=>{const p=TK.prospects.find(x=>x.id===id);return p?(p.empresa||'—'):'—';};
+  $('so-lista').innerHTML=TK.socios.length?TK.socios.map(s=>`<div data-id="${s.id}" style="display:flex;gap:8px;align-items:center;border-left:3px solid var(--line);padding:5px 10px;margin-bottom:5px;font-size:.82rem">
+    <b>${(s.nome||'—')}</b> <span style="color:var(--mut)">${s.cargo||''}</span> <span class="pill" style="color:var(--cy)">${nome(s.prospect_id)}</span>
+    ${s.telefone?`<span style="color:var(--mut)">📞 ${s.telefone}</span>`:''} <span class="pill" style="color:${s.poder_decisao==='Sim'?'var(--ok)':'var(--mut)'}">decide: ${s.poder_decisao||'?'}</span>
+    ${s.obs?`<span style="color:var(--mut)">${s.obs}</span>`:''}<span class="so-del" title="remover" style="margin-left:auto;cursor:pointer;color:var(--bad)">✕</span></div>`).join(''):'<div class="empty">nenhum sócio cadastrado</div>';}
+async function tkPost(url,body){return fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});}
+$('tk-tab').addEventListener('change',async e=>{const tr=e.target.closest('tr[data-id]');if(!tr||!e.target.dataset.k)return;
+  const body={id:+tr.dataset.id};tr.querySelectorAll('[data-k]').forEach(el=>body[el.dataset.k]=el.value);
+  await tkPost('/api/tracker/prospect',body);tkFlash('salvo ✓');});
+$('tk-tab').addEventListener('click',async e=>{if(!e.target.classList.contains('tk-del'))return;
+  const tr=e.target.closest('tr[data-id]');if(!tr||!confirm('Remover este prospect (e seus sócios)?'))return;
+  await tkPost('/api/tracker/prospect/deletar',{id:+tr.dataset.id});tkLoad();});
+$('tk-add').onclick=async()=>{await tkPost('/api/tracker/prospect',{empresa:''});tkLoad();};
+$('tk-imp').onclick=async()=>{$('tk-msg').textContent='puxando…';const r=await (await tkPost('/api/tracker/importar',{limite:+$('tk-impn').value||30})).json();tkFlash(r.inseridos!=null?`+${r.inseridos} leads`:(r.erro||'ok'));tkLoad();};
+$('so-add').onclick=async()=>{if(!$('so-nome').value.trim())return $('so-nome').focus();
+  await tkPost('/api/tracker/socio',{prospect_id:+$('so-emp').value||0,empresa:($('so-emp').selectedOptions[0]||{}).textContent||'',nome:$('so-nome').value,cargo:$('so-cargo').value,telefone:$('so-tel').value,poder_decisao:$('so-dec').value,obs:$('so-obs').value});
+  ['so-nome','so-cargo','so-tel','so-obs'].forEach(i=>$(i).value='');tkLoad();};
+$('so-lista').addEventListener('click',async e=>{if(!e.target.classList.contains('so-del'))return;
+  const d=e.target.closest('[data-id]');if(!d)return;await tkPost('/api/tracker/socio/deletar',{id:+d.dataset.id});tkLoad();});
+tkLoad();
 async function aprend(){
   try{const d=await (await fetch('/api/tuning')).json();
     if(d.status==='dados_insuficientes'){$("aprend-body").innerHTML=`<div class="empty">colete +${d.faltam||''} approaches → o agente aprende sozinho (roda 04:00)</div>`;return;}
