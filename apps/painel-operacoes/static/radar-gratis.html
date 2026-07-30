@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Radar de Vídeo Grátis · JPOS</title>
+<meta name="description" content="Sobe um vídeo e recebe uma análise poderosa em segundos — de graça. Um diferencial JPOS.">
+<style>
+:root{--bg:#070b12;--panel:#0d141f;--line:#1c2735;--txt:#e6edf5;--mut:#8aa0b6;--cy:#34e2ff;--ok:#3ad07a;--warn:#ffcf5c;--bad:#ff6b6b}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(1200px 600px at 50% -10%,rgba(52,226,255,.08),transparent),var(--bg);color:var(--txt);
+  font:16px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;min-height:100vh}
+.wrap{max-width:640px;margin:0 auto;padding:32px 18px 60px}
+.brand{font-weight:800;letter-spacing:.5px;color:var(--cy);font-size:.9rem}
+h1{font-size:1.7rem;margin:.3em 0 .2em;line-height:1.2}
+.sub{color:var(--mut);margin:0 0 20px}
+.card{background:linear-gradient(180deg,rgba(52,226,255,.05),var(--panel));border:1px solid var(--line);border-radius:14px;padding:20px}
+.cap{display:flex;gap:8px;flex-wrap:wrap;font-size:.8rem;color:var(--mut);margin:14px 0 4px}
+.cap b{color:var(--txt)}
+.pill{background:rgba(52,226,255,.1);border:1px solid rgba(52,226,255,.25);color:var(--cy);padding:2px 9px;border-radius:20px;font-size:.75rem}
+label{display:block;font-size:.82rem;color:var(--mut);margin:14px 0 6px}
+input[type=email]{width:100%;background:#0a121c;border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:11px 12px;font-size:1rem}
+.drop{margin-top:6px;border:1.5px dashed var(--line);border-radius:10px;padding:22px;text-align:center;cursor:pointer;transition:.15s;background:#0a121c}
+.drop:hover,.drop.over{border-color:var(--cy);background:rgba(52,226,255,.06)}
+.drop .big{font-size:1.05rem;color:var(--txt)}
+.drop .hint{font-size:.78rem;color:var(--mut);margin-top:4px}
+.fname{margin-top:8px;font-size:.85rem;color:var(--ok)}
+button{margin-top:16px;width:100%;background:var(--cy);color:#001018;border:0;border-radius:9px;padding:13px;font-size:1.02rem;font-weight:700;cursor:pointer}
+button:disabled{opacity:.5;cursor:default}
+.msg{margin-top:14px;font-size:.9rem}
+.err{color:var(--bad)} .warn{color:var(--warn)}
+.spin{display:inline-block;width:16px;height:16px;border:2px solid rgba(52,226,255,.3);border-top-color:var(--cy);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-3px;margin-right:6px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.res{margin-top:18px;border-top:1px solid var(--line);padding-top:16px;display:none}
+.res.show{display:block}
+.score{font-size:2.2rem;font-weight:800;color:var(--cy)}
+.insight{font-size:1.05rem;margin:8px 0 12px;white-space:pre-wrap}
+.tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.foot{text-align:center;color:var(--mut);font-size:.78rem;margin-top:28px}
+.foot a{color:var(--cy);text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">JPOS · RADAR DE VÍDEO</div>
+  <h1>Análise de vídeo <span style="color:var(--cy)">grátis</span>, em segundos</h1>
+  <p class="sub">Sobe um vídeo (reels, TikTok, anúncio) e a IA devolve o insight central: o padrão de marketing, a oferta, o que dá pra replicar. Sem cadastro.</p>
+
+  <div class="card">
+    <div class="cap">
+      <span class="pill">máx 15&nbsp;MB</span>
+      <span class="pill">10 análises grátis/dia</span>
+      <span class="pill">resultado na hora</span>
+    </div>
+    <div style="font-size:.8rem;color:var(--mut);margin:4px 0 2px">Não tem o arquivo? Baixe o vídeo com o <b>SnapTube</b> (ou similar) e envie aqui.</div>
+
+    <label>Seu e-mail <span style="opacity:.6">(opcional — pra eu te mandar a análise)</span></label>
+    <input id="email" type="email" placeholder="voce@email.com" autocomplete="email">
+
+    <label>Vídeo (até 15 MB)</label>
+    <div class="drop" id="drop">
+      <div class="big">📎 toque pra escolher o vídeo</div>
+      <div class="hint">mp4, mov, webm… — até 15 MB</div>
+      <input id="file" type="file" accept="video/*" hidden>
+    </div>
+    <div class="fname" id="fname"></div>
+
+    <button id="go" disabled>Analisar vídeo</button>
+    <div class="msg" id="msg"></div>
+
+    <div class="res" id="res">
+      <div style="color:var(--mut);font-size:.78rem">SCORE (0–10)</div>
+      <div class="score" id="r-score">—</div>
+      <div style="color:var(--mut);font-size:.78rem;margin-top:10px">INSIGHT</div>
+      <div class="insight" id="r-insight"></div>
+      <div style="color:var(--mut);font-size:.78rem" id="r-cat-l">CATEGORIA</div>
+      <div id="r-cat" style="color:var(--cy);font-weight:600"></div>
+      <div class="tags" id="r-tags"></div>
+    </div>
+  </div>
+
+  <div class="foot">um diferencial <b style="color:var(--txt)">JPOS</b> · <a href="https://instagram.com/jposolution" target="_blank" rel="noopener">@jposolution</a></div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const MAX=15*1024*1024;
+let file=null;
+const drop=$('drop');
+drop.onclick=()=>$('file').click();
+$('file').onchange=e=>setFile(e.target.files[0]);
+['dragover','dragenter'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('over')}));
+['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('over')}));
+drop.addEventListener('drop',e=>{if(e.dataTransfer.files[0])setFile(e.dataTransfer.files[0])});
+function setFile(f){
+  $('msg').innerHTML='';
+  if(!f)return;
+  if(f.size>MAX){file=null;$('fname').textContent='';$('go').disabled=true;
+    $('msg').innerHTML='<span class="err">Esse vídeo tem '+(f.size/1048576).toFixed(1)+' MB — o limite é 15 MB. Corte um trecho menor.</span>';return;}
+  file=f;$('fname').textContent='✓ '+f.name+' ('+(f.size/1048576).toFixed(1)+' MB)';$('go').disabled=false;
+}
+$('go').onclick=async()=>{
+  if(!file)return;
+  $('go').disabled=true;$('res').classList.remove('show');
+  $('msg').innerHTML='<span class="spin"></span> analisando o vídeo… (transcrição + leitura de tela)';
+  const fd=new FormData();fd.append('arquivo',file);fd.append('email',$('email').value||'');
+  try{
+    const r=await fetch('/api/radar/publico',{method:'POST',body:fd});
+    const d=await r.json();
+    if(!d.ok){$('msg').innerHTML='<span class="'+(d.esgotou_dia?'warn':'err')+'">'+(d.erro||'Não deu pra analisar. Tente outro vídeo.')+'</span>';$('go').disabled=false;return;}
+    $('msg').innerHTML='';
+    $('r-score').textContent=(d.score!=null?d.score:'—');
+    $('r-insight').textContent=d.insight||'—';
+    $('r-cat').textContent=d.categoria||'—';
+    $('r-cat-l').style.display=d.categoria?'':'none';
+    $('r-tags').innerHTML=(d.tags||[]).map(t=>'<span class="pill">'+String(t).replace(/</g,'&lt;')+'</span>').join('');
+    $('res').classList.add('show');
+    $('go').disabled=false;$('go').textContent='Analisar outro';
+  }catch(e){$('msg').innerHTML='<span class="err">Falha de conexão. Tente de novo.</span>';$('go').disabled=false;}
+};
+</script>
+</body>
+</html>
