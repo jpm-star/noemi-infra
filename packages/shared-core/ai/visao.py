@@ -16,11 +16,15 @@ from __future__ import annotations
 import base64
 import json
 import os
+import random
 import subprocess
 import tempfile
+import time
 import urllib.request
 
 _MODELO = os.environ.get("VISAO_MODELO", "gemini-2.0-flash")
+# fallback de modelo (a "forma diferente" da visão quando o primário 429/erra)
+_MODELOS_VISAO = list(dict.fromkeys([_MODELO, os.environ.get("VISAO_MODELO_FALLBACK", "gemini-1.5-flash")]))
 _ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={k}"
 
 _PROMPT_PADRAO = (
@@ -108,10 +112,17 @@ def _gemini(frames: list[bytes], prompt: str | None, _post) -> str:
                                        "data": base64.b64encode(b).decode()}})
     corpo = json.dumps({"contents": [{"parts": partes}],
                         "generationConfig": {"temperature": 0.2, "maxOutputTokens": 700}}).encode()
-    try:
-        return ((_post or _post_http)(_ENDPOINT.format(m=_MODELO, k=key), corpo) or "").strip()
-    except Exception:  # noqa: BLE001 — sem crédito/erro → cai no OCR grátis
-        return ""
+    poster = _post or _post_http
+    tentativas = int(os.environ.get("VISAO_TENTATIVAS", "4"))  # retry: formas diferentes
+    for i in range(max(1, tentativas)):
+        modelo = _MODELOS_VISAO[i % len(_MODELOS_VISAO)]
+        try:
+            if txt := (poster(_ENDPOINT.format(m=modelo, k=key), corpo) or "").strip():
+                return txt
+            # 200 vazio → tenta a próxima forma (outro modelo) sem esperar
+        except Exception:  # noqa: BLE001 — 429/sem crédito/timeout → backoff leve + próxima forma
+            time.sleep(min(2.0 ** (i // len(_MODELOS_VISAO)), 6) * 0.3 + random.uniform(0, 0.3))
+    return ""  # esgotou → cai no OCR grátis
 
 
 def _post_http(url: str, corpo: bytes) -> str:
@@ -128,6 +139,22 @@ if __name__ == "__main__":  # self-check: OCR grátis por padrão; honesto sem f
     t, fonte = analisar_frames([b"jpg"], _ocr_fn=lambda fr: "GALLERY LED FRAME $18")
     assert fonte == "ocr" and "GALLERY LED FRAME" in t, (t, fonte)
     assert analisar_frames([b"jpg"], _ocr_fn=lambda fr: "") == ("", "sem_visao")
+    # retry do Gemini: 429 duas vezes (formas diferentes) → 3ª acerta (sem sleep real)
+    os.environ["VISAO_GEMINI"] = "1"
+    os.environ["GEMINI_API_KEY"] = "fake"
+    os.environ["VISAO_TENTATIVAS"] = "5"
+    chamadas = {"n": 0}
+
+    def flaky_post(url, corpo):
+        chamadas["n"] += 1
+        if chamadas["n"] < 3:
+            raise RuntimeError("429")
+        return "PRODUTO X · R$ 18"
+    txt, fonte = analisar_frames([b"jpg"], _post=flaky_post)
+    assert fonte == "gemini" and "PRODUTO X" in txt and chamadas["n"] == 3, (txt, fonte, chamadas)
+    for k in ("VISAO_GEMINI", "GEMINI_API_KEY", "VISAO_TENTATIVAS"):
+        os.environ.pop(k, None)
+    print("visao OK — OCR padrão, honesto sem frames, retry Gemini (formas diferentes) até acertar")
     # Gemini só quando ligado
     os.environ["VISAO_GEMINI"] = "1"; os.environ["GEMINI_API_KEY"] = "fake"
     t2, f2 = analisar_frames([b"jpg"], _post=lambda u, c: "cena: site de luxo", _ocr_fn=lambda fr: "x")
