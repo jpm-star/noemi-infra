@@ -210,6 +210,12 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
   </details>
 </div>
 
+<div class="card v-qg" data-sec="crm" id="radarpub-card" style="margin-bottom:12px">
+  <h3>📡 Radar Grátis — quem usou <span id="rp-sub" style="color:var(--mut);font-weight:400;font-size:.8rem"></span></h3>
+  <div style="font-size:.78rem;color:var(--mut);margin-bottom:8px">Leads que subiram vídeo no <a href="https://p.jpos.com.br/radar-gratis" target="_blank" rel="noopener" style="color:var(--cy)">radar público</a> — prova social + contato morno.</div>
+  <div id="rp-lista"><div class="empty">ninguém usou ainda</div></div>
+</div>
+
 <div class="card v-qg" data-sec="crm" style="margin-bottom:12px">
   <h3>📓 Histórico de prospecção <span id="pl-sub" style="color:var(--mut);font-weight:400;font-size:.8rem"></span></h3>
   <details style="margin-bottom:8px">
@@ -723,6 +729,14 @@ $('so-add').onclick=async()=>{if(!$('so-nome').value.trim())return $('so-nome').
 $('so-lista').addEventListener('click',async e=>{if(!e.target.classList.contains('so-del'))return;
   const d=e.target.closest('[data-id]');if(!d)return;await tkPost('/api/tracker/socio/deletar',{id:+d.dataset.id});tkLoad();});
 tkLoad();
+// === Radar Grátis: leads de quem usou o radar público (prova social) ===
+async function rpLoad(){try{const d=await (await fetch('/api/radar/publico/leads')).json();const L=d.leads||[];
+  $('rp-sub').textContent=L.length?`${L.length} usos`:'';
+  $('rp-lista').innerHTML=L.length?L.map(x=>`<div style="border-left:3px solid var(--cy);padding:5px 10px;margin-bottom:5px;font-size:.83rem">
+    <b>${esc(x.email||'(sem email)')}</b> <span class="pill" style="color:var(--cy)">${esc(x.categoria||'—')}</span> <span style="color:var(--mut)">score ${x.score??'—'} · ${(x.criado_em||'').slice(0,10)}</span>
+    ${x.insight?`<div style="color:var(--mut);margin-top:2px">${esc(String(x.insight).slice(0,160))}…</div>`:''}</div>`).join(''):'<div class="empty">ninguém usou ainda</div>';
+}catch(e){}}
+rpLoad(); setInterval(rpLoad,60000);
 async function aprend(){
   try{const d=await (await fetch('/api/tuning')).json();
     if(d.status==='dados_insuficientes'){$("aprend-body").innerHTML=`<div class="empty">colete +${d.faltam||''} approaches → o agente aprende sozinho (roda 04:00)</div>`;return;}
