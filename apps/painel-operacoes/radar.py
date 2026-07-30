@@ -25,6 +25,12 @@ _AQUI = Path(__file__).resolve().parent
 sys.path.insert(0, str(_AQUI.parents[1] / "packages"))
 
 CATEGORIAS = {"marketing", "vendas", "produto", "mindset", "operação", "concorrente", "outro"}
+# Taxonomia FIXA de persuasão (schema novo de 10 campos) — o LLM só escolhe destas.
+PERSUASAO = ("escassez", "urgencia", "prova_social", "autoridade", "reciprocidade",
+             "compromisso_coerencia", "afinidade", "ancoragem", "aversao_a_perda",
+             "especificidade", "storytelling", "quebra_de_padrao", "contraste",
+             "garantia_reversao_risco")
+_PERSUASAO_SET = frozenset(PERSUASAO)
 # Motores do JP pra onde um insight pode ser ROTEADO (upgrade c). O Radar deixa de
 # ser só um digest e vira distribuidor: cada sacada ganha o(s) motor(es) onde é
 # acionável, e a Caixa de Ideias consome isso agrupado por motor.
@@ -210,45 +216,27 @@ def _contexto_anterior(origem: str, limite: int = 6) -> list[dict]:
 
 
 _PROMPT_BASE = (
-    "Você é o Radar de Vídeo do JP (Noemi OS: SDR/IA no WhatsApp que ele VENDE pra "
-    "clínicas/PMEs; também geração de site/vídeo, growth, arbitragem). Dada a TRANSCRIÇÃO "
-    "de um vídeo (dica de marketing/vendas/produto) e o histórico, seja AFIADO e prático.\n"
-    "REGRA DE FUSÃO DE SINAIS: as fontes vêm rotuladas (TELA/visão, LEGENDA/título, "
-    "ÁUDIO/transcrição). Se divergirem sobre O QUE é o produto/oferta, priorize "
-    "TELA > LEGENDA > ÁUDIO (o áudio pode ser só música de fundo — não deixe ele "
-    "definir o produto se a tela mostra outra coisa). Produza UMA análise coesa.\n"
-    "Responda SOMENTE JSON com as chaves:\n"
-    '"insight" (2-4 frases acionáveis — a sacada central, conectando com o histórico), '
-    '"resumo" (1 frase), '
-    '"onde_usar" (lista de 2-4 usos concretos no negócio do JP: ex "abertura de prospecção", '
-    '"copy de anúncio", "script da Noemi", "post"), '
-    '"verticais" (lista de nichos onde aplica: ex "odontologia", "estética", "imobiliária"), '
-    '"axioma" (1 frase — o princípio atemporal por trás da dica), '
-    '"assimilacao" (1 frase — o próximo passo concreto pra ABSORVER isso no sistema/operação), '
-    '"comparacao" (1 frase — como se relaciona com o histórico: reforça? contradiz? é novo?), '
-    '"modelos" (objeto com o TEMPLATE REPLICÁVEL específico que dá pra tirar disso. '
-    "REGRA DURA: se o conteúdo não dá uma ação ESPECÍFICA pra um domínio, deixe \"\" — "
-    "vazio é MELHOR que genérico. PROIBIDO platitude tipo 'criar conteúdo atraente', "
-    "'desenvolver site coerente', 'processos eficientes'. Cada valor tem que citar algo "
-    "concreto DO conteúdo (um número, um produto, um gancho, um passo). "
-    '{"video":"gancho/formato específico","site":"seção/oferta específica","negocio":'
-    '"como monetiza, concreto","produto":"produto/feature nomeável","operacao":'
-    '"automação/passo concreto","projeto":"experimento testável"}), '
-    f'"motores" (lista dos motores do JP onde ESTE insight é acionável, subconjunto '
-    f'de {sorted(MOTORES)} — arbitragem=garimpo/revenda, motor-site=gerador de sites, '
-    f'motor-b=gerador de vídeo, noemi=SDR/IA no WhatsApp. [] se nenhum for claro; '
-    f'NÃO chute — só quando o insight realmente serve pra aquele motor), '
-    f'"vertical" (a vertical/nicho do conteúdo: um de {sorted(VERTICAIS)} se casar, '
-    f'senão o nome NOVO que você propor em 1 palavra; "" se não der pra dizer — não force), '
-    '"marketing" (o PADRÃO replicável, NÃO a cópia — objeto '
-    '{"angulo":"o ângulo/promessa","hook":"a fisgada dos 3s","oferta":"a estrutura da oferta",'
-    '"cta":"a chamada","funil":"o tipo de funil"}; cada campo curto e concreto, "" se ausente. '
-    'É munição de copy, não plágio do post), '
-    '"ferramentas" (lista de softwares/ferramentas CITADOS ou implicados no conteúdo, '
-    'ex ["Shopify","Ruflo"]; [] se nenhum — cada um vira produto candidato), '
+    "Você é o Radar de Vídeo do JP (Noemi OS: vende SDR/IA no WhatsApp pra clínicas/PMEs; "
+    "também motor-site, motor-b de vídeo, arbitragem). Dada a TRANSCRIÇÃO/TELA de um vídeo "
+    "de marketing/vendas/produto e o histórico, extraia um PLAYBOOK replicável, AFIADO.\n"
+    "FUSÃO DE SINAIS: as fontes vêm rotuladas (TELA/visão, LEGENDA/título, ÁUDIO/transcrição). "
+    "Se divergirem sobre O QUE é o produto/oferta, priorize TELA > LEGENDA > ÁUDIO. Uma análise coesa.\n"
+    "Responda SOMENTE JSON válido com EXATAMENTE estas 10 chaves:\n"
+    '"resumo" (1 frase: a sacada central), '
     f'"categoria" (um de {sorted(CATEGORIAS)}), '
-    '"score" (inteiro 1-5 de relevância pro JP), '
-    '"tags" (lista de 3-6 palavras-chave minúsculas).'
+    '"estrutura_narrativa" (lista de objetos {"beat":"gancho|desenvolvimento|virada|prova|cta",'
+    '"o_que":"o que acontece nesse trecho"} — sem timestamp real, use o beat), '
+    f'"tecnicas_persuasao" (subconjunto EXATO de {list(PERSUASAO)} — só as presentes), '
+    '"objecoes_tratadas" (lista de objeções que o vídeo antecipa/derruba), '
+    '"promessa_vs_entrega" (objeto {"promessa":"o que promete","entrega":"o que mostra",'
+    '"gap":"lacuna se houver"}), '
+    '"score_replicabilidade" (inteiro 0-10 de quão fácil replicar no negócio do JP), '
+    '"hooks" (lista de frases/ângulos de abertura reutilizáveis, verbatim ou adaptados), '
+    '"ctas" (lista de chamadas pra ação reutilizáveis), '
+    f'"aplicar_em" (subconjunto EXATO de {sorted(MOTORES)} — arbitragem=garimpo/revenda, '
+    'motor-site=sites, motor-b=vídeo, noemi=SDR/WhatsApp; [] se nenhum, NÃO chute), '
+    '"assinatura_tema" (3-6 palavras-chave normalizadas do tema central, pra deduplicar). '
+    "REGRAS: só o que está no conteúdo (não invente). tecnicas_persuasao e aplicar_em SÓ valores das listas."
 )
 
 
@@ -268,6 +256,18 @@ def _prompt(transcricao: str, contexto: list[dict], instrucao: str = "") -> str:
     return f"{_PROMPT_BASE}{pedido}{hist}\n\nTRANSCRIÇÃO:\n{transcricao[:9000]}"
 
 
+# dict base com TODAS as chaves (novas + antigas) vazias — garante retrocompat:
+# _expandir/harvest_ideias leem as antigas sem KeyError; análises novas as trazem vazias.
+_INSIGHT_VAZIO = {
+    "insight": "", "resumo": "", "categoria": "outro", "score": 0, "tags": [], "fonte": "extrativo",
+    "estrutura_narrativa": [], "tecnicas_persuasao": [], "objecoes_tratadas": [],
+    "promessa_vs_entrega": {}, "hooks": [], "ctas": [], "aplicar_em": [], "assinatura_tema": "",
+    "onde_usar": [], "verticais": [], "axioma": "", "assimilacao": "", "comparacao": "",
+    "modelos": {}, "motores": [], "vertical": "", "vertical_nova": False,
+    "marketing": {}, "ferramentas": [],
+}
+
+
 def _insight(transcricao: str, contexto: list[dict], instrucao: str = "") -> dict:
     """LLM (via proxy sancionado, com retry) → dict validado. Degrada pra resumo
     extrativo se o proxy estiver fora — nunca crasha a análise."""
@@ -282,58 +282,48 @@ def _insight(transcricao: str, contexto: list[dict], instrucao: str = "") -> dic
         bruto = _extrair_json(txt) if txt else None
     if not bruto:  # proxy fora / saída ilegível → resumo extrativo honesto
         frase = re.split(r"(?<=[.!?])\s+", transcricao.strip())[:2]
-        return {"insight": " ".join(frase)[:400] or "(sem insight — LLM indisponível)",
-                "resumo": (frase[0] if frase else "")[:160], "categoria": "outro",
-                "score": 1, "tags": [], "fonte": "extrativo",
-                "onde_usar": [], "verticais": [], "axioma": "", "assimilacao": "", "comparacao": "",
-                "modelos": {}, "motores": [], "vertical": "", "vertical_nova": False,
-                "marketing": {}, "ferramentas": []}
+        resumo = (frase[0] if frase else "")[:200]
+        return {**_INSIGHT_VAZIO, "insight": " ".join(frase)[:400] or "(sem insight — LLM indisponível)",
+                "resumo": resumo, "fonte": "extrativo"}
+
+    def _lista(v, n=8, cap=200):
+        return [str(x).strip()[:cap] for x in v if str(x).strip()][:n] if isinstance(v, list) else []
+
+    def _aplicar(v):  # subconjunto válido de MOTORES, sem duplicar
+        out: list[str] = []
+        for x in (v if isinstance(v, list) else []):
+            m = str(x).strip().lower().replace("_", "-")
+            if m in MOTORES and m not in out:
+                out.append(m)
+        return out
+
     cat = str(bruto.get("categoria", "outro")).strip().lower()
     try:
-        score = max(1, min(5, int(bruto.get("score", 1))))
+        score = max(0, min(10, int(bruto.get("score_replicabilidade", 0))))
     except (TypeError, ValueError):
-        score = 1
-
-    def _lista(v):
-        return [str(x).strip()[:40] for x in v if str(x).strip()][:5] if isinstance(v, list) else []
-
-    def _modelos(v):  # 6 domínios, cada um 1 frase (ordem de trabalho) ou ausente
-        d = v if isinstance(v, dict) else {}
-        out = {k: str(d.get(k, "")).strip()[:200] for k in
-               ("video", "site", "negocio", "produto", "operacao", "projeto")}
-        return {k: val for k, val in out.items() if val}  # só os que têm ação real
-
-    def _motores(v):  # roteamento (upgrade c): só os motores válidos, sem duplicar
-        if not isinstance(v, list):
-            return []
-        vistos = []
-        for x in v:
-            m = str(x).strip().lower().replace("_", "-")
-            if m in MOTORES and m not in vistos:
-                vistos.append(m)
-        return vistos
-
-    def _mkt(v):  # cam.3: PADRÃO replicável de marketing (angulo/hook/oferta/cta/funil)
-        d = v if isinstance(v, dict) else {}
-        out = {k: str(d.get(k, "")).strip()[:160] for k in
-               ("angulo", "hook", "oferta", "cta", "funil")}
-        return {k: val for k, val in out.items() if val}
-
-    vertical = str(bruto.get("vertical", "")).strip().lower()[:40]
-    return {"insight": str(bruto.get("insight", "")).strip()[:1200] or "(sem insight)",
-            "modelos": _modelos(bruto.get("modelos")),
-            "motores": _motores(bruto.get("motores")),
-            "vertical": vertical,  # cam.1
-            "vertical_nova": bool(vertical) and vertical not in VERTICAIS,
-            "marketing": _mkt(bruto.get("marketing")),  # cam.3
-            "ferramentas": _lista(bruto.get("ferramentas")),  # cam.4
-            "resumo": str(bruto.get("resumo", "")).strip()[:200],
-            "onde_usar": _lista(bruto.get("onde_usar")), "verticais": _lista(bruto.get("verticais")),
-            "axioma": str(bruto.get("axioma", "")).strip()[:240],
-            "assimilacao": str(bruto.get("assimilacao", "")).strip()[:240],
-            "comparacao": str(bruto.get("comparacao", "")).strip()[:240],
+        score = 0
+    persuasao = [t for t in (str(x).strip().lower() for x in (bruto.get("tecnicas_persuasao") or []))
+                 if t in _PERSUASAO_SET][:14]
+    estrut = [{"beat": str(x.get("beat", ""))[:20], "o_que": str(x.get("o_que", ""))[:200]}
+              for x in (bruto.get("estrutura_narrativa") or []) if isinstance(x, dict)][:8]
+    pve_in = bruto.get("promessa_vs_entrega") if isinstance(bruto.get("promessa_vs_entrega"), dict) else {}
+    pve = {k: str(pve_in.get(k, "")).strip()[:200] for k in ("promessa", "entrega", "gap")}
+    resumo = str(bruto.get("resumo", "")).strip()[:200]
+    assinatura = str(bruto.get("assinatura_tema", "")).strip()[:120]
+    aplicar = _aplicar(bruto.get("aplicar_em"))
+    return {**_INSIGHT_VAZIO,
+            # colunas do banco (retrocompat): insight/categoria/score/tags
+            "insight": resumo or "(sem insight)",
             "categoria": cat if cat in CATEGORIAS else "outro",
-            "score": score, "tags": _lista(bruto.get("tags")), "fonte": "llm"}
+            "score": score,
+            "tags": (persuasao[:6] or assinatura.lower().split()[:6]),
+            "fonte": "llm",
+            # schema NOVO de 10 campos
+            "resumo": resumo, "estrutura_narrativa": estrut, "tecnicas_persuasao": persuasao,
+            "objecoes_tratadas": _lista(bruto.get("objecoes_tratadas")), "promessa_vs_entrega": pve,
+            "hooks": _lista(bruto.get("hooks")), "ctas": _lista(bruto.get("ctas")),
+            "aplicar_em": aplicar, "assinatura_tema": assinatura,
+            "motores": aplicar}  # 'motores' segue preenchido (retrocompat do roteamento)
 
 
 def _extrair_json(texto: str) -> dict | None:
@@ -489,9 +479,11 @@ def processar_observacao(obs: dict) -> dict:
     ins["fonte_tipo"] = fonte_tipo                     # de qual adapter veio (cruzamento futuro)
     data = datetime.now(timezone.utc).isoformat()
     detalhe = json.dumps({k: ins.get(k) for k in
-                          ("onde_usar", "verticais", "axioma", "assimilacao", "comparacao",
-                           "modelos", "motores", "pedido", "fonte", "fonte_tipo",
-                           "vertical", "vertical_nova", "marketing", "ferramentas")},
+                          ("resumo", "estrutura_narrativa", "tecnicas_persuasao", "objecoes_tratadas",
+                           "promessa_vs_entrega", "hooks", "ctas", "aplicar_em", "assinatura_tema",
+                           "pedido", "fonte", "fonte_tipo",
+                           "onde_usar", "verticais", "axioma", "assimilacao", "comparacao",
+                           "modelos", "motores", "vertical", "vertical_nova", "marketing", "ferramentas")},
                          ensure_ascii=False)
     with db.conn() as c:
         cur = c.execute(
