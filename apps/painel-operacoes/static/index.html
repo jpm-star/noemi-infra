@@ -112,6 +112,7 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
   <a href="https://motor.noemi.digital/" target="_blank" rel="noopener">💱 Arbitragem<span class="ext">↗</span></a>
   <a data-go="noemi">💬 Noemi</a>
   <a data-go="crm">👥 CRM</a>
+  <a data-go="prospeccao">📞 Prospecção</a>
   <a data-go="analise">📊 Análise de Dados</a>
   <a data-go="config">⚙️ Config</a>
   <div class="grp">Radar</div>
@@ -182,6 +183,12 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
     <a href="/api/leads/export.csv" style="float:right;font-size:.8rem;background:var(--cy);color:#001;padding:4px 12px;border-radius:6px;text-decoration:none;font-weight:600">⬇ exportar CSV</a></h3>
   <div id="leads-kpis" class="grid" style="margin:8px 0"></div>
   <div id="leads-bar"></div>
+</div>
+
+<div class="card" data-sec="prospeccao" id="fila-card" style="margin-bottom:12px;border-color:rgba(52,226,255,.28);background:linear-gradient(180deg,rgba(52,226,255,.05),var(--panel))">
+  <h3>📞 Fila do dia <span id="fila-sub" style="color:var(--mut);font-weight:400;font-size:.8rem"></span></h3>
+  <div style="font-size:.78rem;color:var(--mut);margin-bottom:10px;line-height:1.5">Ao vivo — os elegíveis de hoje (T1→T2), até 100. 🚫 Lins nunca entra · Fechado/Perdido sai · com <b>data de retorno futura</b> volta só na data · não-fechado continua amanhã sozinho. <a href="#" onclick="filaLoad();return false" style="color:var(--cy)">↻ atualizar</a></div>
+  <div id="fila-lista"><div class="empty">carregando…</div></div>
 </div>
 
 <div class="card v-qg" data-sec="crm" id="tracker-card" style="margin-bottom:12px">
@@ -323,6 +330,7 @@ const SECS={
   site:['Site','TRÁFEGO · CONVERSÃO · CONTROLE'],
   noemi:['Noemi','SDR DE IA · PROJETO JPOS'],
   crm:['CRM','LEADS · PROSPECÇÃO · HANDOFF'],
+  prospeccao:['Prospecção','FILA DO DIA · AO VIVO'],
   analise:['Análise de Dados','OBSERVABILIDADE · LLM · VPS'],
   config:['Config','PROSPECÇÃO · CONTATOS · CHIP'],
 };
@@ -737,6 +745,28 @@ async function rpLoad(){try{const d=await (await fetch('/api/radar/publico/leads
     ${x.insight?`<div style="color:var(--mut);margin-top:2px">${esc(String(x.insight).slice(0,160))}…</div>`:''}</div>`).join(''):'<div class="empty">ninguém usou ainda</div>';
 }catch(e){}}
 rpLoad(); setInterval(rpLoad,60000);
+// === Aba Prospecção: fila do dia AO VIVO (view filtrada; nada se move) ===
+const TIERCOR={T1:'var(--ok)',T2:'var(--cy)',T3:'var(--mut)',T4:'var(--line)'};
+async function filaLoad(){try{const d=await (await fetch('/api/tracker/fila')).json();const F=d.fila||[];
+  $('fila-sub').textContent=`${F.length} na fila · ${d.segurados_futuro||0} agendados p/ depois`;
+  $('fila-lista').innerHTML=F.length?F.map(p=>{
+    const cont=p.contatado?`<span class="pill" style="color:var(--ok)">✓ ${p.canal_ultimo_contato||'contato'} ${p.data_ultimo_contato}</span>`:'';
+    const opts=(d.status||['A contatar']).map(s=>`<option ${p.status===s?'selected':''}>${s}</option>`).join('');
+    return `<div class="fila-item" data-id="${p.id}" style="border-left:3px solid ${TIERCOR[p.tier]||'var(--line)'};padding:8px 12px;margin-bottom:8px;background:#0c131d;border-radius:8px">
+      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center">
+        <div><b>${esc(p.empresa)}</b> <span class="pill">${p.tier||''}</span> <span style="color:var(--mut);font-size:.8rem">${esc(p.cidade_uf)} · ${esc(p.segmento)}</span></div>
+        <a href="tel:${(p.telefone||'').replace(/\D/g,'')}" style="color:var(--cy);font-weight:700;white-space:nowrap">📞 ${esc(p.telefone)}</a></div>
+      ${p.sinal?`<div style="color:var(--warn);font-size:.78rem;margin:3px 0">${esc(p.sinal)}</div>`:''}
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:.76rem;margin-top:5px;color:var(--mut)">
+        <select data-k="status" data-reload="1" style="${TKST}">${opts}</select>
+        <label>retornar <input type="date" data-k="data_proxima_acao" data-reload="1" value="${p.data_proxima_acao||''}" style="${TKST}"></label>
+        <input data-k="notas" value="${String(p.notas||'').replace(/"/g,'&quot;')}" placeholder="anotação rápida" style="flex:1;min-width:130px;${TKST}">
+        ${cont}</div></div>`;}).join(''):'<div class="empty">fila vazia — tudo fechado, agendado ou sem elegível hoje 🎉</div>';
+}catch(e){}}
+$('fila-lista').addEventListener('change',async e=>{const it=e.target.closest('.fila-item');if(!it||!e.target.dataset.k)return;
+  await tkPost('/api/tracker/prospect',{id:+it.dataset.id,[e.target.dataset.k]:e.target.value});
+  if(e.target.dataset.reload) filaLoad();});  // status/data mudou elegibilidade → recarrega a fila
+filaLoad();
 async function aprend(){
   try{const d=await (await fetch('/api/tuning')).json();
     if(d.status==='dados_insuficientes'){$("aprend-body").innerHTML=`<div class="empty">colete +${d.faltam||''} approaches → o agente aprende sozinho (roda 04:00)</div>`;return;}
