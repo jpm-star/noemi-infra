@@ -679,7 +679,12 @@ function tkRenderProspects(){const t=$('tk-tab');
       linha+=`<tr class="tk-det" data-id="${p.id}"><td></td><td colspan="${TKCOLS.length+2}" style="padding:6px 10px 12px;background:rgba(52,226,255,.05)">
         <div style="font-size:.75rem;color:var(--mut);margin-bottom:3px">📝 anotações sobre <b>${esc(p.empresa)}</b>${p.sinal?` · <span style="color:var(--warn)">${esc(p.sinal)}</span>`:''}</div>
         <textarea class="tk-notas" placeholder="o que rolou na ligação, objeção, quem decide, retorno combinado…" style="width:100%;min-height:64px;${TKST}">${esc(p.notas)}</textarea>
-        <div style="margin-top:6px;font-size:.74rem;color:var(--mut)">sócios: ${soc.length?soc.map(s=>esc(s.nome)+(s.poder_decisao==='Sim'?' ⭐':'')).join(', '):'—'} <span style="color:var(--cy)">(adicione na seção 👥 abaixo)</span></div>
+        <div style="margin-top:8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <input class="tk-cnpj" placeholder="CNPJ (14 dígitos)" value="${esc(p.cnpj)}" style="width:170px;${TKST}">
+          <button class="tk-enr" style="padding:5px 12px;background:var(--cy);color:#001;border:0;border-radius:6px;cursor:pointer;font-weight:600;font-size:.78rem">🔍 buscar razão + sócios</button>
+          <span style="font-size:.72rem;color:var(--mut)">grátis · BrasilAPI · o CNPJ você obtém do site/nota do lead</span>
+        </div>
+        <div style="margin-top:6px;font-size:.74rem;color:var(--mut)">sócios: ${soc.length?soc.map(s=>esc(s.nome)+(s.poder_decisao==='Sim'?' ⭐':'')).join(', '):'—'} <span style="color:var(--cy)">(ou adicione na seção 👥 abaixo)</span></div>
       </td></tr>`;}
     return linha;}).join('');}
 function tkRenderSocios(){
@@ -702,6 +707,10 @@ $('tk-tab').addEventListener('change',async e=>{
 $('tk-tab').addEventListener('click',async e=>{
   const tr=e.target.closest('tr[data-id]');if(!tr)return;const id=+tr.dataset.id;
   if(e.target.classList.contains('tk-note')){TKOPEN.has(id)?TKOPEN.delete(id):TKOPEN.add(id);tkRenderProspects();return;}
+  if(e.target.classList.contains('tk-enr')){const inp=e.target.closest('.tk-det').querySelector('.tk-cnpj');
+    tkFlash('buscando CNPJ…');const r=await (await tkPost('/api/tracker/enriquecer',{id,cnpj:inp.value})).json();
+    tkFlash(r.ok?`✓ ${r.razao_social||'razão social'} · +${r.socios_adicionados} sócios${r.aviso?' · '+r.aviso:''}`:'✕ '+(r.erro||'erro'));
+    if(r.ok)tkLoad();return;}
   if(e.target.classList.contains('tk-del')){if(!confirm('Remover este lead (e seus sócios)?'))return;
     await tkPost('/api/tracker/prospect/deletar',{id});tkLoad();}});
 $('tk-nav').addEventListener('click',e=>{const b=e.target.closest('.tk-pg');if(!b||b.disabled)return;

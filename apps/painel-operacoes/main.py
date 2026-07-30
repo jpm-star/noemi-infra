@@ -251,6 +251,14 @@ async def tracker_importar(req: Request) -> JSONResponse:
     return JSONResponse(tracker.importar_de_leads(n))
 
 
+@app.post("/api/tracker/enriquecer")
+async def tracker_enriquecer(req: Request) -> JSONResponse:
+    # DADO um CNPJ → preenche razão social + puxa o QSA (sócios) via BrasilAPI (grátis).
+    import tracker, cnpj
+    b = await req.json()
+    return JSONResponse(tracker.enriquecer_cnpj(int(b.get("id") or 0), str(b.get("cnpj") or ""), cnpj.buscar))
+
+
 # -- Handoff de contato: quem a IA atende (lista editável, não hardcoded) -------
 @app.get("/api/contatos")
 def contatos_listar() -> JSONResponse:
