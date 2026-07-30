@@ -251,6 +251,13 @@ async def tracker_importar(req: Request) -> JSONResponse:
     return JSONResponse(tracker.importar_de_leads(n))
 
 
+@app.get("/api/tracker/fila")
+def tracker_fila() -> JSONResponse:
+    # Aba Prospecção (desenho A): fila do dia AO VIVO — view filtrada, nada se move.
+    import tracker
+    return JSONResponse({**tracker.fila_prospeccao(100), "status": list(tracker.STATUS)})
+
+
 @app.post("/api/tracker/enriquecer")
 async def tracker_enriquecer(req: Request) -> JSONResponse:
     # DADO um CNPJ → preenche razão social + puxa o QSA (sócios) via BrasilAPI (grátis).

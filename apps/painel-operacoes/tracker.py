@@ -140,6 +140,38 @@ def prospects_listar() -> list[dict]:
     return saida
 
 
+def fila_prospeccao(limite: int = 100, hoje: str | None = None) -> dict:
+    """Fila do dia (aba Prospecção, desenho A = visão AO VIVO). É uma VIEW sobre
+    tracker_prospects — nada se move/copia/reseta. Regras de elegibilidade:
+      - 🚫 Lins nunca entra (permanente);
+      - fora se status Fechado/Perdido (encerrado);
+      - segurado se próxima ação tem data FUTURA (só volta quando a data chegar);
+      - o que sobra e não foi fechado continua elegível todo dia (rollover natural).
+    Ordena T1→T4, top `limite`. `hoje` injetável pra teste."""
+    hoje = hoje or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    with _db() as c:
+        contatos = _contato_por_tel(c)
+        rows = c.execute(
+            "SELECT * FROM tracker_prospects "
+            "WHERE (cidade_uf IS NULL OR cidade_uf NOT LIKE '%Lins%') "
+            "AND status NOT IN ('Fechado', 'Perdido') "
+            "AND (data_proxima_acao IS NULL OR data_proxima_acao = '' OR data_proxima_acao <= ?) "
+            "ORDER BY CASE tier WHEN 'T1' THEN 0 WHEN 'T2' THEN 1 WHEN 'T3' THEN 2 "
+            "WHEN 'T4' THEN 3 ELSE 4 END, id LIMIT ?", (hoje, int(limite))).fetchall()
+        # contadores pro cabeçalho: quantos segurados por data futura e quantos Lins
+        segurados = c.execute("SELECT COUNT(*) FROM tracker_prospects WHERE data_proxima_acao > ? "
+                              "AND status NOT IN ('Fechado','Perdido')", (hoje,)).fetchone()[0]
+    fila = []
+    for r in rows:
+        p = dict(r)
+        info = contatos.get(_tel8(p["telefone"]))
+        p["contatado"] = bool(info)
+        p["data_ultimo_contato"] = info["data_ultimo_contato"] if info else ""
+        p["canal_ultimo_contato"] = info["canal"] if info else ""
+        fila.append(p)
+    return {"fila": fila, "segurados_futuro": segurados, "hoje": hoje}
+
+
 def socio_salvar(d: dict) -> dict:
     campos = {"prospect_id": int(d.get("prospect_id") or 0) or None,
               "empresa": str(d.get("empresa") or "")[:120], "nome": str(d.get("nome") or "")[:80],
@@ -318,4 +350,16 @@ if __name__ == "__main__":  # self-check: usa DB temporário, não toca o real
     # 6) delete leva os sócios junto
     prospect_deletar(p["id"])
     assert len(prospects_listar()) == 2 and socios_listar() == []
-    print("tracker OK — prospect upsert, contato derivado do log (auto-fill), sócios, resumo, delete")
+    # 7) fila de prospecção (aba A): exclui Lins, Fechado/Perdido e data futura; rollover natural
+    prospect_salvar({"empresa": "Lins Co", "telefone": "(14) 90000-9999", "tier": "T1", "cidade_uf": "Lins/SP"})
+    prospect_salvar({"empresa": "Fechado Co", "telefone": "(11) 90000-1111", "tier": "T1", "status": "Fechado"})
+    prospect_salvar({"empresa": "Futuro Co", "telefone": "(11) 90000-2222", "tier": "T1", "data_proxima_acao": "2099-01-01"})
+    prospect_salvar({"empresa": "Hoje Co", "telefone": "(11) 90000-3333", "tier": "T1", "data_proxima_acao": "2020-01-01"})
+    f = fila_prospeccao(100, hoje="2026-07-30")
+    nomes = {x["empresa"] for x in f["fila"]}
+    assert "Lins Co" not in nomes, "Lins entrou na fila"
+    assert "Fechado Co" not in nomes, "Fechado entrou na fila"
+    assert "Futuro Co" not in nomes, "data futura entrou na fila"
+    assert "Hoje Co" in nomes and "Alfa T1" in nomes, nomes  # data passada + sem data = elegíveis
+    assert f["fila"][0]["tier"] == "T1" and f["segurados_futuro"] == 1, (f["fila"][0]["tier"], f["segurados_futuro"])
+    print("tracker OK — upsert, auto-fill, sócios, resumo, delete, fila (Lins/Fechado/futuro excluídos)")
