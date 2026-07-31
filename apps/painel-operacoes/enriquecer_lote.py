@@ -30,7 +30,12 @@ def main(limite: int | None = None):
     for i, lead in enumerate(leads, 1):
         cid = (lead["cidade_uf"] or "").split("/")[0].strip()
         uf = lead["cidade_uf"].split("/")[1].strip() if "/" in (lead["cidade_uf"] or "") else ""
-        r = cnpj.procurar_por_nome(lead["empresa"], cid, uf, limite=30)
+        try:
+            r = cnpj.procurar_por_nome(lead["empresa"], cid, uf, limite=30)
+        except cnpj._SemCredito:
+            print(f"[enriquecer] PAROU em {i}/{total}: CNPJá sem créditos. "
+                  f"{ok} preenchidos até aqui. Recarregue e rode de novo (idempotente).", flush=True)
+            break
         if r.get("ok"):
             ok += 1
             c.execute("UPDATE tracker_prospects SET cnpj=?, razao_social=?, atualizado_em=datetime('now') WHERE id=?",

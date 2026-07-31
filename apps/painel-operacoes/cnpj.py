@@ -24,6 +24,10 @@ _CNPJA = "https://api.cnpja.com/office"
 # qualificação no QSA que sugere poder de decisão (heurística p/ marcar "decide")
 _DECIDE = ("administrador", "titular", "presidente", "diretor", "sócio-administrador")
 _CORTE = float(os.environ.get("CNPJA_CORTE", "0.34"))   # Jaccard mínimo p/ aceitar match
+
+
+class _SemCredito(Exception):
+    """CNPJá sem créditos (429 permanente). O lote para de vez ao invés de girar à toa."""
 _MARGEM = float(os.environ.get("CNPJA_MARGEM", "0.12"))  # 1º tem que superar o 2º por isso
 # tokens genéricos que não distinguem uma empresa da outra (não contam no score)
 _STOP = {"clinica", "clinica", "odontologia", "odontologica", "consultorio", "ltda", "me",
@@ -164,10 +168,19 @@ def _fetch_cnpja(nucleo: str, limite: int, timeout: float, _sleep=None):
             with urllib.request.urlopen(req, timeout=timeout) as r:
                 return (json.load(r) or {}).get("records") or []
         except urllib.error.HTTPError as e:
-            if e.code == 429 and tentativa < 3:  # rate-limit: espera Retry-After (ou 5s*n) e repete
+            corpo = ""
+            try:
+                corpo = e.read().decode()[:200]
+            except Exception:  # noqa: BLE001
+                pass
+            # 429 "not enough credits" é PERMANENTE (quota esgotada) — aborta já, não faz
+            # backoff (senão vira 30s/lead à toa). Só 429 de rate-limit real dá retry.
+            if e.code == 429 and "credit" not in corpo.lower() and tentativa < 3:
                 espera = int(e.headers.get("Retry-After") or 0) or 5 * (tentativa + 1)
                 sleep(min(espera, 60))
                 continue
+            if e.code == 429 and "credit" in corpo.lower():
+                raise _SemCredito()  # sinaliza o lote a parar de vez
             return None
         except Exception:  # noqa: BLE001 — rede/timeout → None, o chamador degrada
             return None
