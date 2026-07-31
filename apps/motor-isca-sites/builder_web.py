@@ -33,7 +33,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 import auth
 from shared_core.storage.db import conn
 
-os.environ.setdefault("SITE_ORQUESTRADOR", "stub")   # sem LLM (Camada 2 adiada)
+os.environ.setdefault("SITE_ORQUESTRADOR", "llm")    # copy REAL via Groq (fallback: /root/sdr-motor/.env)
 os.environ.setdefault("SITE_GERADOR", "template")
 os.environ.setdefault("SITE_DEPLOY", "local")
 os.environ.setdefault("SITE_OUT_DIR", "/var/www/sites")
