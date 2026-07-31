@@ -215,14 +215,29 @@ def _contexto_anterior(origem: str, limite: int = 6) -> list[dict]:
     return list(vistos.values())[:limite]
 
 
+# PASS 1 — raciocínio profundo (prosa, sem formato). Eleva a densidade antes de estruturar.
+_PROMPT_ANALISE = (
+    "Você é um Principal Analyst / especialista de domínio dissecando um vídeo de marketing/vendas/produto "
+    "pro arsenal do JP (Noemi OS: SDR/IA no WhatsApp pra clínicas/PMEs; motor-site; motor-b de vídeo; "
+    "arbitragem). Escreva um RASCUNHO analítico CIRÚRGICO e DENSO (sem formato fixo, sem JSON ainda). "
+    "Exija de si, em cada ponto:\n"
+    "- CAUSA RAIZ: o mecanismo psicológico/comercial REAL de por que funciona — não o que é.\n"
+    "- EVIDÊNCIA DIRETA: cite trechos/números/frases exatas DO conteúdo (aspas curtas), nunca paráfrase vaga.\n"
+    "- PADRÃO OCULTO e ANTI-PADRÃO: o que a maioria copia errado; a alavanca não-óbvia que poucos veem.\n"
+    "- IMPACTO/DOR: número concreto, dor específica do público, custo de NÃO fazer.\n"
+    "- APLICAÇÃO ao JP: onde encaixa (noemi/motor-site/motor-b/arbitragem) e o passo concreto pra replicar.\n"
+    "PROIBIDO: clichê de IA ('é importante ressaltar', 'no cenário atual', 'em resumo'), frase de efeito "
+    "vazia, platitude ('conteúdo de qualidade', 'engajar o público'). Se um ponto NÃO tem evidência no "
+    "conteúdo, escreva 'sem evidência' — não invente. FUSÃO DE SINAIS: TELA > LEGENDA > ÁUDIO se divergirem."
+)
+
+# PASS 2 — estrutura a análise densa nos 10 campos, preservando evidência/mecânica/número.
 _PROMPT_BASE = (
-    "Você é o Radar de Vídeo do JP (Noemi OS: vende SDR/IA no WhatsApp pra clínicas/PMEs; "
-    "também motor-site, motor-b de vídeo, arbitragem). Dada a TRANSCRIÇÃO/TELA de um vídeo "
-    "de marketing/vendas/produto e o histórico, extraia um PLAYBOOK replicável, AFIADO.\n"
-    "FUSÃO DE SINAIS: as fontes vêm rotuladas (TELA/visão, LEGENDA/título, ÁUDIO/transcrição). "
-    "Se divergirem sobre O QUE é o produto/oferta, priorize TELA > LEGENDA > ÁUDIO. Uma análise coesa.\n"
+    "Estruture a ANÁLISE (Pass 1) abaixo nos 10 campos JSON, PRESERVANDO a densidade: cada campo com "
+    "detalhe concreto, evidência/citação do conteúdo, mecânica real e número/dor quando houver. "
+    "PROIBIDO clichê, frase vazia ou resumo raso. NÃO invente além da análise/conteúdo.\n"
     "Responda SOMENTE JSON válido com EXATAMENTE estas 10 chaves:\n"
-    '"resumo" (1 frase: a sacada central), '
+    '"resumo" (1 frase densa: a sacada central + o mecanismo, não o tema), '
     f'"categoria" (um de {sorted(CATEGORIAS)}), '
     '"estrutura_narrativa" (lista de objetos {"beat":"gancho|desenvolvimento|virada|prova|cta",'
     '"o_que":"o que acontece nesse trecho"} — sem timestamp real, use o beat), '
@@ -240,20 +255,30 @@ _PROMPT_BASE = (
 )
 
 
-def _prompt(transcricao: str, contexto: list[dict], instrucao: str = "") -> str:
+def _hist_pedido(contexto: list[dict], instrucao: str) -> tuple[str, str]:
     hist = ""
     if contexto:
         linhas = [f"- [{a.get('categoria','?')}/{a.get('score','?')}] {a.get('origem','?')}: "
                   f"{(a.get('resumo_curto') or '').strip()[:160]}" for a in contexto]
         hist = "\n\nHISTÓRICO (análises anteriores relevantes):\n" + "\n".join(linhas)
-    # Se o JP mandou uma INSTRUÇÃO junto (legenda), ela MANDA: o campo "insight"
-    # responde o pedido dele especificamente (replicar/adaptar/comparar), não um
-    # digest genérico. Os outros campos seguem preenchidos pro radar acumular.
     pedido = ""
     if instrucao and instrucao.strip():
-        pedido = (f"\n\n⚠️ O JP PEDIU ISTO (responda no campo 'insight', "
-                  f"concreto e específico, usando o vídeo): \"{instrucao.strip()[:400]}\"")
-    return f"{_PROMPT_BASE}{pedido}{hist}\n\nTRANSCRIÇÃO:\n{transcricao[:9000]}"
+        pedido = (f"\n\n⚠️ O JP PEDIU ISTO (foque a análise nisso, concreto): "
+                  f"\"{instrucao.strip()[:400]}\"")
+    return hist, pedido
+
+
+def _prompt_analise(transcricao: str, contexto: list[dict], instrucao: str = "") -> str:
+    """PASS 1 — raciocínio profundo (prosa densa)."""
+    hist, pedido = _hist_pedido(contexto, instrucao)
+    return f"{_PROMPT_ANALISE}{pedido}{hist}\n\nCONTEÚDO (TELA/LEGENDA/ÁUDIO):\n{transcricao[:9000]}"
+
+
+def _prompt_estrutura(analise: str, transcricao: str, instrucao: str = "") -> str:
+    """PASS 2 — estrutura a análise densa (+ conteúdo p/ evidência) nos 10 campos."""
+    _, pedido = _hist_pedido([], instrucao)
+    return (f"{_PROMPT_BASE}{pedido}\n\nANÁLISE (Pass 1):\n{analise[:6000]}"
+            f"\n\nCONTEÚDO ORIGINAL (pra citação/evidência):\n{transcricao[:4000]}")
 
 
 # dict base com TODAS as chaves (novas + antigas) vazias — garante retrocompat:
@@ -272,14 +297,19 @@ def _insight(transcricao: str, contexto: list[dict], instrucao: str = "") -> dic
     """LLM (via proxy sancionado, com retry) → dict validado. Degrada pra resumo
     extrativo se o proxy estiver fora — nunca crasha a análise."""
     from shared_core.ai import llm_proxy
-    prompt = _prompt(transcricao, contexto, instrucao)
-    # 1600 tokens: o schema denso (15 campos) trunca em 800, sobretudo no Claude (mais
-    # verboso) — JSON incompleto = parse falha = extrativo. 1600 fecha com folga.
-    txt = llm_proxy.completar(prompt, model="analise", max_tokens=1600, temperature=0.3)
+
+    def _call(prompt: str, mt: int, temp: float):  # Groq → Claude direto (TPD diário do Groq é comum)
+        t = llm_proxy.completar(prompt, model="analise", max_tokens=mt, temperature=temp)
+        if not t:
+            t = llm_proxy.completar(prompt, model="fallback-anthropic", max_tokens=mt, temperature=temp)
+        return t
+
+    # TWO-PASS: pass 1 = raciocínio profundo (prosa densa, temp maior p/ ângulos não-óbvios);
+    # pass 2 = estrutura nos 10 campos (temp baixa, fiel). Eleva a profundidade vs 1-pass.
+    analise = _call(_prompt_analise(transcricao, contexto, instrucao), 1400, 0.45)
+    fonte_base = analise or transcricao  # se pass 1 falhar, estrutura direto do conteúdo
+    txt = _call(_prompt_estrutura(fonte_base, transcricao, instrucao), 2200, 0.2)
     bruto = _extrair_json(txt) if txt else None
-    if not bruto:  # Groq falhou (TPD diário / fallback flaky) → Claude DIRETO antes de degradar.
-        txt = llm_proxy.completar(prompt, model="fallback-anthropic", max_tokens=1600, temperature=0.3)
-        bruto = _extrair_json(txt) if txt else None
     if not bruto:  # proxy fora / saída ilegível → resumo extrativo honesto
         frase = re.split(r"(?<=[.!?])\s+", transcricao.strip())[:2]
         resumo = (frase[0] if frase else "")[:200]
