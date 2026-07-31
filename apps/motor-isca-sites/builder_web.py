@@ -48,7 +48,15 @@ app = FastAPI(title="Site Studio")
 
 
 # -- histórico -------------------------------------------------------------
+# demo/QA/teste NÃO são "site de cliente" — não sujam o histórico (nem na escrita nem na leitura).
+def _e_demo_ou_qa(cliente: str, slug: str) -> bool:
+    alvo = f"{cliente} {slug}".lower()
+    return any(t in alvo for t in ("demo", " qa", "qa ", "teste", "variar", "motion qa"))
+
+
 def _registrar_site(cliente: str, segmento: str, slug: str, url: str) -> None:
+    if _e_demo_ou_qa(cliente, slug):
+        return  # demo/QA não entra no histórico de sites feitos
     from datetime import datetime, timezone
     with conn() as c:
         c.execute(
@@ -59,9 +67,12 @@ def _registrar_site(cliente: str, segmento: str, slug: str, url: str) -> None:
 
 def _listar_sites(limite: int = 50) -> list[dict]:
     with conn() as c:
-        return [dict(r) for r in c.execute(
-            "SELECT cliente, segmento, url, criado_em FROM sites_gerados ORDER BY id DESC LIMIT ?",
-            (limite,)).fetchall()]
+        rows = [dict(r) for r in c.execute(
+            "SELECT cliente, segmento, slug, url, criado_em FROM sites_gerados ORDER BY id DESC LIMIT ?",
+            (limite * 3,)).fetchall()]
+    # filtra demo/QA/teste na leitura (cobre o lixo já gravado antes do guard de escrita)
+    limpos = [r for r in rows if not _e_demo_ou_qa(r.get("cliente", ""), r.get("slug", ""))]
+    return limpos[:limite]
 
 
 # -- auth ------------------------------------------------------------------
