@@ -207,7 +207,10 @@ def _contexto_anterior(origem: str, limite: int = 6) -> list[dict]:
             q = ("SELECT id, origem, data, resumo_curto, categoria, score, tags FROM "
                  "(SELECT id, origem, data, categoria, score, tags, substr(insight,1,240) resumo_curto "
                  " FROM video_analises {onde} ORDER BY id DESC LIMIT ?)")
-            for onde, params in ((f"WHERE origem = ?", (origem, limite)), ("", (limite,))):
+            # score > 0 = só o que teve sinal vira memória; corta o resumo extrativo
+            # (degradado, score 0) que senão injeta ruído no prompt das próximas análises.
+            for onde, params in (("WHERE score > 0 AND origem = ?", (origem, limite)),
+                                 ("WHERE score > 0", (limite,))):
                 for r in c.execute(q.format(onde=onde), params):
                     vistos.setdefault(r["id"], dict(r))
     except Exception:  # noqa: BLE001 — sem contexto ainda é OK
@@ -233,10 +236,10 @@ _PROMPT_ANALISE = (
 
 # PASS 2 — estrutura a análise densa nos 10 campos, preservando evidência/mecânica/número.
 _PROMPT_BASE = (
-    "Estruture a ANÁLISE (Pass 1) abaixo nos 10 campos JSON, PRESERVANDO a densidade: cada campo com "
+    "Estruture a ANÁLISE (Pass 1) abaixo nos 14 campos JSON, PRESERVANDO a densidade: cada campo com "
     "detalhe concreto, evidência/citação do conteúdo, mecânica real e número/dor quando houver. "
     "PROIBIDO clichê, frase vazia ou resumo raso. NÃO invente além da análise/conteúdo.\n"
-    "Responda SOMENTE JSON válido com EXATAMENTE estas 10 chaves:\n"
+    "Responda SOMENTE JSON válido com EXATAMENTE estas 14 chaves:\n"
     '"resumo" (1 frase densa: a sacada central + o mecanismo, não o tema), '
     f'"categoria" (um de {sorted(CATEGORIAS)}), '
     '"estrutura_narrativa" (lista de objetos {"beat":"gancho|desenvolvimento|virada|prova|cta",'
@@ -250,7 +253,13 @@ _PROMPT_BASE = (
     '"ctas" (lista de chamadas pra ação reutilizáveis), '
     f'"aplicar_em" (subconjunto EXATO de {sorted(MOTORES)} — arbitragem=garimpo/revenda, '
     'motor-site=sites, motor-b=vídeo, noemi=SDR/WhatsApp; [] se nenhum, NÃO chute), '
-    '"assinatura_tema" (3-6 palavras-chave normalizadas do tema central, pra deduplicar). '
+    '"assinatura_tema" (3-6 palavras-chave normalizadas do tema central, pra deduplicar), '
+    # cam.1/3/4 (Radar Omnisciente): vertical do negócio + ângulo de marketing + ferramentas + templates.
+    f'"vertical" (a vertical/nicho do negócio no vídeo — encaixe em {sorted(VERTICAIS)} OU devolva um nome novo; "" se não der pra dizer), '
+    '"marketing" (objeto {"angulo":"a promessa/ângulo central","hook":"o gancho de abertura","oferta":"a oferta se houver","cta":"a chamada"} — deixe "" o que não houver), '
+    '"ferramentas" (lista de ferramentas/produtos/apps citados por NOME próprio, ex: Shopify, Canva; [] se nenhum), '
+    '"modelos" (objeto {dominio: "template replicável de 1 linha"} com dominios de '
+    '["video","site","negocio","produto","operacao","projeto"] — só os que casam; {} se nenhum). '
     "REGRAS: só o que está no conteúdo (não invente). tecnicas_persuasao e aplicar_em SÓ valores das listas."
 )
 
@@ -328,10 +337,17 @@ def _insight(transcricao: str, contexto: list[dict], instrucao: str = "") -> dic
         return out
 
     cat = str(bruto.get("categoria", "outro")).strip().lower()
+    cat = {"operacao": "operação"}.get(cat, cat)  # o LLM quase sempre tira o acento → não perder a categoria
     try:
         score = max(0, min(10, int(bruto.get("score_replicabilidade", 0))))
     except (TypeError, ValueError):
         score = 0
+    # anti sobre-análise: input muito pobre (ex: "Hey, cheese") não merece score alto por mais
+    # denso que o LLM escreva. Mede o conteúdo REAL, sem os rótulos de fusão → teto baixo.
+    _conteudo = re.sub(r"(LEGENDA/TÍTULO:|TRANSCRIÇÃO DO ÁUDIO:|O QUE APARECE NA TELA \(visão\):)",
+                       "", transcricao or "").strip()
+    if len(_conteudo) < 90:
+        score = min(score, 3)
     persuasao = [t for t in (str(x).strip().lower() for x in (bruto.get("tecnicas_persuasao") or []))
                  if t in _PERSUASAO_SET][:14]
     estrut = [{"beat": str(x.get("beat", ""))[:20], "o_que": str(x.get("o_que", ""))[:200]}
@@ -339,32 +355,81 @@ def _insight(transcricao: str, contexto: list[dict], instrucao: str = "") -> dic
     pve_in = bruto.get("promessa_vs_entrega") if isinstance(bruto.get("promessa_vs_entrega"), dict) else {}
     pve = {k: str(pve_in.get(k, "")).strip()[:200] for k in ("promessa", "entrega", "gap")}
     resumo = str(bruto.get("resumo", "")).strip()[:200]
-    assinatura = str(bruto.get("assinatura_tema", "")).strip()[:120]
+    _ass = bruto.get("assinatura_tema", "")  # o LLM às vezes devolve LISTA — junta em vez de str(list)
+    if isinstance(_ass, list):
+        _ass = ", ".join(str(x).strip() for x in _ass if str(x).strip())
+    assinatura = str(_ass).strip()[:120]
     aplicar = _aplicar(bruto.get("aplicar_em"))
+    # cam.1/3/4 (restauradas — a regressão do two-pass tinha deixado de extrair estas):
+    vert = str(bruto.get("vertical", "")).strip().lower().replace(" ", "_")
+    vertical_nova = bool(vert) and vert not in VERTICAIS  # nome fora do catálogo => vertical nova
+    _mkt = bruto.get("marketing") if isinstance(bruto.get("marketing"), dict) else {}
+    marketing = {k: str(_mkt.get(k, "")).strip()[:200]
+                 for k in ("angulo", "hook", "oferta", "cta") if str(_mkt.get(k, "")).strip()}
+    ferramentas = _lista(bruto.get("ferramentas"), n=12, cap=60)
+    _mods = bruto.get("modelos") if isinstance(bruto.get("modelos"), dict) else {}
+    modelos = {d: str(_mods.get(d, "")).strip()[:200] for d in _DOMINIOS if str(_mods.get(d, "")).strip()}
     return {**_INSIGHT_VAZIO,
             # colunas do banco (retrocompat): insight/categoria/score/tags
             "insight": resumo or "(sem insight)",
             "categoria": cat if cat in CATEGORIAS else "outro",
             "score": score,
-            "tags": (persuasao[:6] or assinatura.lower().split()[:6]),
+            "tags": (persuasao[:6] or assinatura.lower().replace(",", " ").split()[:6]),
             "fonte": "llm",
             # schema NOVO de 10 campos
             "resumo": resumo, "estrutura_narrativa": estrut, "tecnicas_persuasao": persuasao,
             "objecoes_tratadas": _lista(bruto.get("objecoes_tratadas")), "promessa_vs_entrega": pve,
             "hooks": _lista(bruto.get("hooks")), "ctas": _lista(bruto.get("ctas")),
             "aplicar_em": aplicar, "assinatura_tema": assinatura,
-            "motores": aplicar}  # 'motores' segue preenchido (retrocompat do roteamento)
+            "motores": aplicar,  # 'motores' segue preenchido (retrocompat do roteamento)
+            # cam.1/3/4 restauradas — a Caixa de Ideias (harvest_ideias) volta a receber estes:
+            "vertical": vert, "vertical_nova": vertical_nova, "marketing": marketing,
+            "ferramentas": ferramentas, "modelos": modelos}
+
+
+def _bloco_balanceado(texto: str, i: int) -> str | None:
+    """1º objeto {...} balanceado a partir de i, ignorando chaves dentro de strings."""
+    prof = 0
+    em_str = esc = False
+    for j in range(i, len(texto)):
+        ch = texto[j]
+        if em_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                em_str = False
+            continue
+        if ch == '"':
+            em_str = True
+        elif ch == "{":
+            prof += 1
+        elif ch == "}":
+            prof -= 1
+            if prof == 0:
+                return texto[i:j + 1]
+    return None
 
 
 def _extrair_json(texto: str) -> dict | None:
-    m = re.search(r"\{.*\}", texto or "", re.S)
-    if not m:
+    texto = texto or ""
+    i = texto.find("{")
+    if i < 0:
         return None
-    try:
-        d = json.loads(m.group(0))
-        return d if isinstance(d, dict) else None
-    except (ValueError, TypeError):
-        return None
+    # guloso primeiro (cobre o caso normal de 1 objeto); se falhar, pega o 1º objeto
+    # BALANCEADO — resolve prosa-depois-do-json e "dois objetos" (guloso engoliria os dois).
+    g = re.search(r"\{.*\}", texto, re.S)
+    for cand in ((g.group(0) if g else None), _bloco_balanceado(texto, i)):
+        if not cand:
+            continue
+        try:
+            d = json.loads(cand)
+            if isinstance(d, dict):
+                return d
+        except (ValueError, TypeError):
+            continue
+    return None
 
 
 def _limpar_url(url: str) -> str:
@@ -420,6 +485,7 @@ def analisar(url: str, origem: str | None = None, instrucao: str = "",
             # IG/YT bloqueou a mídia → NÃO morre: segue com a legenda (análise sempre).
             origem = origem_dada or handle or _origem_da_url(url)
             if not legenda:
+                registrar_job(False, origem=origem, url=url, motivo=f"sem mídia nem legenda: {e}")
                 raise RuntimeError(f"não deu pra baixar o vídeo nem ler a legenda: {e}")
     # legenda (nome do produto/oferta) + transcrição (narração) → análise fiel, sem
     # confundir música de fundo com o produto (a legenda é a âncora do "o quê").
@@ -427,8 +493,12 @@ def analisar(url: str, origem: str | None = None, instrucao: str = "",
         ("LEGENDA/TÍTULO: " + legenda) if legenda else "",
         ("TRANSCRIÇÃO DO ÁUDIO: " + texto_audio) if texto_audio else ""]))
     if not texto.strip():
+        registrar_job(False, origem=origem, url=url, motivo="sem transcrição e sem legenda")
         raise RuntimeError("sem transcrição e sem legenda — link privado/inacessível")
-    return _processar(texto, origem, url, instrucao)
+    res = _processar(texto, origem, url, instrucao)
+    registrar_job(bool(res.get("id")), origem=origem, url=url,
+                  motivo="" if res.get("fonte") == "llm" else f"degradado ({res.get('fonte')})")
+    return res
 
 
 def analisar_arquivo(caminho: str, origem: str = "telegram", url_ref: str = "",
@@ -706,40 +776,85 @@ def status_jobs(limite: int = 12) -> dict:
             "sucesso_pct": round(100 * tot["s"] / n) if n else None}
 
 
-if __name__ == "__main__":  # self-check: origem + json + degradação (sem rede)
+if __name__ == "__main__":  # self-check: helpers + sanitização + degradação (100% offline)
+    import shared_core.ai.llm_proxy as _lp
+    _orig = _lp.completar
+
+    # 1) helpers puros (sem rede)
     assert _origem_da_url("https://www.instagram.com/reel/ABC/") == "instagram.com" or \
            _origem_da_url("https://www.instagram.com/lojax/reel/ABC/") == "@lojax"
     assert _extrair_json('lixo {"a":1} fim') == {"a": 1}
-    d = _insight("Primeira frase. Segunda frase. Terceira.", [])  # proxy provavelmente fora
-    assert d["categoria"] in CATEGORIAS and 1 <= d["score"] <= 5, d
-    assert d["motores"] == [], d  # degradado não roteia pra motor nenhum
-    assert d["vertical"] == "" and d["vertical_nova"] is False and d["ferramentas"] == [], d
+    assert _extrair_json('{"a":1} lixo {"b":2}') == {"a": 1}          # item #12: pega o 1º objeto balanceado
+    assert _extrair_json('{"t":"tem } dentro de string"}') == {"t": "tem } dentro de string"}  # ignora } em string
 
-    # upgrade c + Omnisciente cam.1/3/4: valida motores + vertical + marketing + ferramentas
-    def _fake_completar(*a, **k):
-        return ('{"insight":"x","categoria":"vendas","score":4,"motores":'
-                '["arbitragem","MOTOR_SITE","inexistente","arbitragem"],'
-                '"modelos":{"site":"landing de leilão","negocio":"revende com 30%"},'
-                '"vertical":"Odontologia","marketing":{"angulo":"medo de perder cliente",'
-                '"hook":"3s","oferta":"","cta":"chama no zap"},"ferramentas":["Shopify","Ruflo"]}')
-    import shared_core.ai.llm_proxy as _lp
-    _orig = _lp.completar
-    _lp.completar = _fake_completar
+    # 2) DEGRADADO — proxy fora (completar→None): resumo extrativo honesto, score 0, nada roteado.
+    _lp.completar = lambda *a, **k: None
     try:
-        r = _insight("qualquer", [])
-        assert r["motores"] == ["arbitragem", "motor-site"], r["motores"]  # dedup+whitelist+normaliza
-        assert r["vertical"] == "odontologia" and r["vertical_nova"] is False, r  # cam.1 catalogada
-        assert r["marketing"] == {"angulo": "medo de perder cliente", "hook": "3s",
-                                  "cta": "chama no zap"}, r["marketing"]       # cam.3 (oferta vazia caiu)
-        assert r["ferramentas"] == ["Shopify", "Ruflo"], r["ferramentas"]     # cam.4
-        # vertical fora do catálogo => vertical_nova=True
-        _lp.completar = lambda *a, **k: '{"insight":"y","categoria":"produto","score":3,"vertical":"petshop"}'
-        r2 = _insight("q", [])
-        assert r2["vertical"] == "petshop" and r2["vertical_nova"] is True, r2
+        d = _insight("Primeira frase. Segunda frase. Terceira.", [])
     finally:
         _lp.completar = _orig
+    assert d["fonte"] == "extrativo" and d["score"] == 0, d        # degradado NÃO inventa score
+    assert d["categoria"] in CATEGORIAS and d["motores"] == [] and d["aplicar_em"] == [], d
+    assert d["vertical"] == "" and d["vertical_nova"] is False and d["ferramentas"] == [], d
 
-    # upgrade e: harvest agrupa por motor usando o template de domínio que casa
+    # 3) HAPPY PATH — fake JSON no schema de 10 campos do Pass 2: valida a sanitização real.
+    _fake10 = ('{"resumo":"a sacada + o mecanismo","categoria":"INVALIDA","score_replicabilidade":99,'
+               '"tecnicas_persuasao":["escassez","inexistente","URGENCIA"],'
+               '"estrutura_narrativa":[{"beat":"gancho","o_que":"abre"},"lixo"],'
+               '"objecoes_tratadas":["obj 1"],'
+               '"promessa_vs_entrega":{"promessa":"p","entrega":"e","gap":"g"},'
+               '"hooks":["Comment the word edit"],"ctas":["cta reutilizável"],'
+               '"aplicar_em":["arbitragem","MOTOR_SITE","inexistente","arbitragem"],'
+               '"assinatura_tema":["tema-a","tema-b"],'
+               '"vertical":"Odontologia","marketing":{"angulo":"medo de perder cliente",'
+               '"hook":"3s","oferta":"","cta":"chama no zap"},"ferramentas":["Shopify","Ruflo"],'
+               '"modelos":{"site":"landing de leilão","negocio":"revende com 30%","xpto":"ignora"}}')
+    _lp.completar = lambda *a, **k: _fake10
+    _longo = ("conteúdo real longo o suficiente pra não disparar a guarda de input pobre do radar "
+              "aqui, com bastante texto de sobra pra passar do piso de 90 caracteres com folga")
+    try:
+        r = _insight(_longo, [])
+    finally:
+        _lp.completar = _orig
+    assert r["fonte"] == "llm", r
+    assert r["categoria"] == "outro", r["categoria"]                        # categoria fora do set → outro
+    assert r["score"] == 10, r["score"]                                     # clamp 0-10 (99→10)
+    assert r["tecnicas_persuasao"] == ["escassez", "urgencia"], r["tecnicas_persuasao"]  # filtra+normaliza
+    assert r["aplicar_em"] == ["arbitragem", "motor-site"], r["aplicar_em"]  # dedup+whitelist+normaliza
+    assert r["motores"] == r["aplicar_em"], r                               # motores espelha aplicar_em
+    assert r["estrutura_narrativa"] == [{"beat": "gancho", "o_que": "abre"}], r["estrutura_narrativa"]  # dropa não-dict
+    assert r["hooks"] == ["Comment the word edit"] and r["ctas"] == ["cta reutilizável"], r
+    assert r["promessa_vs_entrega"] == {"promessa": "p", "entrega": "e", "gap": "g"}, r["promessa_vs_entrega"]
+    assert r["assinatura_tema"] == "tema-a, tema-b", r["assinatura_tema"]  # LISTA vira string juntada, não str(list)
+    # cam.1/3/4 RESTAURADAS (item #1): vertical catalogada, marketing sem campo vazio,
+    # ferramentas por nome, modelos só nos domínios válidos (dominio inexistente 'xpto' cai fora).
+    assert r["vertical"] == "odontologia" and r["vertical_nova"] is False, r["vertical"]
+    assert r["marketing"] == {"angulo": "medo de perder cliente", "hook": "3s", "cta": "chama no zap"}, r["marketing"]
+    assert r["ferramentas"] == ["Shopify", "Ruflo"], r["ferramentas"]
+    assert r["modelos"] == {"site": "landing de leilão", "negocio": "revende com 30%"}, r["modelos"]
+    # vertical fora do catálogo => vertical_nova=True
+    _lp.completar = lambda *a, **k: '{"resumo":"y","categoria":"produto","score_replicabilidade":3,"vertical":"petshop"}'
+    try:
+        r2 = _insight("q", [])
+    finally:
+        _lp.completar = _orig
+    assert r2["vertical"] == "petshop" and r2["vertical_nova"] is True, r2
+    # categoria sem acento do LLM ("Operacao") é restaurada pra "operação" (item #3)
+    _lp.completar = lambda *a, **k: '{"resumo":"z","categoria":"Operacao","score_replicabilidade":5}'
+    try:
+        r3 = _insight("q", [])
+    finally:
+        _lp.completar = _orig
+    assert r3["categoria"] == "operação", r3["categoria"]
+    # item #8: input pobre ("Hey, cheese") não vira score alto por mais denso que o LLM escreva
+    _lp.completar = lambda *a, **k: '{"resumo":"denso","categoria":"marketing","score_replicabilidade":9}'
+    try:
+        r4 = _insight("LEGENDA/TÍTULO: pop\nTRANSCRIÇÃO DO ÁUDIO: Hey, cheese.", [])
+    finally:
+        _lp.completar = _orig
+    assert r4["fonte"] == "llm" and r4["score"] <= 3, r4["score"]
+
+    # 4) harvest agrupa por motor usando o template de domínio que casa
     linha = {"motores": ["arbitragem", "motor-site"],
              "modelos": {"site": "landing de leilão", "negocio": "revende com 30%"}}
     dom_arb = next((linha["modelos"].get(dd, "") for dd in _MOTOR_DOMINIO["arbitragem"]
@@ -763,4 +878,4 @@ if __name__ == "__main__":  # self-check: origem + json + degradação (sem rede
     finally:
         _g["processar_observacao"] = _orig_proc
     print("radar OK — degradado:", d["fonte"],
-          "· cam.1/3/4 + fronteira adapter (observacao/processar_observacao) OK")
+          "· sanitização 10-campos + harvest + fronteira adapter OK")

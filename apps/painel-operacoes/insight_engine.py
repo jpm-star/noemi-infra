@@ -252,8 +252,8 @@ def _esc(s: str) -> str:
 
 if __name__ == "__main__":  # self-check isolado (LLM mockado, sem rede/DB de produção)
     import os
-    os.environ["NOEMI_DATA_DIR"] = "/root/.claude/jobs/f7137c43/tmp/ie_selftest"
-    Path(os.environ["NOEMI_DATA_DIR"]).mkdir(parents=True, exist_ok=True)
+    import tempfile
+    os.environ["NOEMI_DATA_DIR"] = tempfile.mkdtemp(suffix="_ie_selftest")  # DB isolado, portável
     from shared_core.ai import llm_proxy
 
     # 1) parse + gate: 3 insights vindos do LLM, 1 abaixo do gate (score 5) é cortado
@@ -264,8 +264,6 @@ if __name__ == "__main__":  # self-check isolado (LLM mockado, sem rede/DB de pr
          "acao": "mandar orçamento em até 2h", "score": 8, "recorrencia": "3x"},
         {"tipo": "oportunidade", "insight": "achado fraco genérico", "acao": "fazer algo",
          "score": 5, "recorrencia": "1x"}]})
-    # garante Groq-only: se pedir Anthropic, falha o teste
-    assert "permitir_anthropic" in llm_proxy.completar.__code__.co_varnames or True  # doc
     r = _analisar_lote("...conversas...", "marmoraria", "direto/técnico")
     assert len(r) == 2 and all(x["score"] >= GATE for x in r), r  # o score 5 caiu
     assert r[0]["tipo"] == "oportunidade" and r[1]["tipo"] == "risco", r
