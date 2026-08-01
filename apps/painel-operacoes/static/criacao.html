@@ -14,6 +14,10 @@ h1{font-size:1.3rem}h2{font-size:1rem;margin:22px 0 10px;color:var(--mut)}
 .gap{background:rgba(255,176,32,.09);border:1px solid rgba(255,176,32,.35);border-radius:11px;
      padding:11px 14px;font-size:.82rem;color:#ffd28a;margin-bottom:16px;line-height:1.5}
 .gap b{color:var(--ri)}
+.gap.ok{background:rgba(47,230,160,.08);border-color:rgba(47,230,160,.4);color:#a9f0cf}
+.gap.ok b,.gap.ok code{color:var(--op)}
+input[type=file]{padding:7px 9px;font-size:.82rem}
+input[type=file]::file-selector-button{background:#12233a;color:var(--cy);border:1px solid var(--line);border-radius:7px;padding:5px 10px;margin-right:9px;cursor:pointer}
 .card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:14px;padding:16px}
 label{display:block;font-size:.8rem;color:var(--mut);margin:10px 0 4px}
 input,textarea,select{width:100%;font:inherit;border-radius:9px;border:1px solid var(--line);background:#08101d;color:var(--txt);padding:9px 11px}
@@ -41,8 +45,7 @@ tr:hover td{background:rgba(52,226,255,.04)}
 <div class="top"><h1>🏗️ Criação de site</h1><a href="/obs">← QG</a></div>
 <div class="sub">Interface operacional do motor (motor-isca-sites → <code>montar_site</code>). Gera de verdade em /var/www/sites.</div>
 
-<div class="gap">⚠️ <b>Contrato do motor hoje:</b> ele gera a partir de <b>briefing de texto</b> — a copy é escrita por IA (Groq) e o motion é CSS nativo.
-<b>Upload de foto/vídeo custom NÃO é suportado pelo motor ainda</b> (confirmado no código: <code>montar_site</code> só aceita nome/nicho/whatsapp/diferenciais/público/cor). Por isso não tem campo de upload aqui — seria botão que não faz nada. Pra habilitar foto/vídeo, o gerador precisa aceitar caminhos de asset (ver relatório).</div>
+<div class="gap ok">✅ <b>Foto, vídeo e copy do cliente agora funcionam.</b> Enviou <b>foto</b> → vira hero real. Enviou <b>vídeo</b> → embute <code>&lt;video&gt;</code> de verdade (autoplay/loop/muted, sem render Higgsfield). <b>Copy pronta</b> → sobrescreve o texto que a IA escreveria. Sem nada disso, o motor gera por briefing como antes (fallback intacto).</div>
 
 <div class="card">
   <div class="row">
@@ -61,6 +64,12 @@ tr:hover td{background:rgba(52,226,255,.04)}
   </div>
   <label>Diferenciais / conteúdo pesquisado <span class="hint">(uma linha cada — é isto que a IA usa pra escrever a copy)</span></label>
   <textarea id="diferenciais" placeholder="atendimento no mesmo dia&#10;aceita convênio&#10;20 anos de experiência"></textarea>
+  <div class="row">
+    <div><label>📷 Foto de hero <span class="hint">(opcional — vira o fundo do hero)</span></label><input id="foto" type="file" accept="image/*"></div>
+    <div><label>🎬 Vídeo de hero <span class="hint">(opcional — embute &lt;video&gt; real)</span></label><input id="video" type="file" accept="video/*"></div>
+  </div>
+  <label>✍️ Copy pronta do cliente <span class="hint">(opcional — sobrescreve a copy da IA; um parágrafo por linha)</span></label>
+  <textarea id="copy_livre" placeholder="cole aqui o texto que o cliente já mandou pronto — vai literal no site"></textarea>
   <button class="gerar" id="btn" onclick="gerar()">🚀 Gerar site</button>
   <div id="res"></div>
 </div>
@@ -100,12 +109,17 @@ async function carregarSites(){
 async function gerar(){
   const nome=$("nome").value.trim(), nicho=$("nicho").value.trim();
   if(!nome||!nicho){$("res").innerHTML='<div class="err">Empresa e nicho são obrigatórios.</div>';return;}
-  $("btn").disabled=true;$("btn").textContent="⏳ gerando (IA escrevendo a copy)…";
+  $("btn").disabled=true;$("btn").textContent="⏳ gerando (IA + assets)…";
   $("res").innerHTML="";
   try{
-    const r=await fetch("/api/criacao/gerar",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({nome,nicho,whatsapp:$("whatsapp").value,publico:$("publico").value,
-        cor:$("cor").value,diferenciais:$("diferenciais").value})});
+    const fd=new FormData();
+    fd.append("nome",nome);fd.append("nicho",nicho);
+    fd.append("whatsapp",$("whatsapp").value);fd.append("publico",$("publico").value);
+    fd.append("cor",$("cor").value);fd.append("diferenciais",$("diferenciais").value);
+    fd.append("copy_livre",$("copy_livre").value);
+    if($("foto").files[0])fd.append("foto",$("foto").files[0]);
+    if($("video").files[0])fd.append("video",$("video").files[0]);
+    const r=await fetch("/api/criacao/gerar",{method:"POST",body:fd});  // multipart: browser põe o boundary
     const d=await r.json();
     if(d.ok){$("res").innerHTML=`<div class="ok">✅ Publicado: <a href="${esc(d.url)}" target="_blank" rel="noopener">${esc(d.url)}</a></div>`;carregarSites();}
     else $("res").innerHTML=`<div class="err">Falhou: ${esc(d.erro||"erro")}</div>`;
