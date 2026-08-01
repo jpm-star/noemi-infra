@@ -420,16 +420,19 @@ def criacao_sites() -> JSONResponse:
 
 
 @app.post("/api/criacao/gerar")
-async def criacao_gerar(req: Request) -> JSONResponse:
+async def criacao_gerar(nome: str = Form(...), nicho: str = Form(...), whatsapp: str = Form(""),
+                        diferenciais: str = Form(""), publico: str = Form(""), cor: str = Form(""),
+                        copy_livre: str = Form(""), foto: UploadFile | None = File(None),
+                        video: UploadFile | None = File(None)) -> JSONResponse:
     import asyncio
 
     import criacao
-    d = await req.json()
+    # PROMPT 2: foto/vídeo/copy opcionais (multipart). Sem eles = geração por briefing (fallback).
+    f = (await foto.read(), foto.filename) if (foto and foto.filename) else None
+    v = (await video.read(), video.filename) if (video and video.filename) else None
     # geração é pesada (LLM + template + deploy) — fora do event loop
-    res = await asyncio.to_thread(
-        criacao.gerar, str(d.get("nome") or ""), str(d.get("nicho") or ""),
-        str(d.get("whatsapp") or ""), str(d.get("diferenciais") or ""),
-        str(d.get("publico") or ""), str(d.get("cor") or ""))
+    res = await asyncio.to_thread(criacao.gerar, nome, nicho, whatsapp, diferenciais,
+                                  publico, cor, 0, f, v, copy_livre)
     return JSONResponse(res, status_code=200 if res.get("ok") else 422)
 
 

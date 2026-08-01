@@ -50,10 +50,21 @@ def _db_noemi() -> sqlite3.Connection:
     return db.conn()
 
 
+_IMG_EXT = {"jpg", "jpeg", "png", "webp", "gif", "avif"}
+_VID_EXT = {"mp4", "webm", "mov", "m4v"}
+
+
+def _ext(nome_arq: str, permitidos: set[str], padrao: str) -> str:
+    e = (nome_arq or "").rsplit(".", 1)[-1].lower().strip()
+    return e if e in permitidos else padrao
+
+
 def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | str = "",
-          publico: str = "", cor: str = "", preset: int = 0) -> dict:
-    """Dispara o motor REAL com o briefing. Registra em sites_gerados (como o /studio faz).
-    Devolve {ok, url, slug} ou {ok:False, erro}. NÃO simula: se o motor falhar, devolve o erro."""
+          publico: str = "", cor: str = "", preset: int = 0,
+          foto: tuple | None = None, video: tuple | None = None, copy_livre: str = "") -> dict:
+    """Dispara o motor REAL com o briefing. `foto`/`video` = (bytes, nome_arquivo) opcionais
+    (PROMPT 2): salvos em <slug>/{img,vid} e embutidos no hero via contrato estendido do motor.
+    `copy_livre` sobrescreve a copy gerada. Registra em sites_gerados. NÃO simula — erro vira texto."""
     nome = (nome or "").strip()
     if not nome or not (nicho or "").strip():
         return {"ok": False, "erro": "empresa e nicho são obrigatórios"}
@@ -62,6 +73,16 @@ def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | s
     briefing = {"nome_empresa": nome, "nicho": nicho.strip(), "whatsapp": (whatsapp or "").strip(),
                 "diferenciais": diferenciais, "publico": (publico or "").strip(),
                 "cor_primaria": (cor or "").strip() or None}
+    # assets do cliente: passa o caminho RELATIVO no briefing; os bytes são gravados pós-geração.
+    foto_ext = video_ext = None
+    if foto and foto[0]:
+        foto_ext = _ext(foto[1], _IMG_EXT, "jpg")
+        briefing["hero_imagem"] = f"img/hero.{foto_ext}"
+    if video and video[0]:
+        video_ext = _ext(video[1], _VID_EXT, "mp4")
+        briefing["hero_video"] = f"vid/hero.{video_ext}"
+    if (copy_livre or "").strip():
+        briefing["copy_livre"] = copy_livre.strip()
     try:
         montar_site = _montar_site()
     except Exception as e:  # noqa: BLE001 — motor não carregou = gap de infra, reporta
@@ -72,6 +93,17 @@ def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | s
         return {"ok": False, "erro": f"geração falhou: {type(e).__name__}: {e}"}
     url = r.deploy.url
     slug = re.sub(r".*/([^/]+)/?$", r"\1", url.rstrip("/"))
+    # grava os assets do cliente no dir do site (o HTML já referencia os caminhos relativos)
+    site_dir = SITES_DIR / slug
+    try:
+        if foto and foto[0]:
+            (site_dir / "img").mkdir(parents=True, exist_ok=True)
+            (site_dir / "img" / f"hero.{foto_ext}").write_bytes(foto[0])
+        if video and video[0]:
+            (site_dir / "vid").mkdir(parents=True, exist_ok=True)
+            (site_dir / "vid" / f"hero.{video_ext}").write_bytes(video[0])
+    except OSError as e:
+        return {"ok": False, "erro": f"site gerado mas falhou salvar asset: {e}"}
     try:
         with _db_noemi() as c:
             c.execute("INSERT INTO sites_gerados (cliente,segmento,slug,url,criado_em) VALUES (?,?,?,?,?)",
