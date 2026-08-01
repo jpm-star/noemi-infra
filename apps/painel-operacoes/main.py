@@ -369,6 +369,40 @@ def radar_obter(aid: int) -> JSONResponse:
     return JSONResponse(a or {"erro": "não encontrada"}, status_code=200 if a else 404)
 
 
+# -- QG Pessoal: controle de vida/financeiro (Noemi anota → aparece aqui). additive. ----
+@app.get("/api/pessoal/listar")
+def pessoal_listar(tipo: str | None = None) -> JSONResponse:
+    import pessoal
+    return JSONResponse({"itens": pessoal.listar(tipo), "saldo": pessoal.saldo_mes()})
+
+
+@app.post("/api/pessoal/add")
+async def pessoal_add(req: Request) -> JSONResponse:
+    import pessoal
+    d = await req.json()
+    try:
+        item = pessoal.add(str(d.get("texto") or ""), tipo=str(d.get("tipo") or "nota"),
+                           valor=d.get("valor"), categoria=str(d.get("categoria") or ""),
+                           origem=str(d.get("origem") or "painel"))
+    except ValueError as e:
+        return JSONResponse({"ok": False, "erro": str(e)}, status_code=400)
+    return JSONResponse({"ok": True, "item": item})
+
+
+@app.post("/api/pessoal/status")
+async def pessoal_status(req: Request) -> JSONResponse:
+    import pessoal
+    d = await req.json()
+    return JSONResponse({"ok": pessoal.set_status(int(d.get("id") or 0), str(d.get("status") or "aberto"))})
+
+
+@app.post("/api/pessoal/deletar")
+async def pessoal_deletar(req: Request) -> JSONResponse:
+    import pessoal
+    d = await req.json()
+    return JSONResponse({"ok": pessoal.deletar(int(d.get("id") or 0))})
+
+
 # -- Radar Grátis (PÚBLICO, sem auth): upload de vídeo → insight. 15MB, 10/dia. -----
 @app.post("/api/radar/publico")
 async def radar_publico_analisar(request: Request,
@@ -554,6 +588,11 @@ def radar_pagina() -> str:
 @app.get("/obs/ideias", response_class=HTMLResponse)
 def ideias_pagina() -> str:
     return (_AQUI / "static" / "ideias.html").read_text(encoding="utf-8")
+
+
+@app.get("/obs/pessoal", response_class=HTMLResponse)
+def pessoal_pagina() -> str:
+    return (_AQUI / "static" / "pessoal.html").read_text(encoding="utf-8")
 
 
 # Radar Grátis — página PÚBLICA (liberada no Caddy sem basic-auth). Self-serve.

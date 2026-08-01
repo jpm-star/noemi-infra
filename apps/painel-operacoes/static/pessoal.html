@@ -1,0 +1,131 @@
+<!doctype html><html lang="pt-BR"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>QG Pessoal</title>
+<style>
+:root{--bg:#060a12;--panel:#0c1422;--panel2:#0f1a2c;--line:#1b2942;--cy:#34e2ff;--op:#2fe6a0;
+      --ri:#ffb020;--mut:#8aa2c0;--txt:#e6edf7}
+*{box-sizing:border-box;margin:0}
+body{background:radial-gradient(700px 400px at 100% 0%,rgba(52,226,255,.06),transparent 55%),var(--bg);
+     color:var(--txt);font:15px/1.5 system-ui,-apple-system,sans-serif;padding:22px 16px;max-width:760px;margin:0 auto}
+a{color:var(--cy);text-decoration:none}
+h1{font-size:1.35rem;margin-bottom:2px}
+.top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px}
+.sub{color:var(--mut);font-size:.85rem;margin-bottom:18px}
+.saldo{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);
+       border-radius:14px;padding:14px 16px;margin-bottom:16px}
+.saldo .v{font-size:1.7rem;font-weight:800;letter-spacing:-.02em}
+.saldo small{color:var(--mut)}
+.cats{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;font-size:.78rem;color:var(--mut)}
+.cats span{background:rgba(52,226,255,.07);border:1px solid var(--line);border-radius:20px;padding:2px 9px}
+form{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:16px;
+     display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+input,select,button{font:inherit;border-radius:9px;border:1px solid var(--line);background:#08101d;color:var(--txt);padding:9px 11px}
+input:focus,select:focus{outline:1px solid var(--cy)}
+#texto{flex:1 1 240px}
+#valor{width:110px;display:none}#cat{width:130px;display:none}
+.seg{display:none;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.seg button{border:0;border-radius:0;background:#08101d;color:var(--mut);padding:9px 12px;cursor:pointer}
+.seg button.on{background:var(--op);color:#04140d;font-weight:700}
+.seg button.on.saida{background:var(--ri);color:#221600}
+button.add{background:var(--cy);color:#001522;font-weight:700;cursor:pointer;border:0}
+.filtros{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+.filtros button{background:transparent;color:var(--mut);border:1px solid var(--line);padding:5px 12px;border-radius:20px;cursor:pointer;font-size:.82rem}
+.filtros button.on{background:rgba(52,226,255,.14);color:var(--cy);border-color:var(--cy);font-weight:700}
+.item{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);
+      border-left:3px solid var(--line);border-radius:11px;padding:10px 13px;margin-bottom:8px}
+.item.feito{opacity:.5}.item.feito .txt{text-decoration:line-through}
+.item .txt{flex:1}.item .txt small{color:var(--mut);font-size:.75rem;display:block}
+.item.financeiro{border-left-color:var(--op)}.item.financeiro.neg{border-left-color:var(--ri)}
+.item.tarefa{border-left-color:var(--cy)}.item.lembrete{border-left-color:#b98cff}
+.money{font-weight:700;white-space:nowrap}.money.pos{color:var(--op)}.money.neg{color:var(--ri)}
+.ic{background:none;border:0;color:var(--mut);cursor:pointer;font-size:1rem;padding:3px}
+.ic:hover{color:var(--txt)}
+.vazio{color:var(--mut);text-align:center;padding:34px 10px}
+</style></head><body>
+<div class="top"><h1>🗂️ QG Pessoal</h1><a href="/obs">← QG</a></div>
+<div class="sub">O que a Noemi anota e o que você joga aqui — vida, tarefas, financeiro. Direto ao ponto.</div>
+
+<div class="saldo">
+  <div><small>Saldo do mês</small></div>
+  <div class="v" id="saldo">—</div>
+  <div class="cats" id="cats"></div>
+</div>
+
+<form id="f" onsubmit="return addItem()">
+  <input id="texto" placeholder="o que anotar? (ex: pagar fornecedor, recebi do cliente…)" autocomplete="off" required>
+  <select id="tipo" onchange="onTipo()">
+    <option value="nota">📝 nota</option>
+    <option value="tarefa">✅ tarefa</option>
+    <option value="lembrete">⏰ lembrete</option>
+    <option value="financeiro">💰 financeiro</option>
+  </select>
+  <div class="seg" id="seg">
+    <button type="button" id="segE" class="on" onclick="setSinal(1)">entrada</button>
+    <button type="button" id="segS" onclick="setSinal(-1)">saída</button>
+  </div>
+  <input id="valor" type="number" step="0.01" min="0" placeholder="valor">
+  <input id="cat" placeholder="categoria" autocomplete="off">
+  <button class="add" type="submit">adicionar</button>
+</form>
+
+<div class="filtros" id="filtros">
+  <button class="on" data-t="">tudo</button>
+  <button data-t="financeiro">💰 financeiro</button>
+  <button data-t="tarefa">✅ tarefas</button>
+  <button data-t="nota">📝 notas</button>
+  <button data-t="lembrete">⏰ lembretes</button>
+</div>
+<div id="lista"></div>
+
+<script>
+let SINAL=1, FILTRO="";
+const $=id=>document.getElementById(id);
+const brl=v=>(v<0?"-":"")+"R$ "+Math.abs(v).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
+const esc=s=>(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+
+function onTipo(){const fin=$("tipo").value==="financeiro";
+  $("valor").style.display=fin?"block":"none"; $("cat").style.display=fin?"block":"none";
+  $("seg").style.display=fin?"flex":"none";}
+function setSinal(s){SINAL=s; $("segE").classList.toggle("on",s>0); $("segS").classList.toggle("on",s<0);
+  $("segS").classList.toggle("saida",s<0);}
+
+async function addItem(){
+  const texto=$("texto").value.trim(); if(!texto)return false;
+  const tipo=$("tipo").value; const body={texto,tipo,categoria:$("cat").value};
+  if(tipo==="financeiro"){const v=parseFloat($("valor").value||"0"); body.valor=SINAL*Math.abs(v||0);}
+  const r=await fetch("/api/pessoal/add",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  if(r.ok){$("texto").value="";$("valor").value="";$("cat").value="";carregar();}
+  return false;
+}
+async function toggle(id,feito){
+  await fetch("/api/pessoal/status",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({id,status:feito?"aberto":"feito"})}); carregar();
+}
+async function del(id){
+  await fetch("/api/pessoal/deletar",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({id})}); carregar();
+}
+const ICON={nota:"📝",tarefa:"✅",lembrete:"⏰",financeiro:"💰"};
+async function carregar(){
+  const q=FILTRO?("?tipo="+FILTRO):"";
+  const d=await (await fetch("/api/pessoal/listar"+q)).json();
+  const s=d.saldo||{saldo:0,por_categoria:[]};
+  $("saldo").textContent=brl(s.saldo); $("saldo").style.color=s.saldo<0?"var(--ri)":"var(--op)";
+  $("cats").innerHTML=(s.por_categoria||[]).map(c=>`<span>${esc(c.categoria)}: ${brl(c.soma)}</span>`).join("");
+  const itens=d.itens||[];
+  $("lista").innerHTML=itens.length?itens.map(it=>{
+    const feito=it.status==="feito", neg=it.valor<0;
+    const money=it.tipo==="financeiro"?`<span class="money ${neg?'neg':'pos'}">${brl(it.valor||0)}</span>`:"";
+    const cat=it.categoria?` · ${esc(it.categoria)}`:"";
+    const check=(it.tipo==="tarefa"||it.tipo==="lembrete")?`<button class="ic" onclick="toggle(${it.id},${feito})" title="marcar">${feito?"↺":"○"}</button>`:"";
+    return `<div class="item ${it.tipo} ${neg?'neg':''} ${feito?'feito':''}">
+      <span>${ICON[it.tipo]||"•"}</span>
+      <div class="txt">${esc(it.texto)}<small>${it.ts?it.ts.slice(0,10):""}${cat} · ${it.origem}</small></div>
+      ${money}${check}
+      <button class="ic" onclick="del(${it.id})" title="apagar">🗑</button></div>`;
+  }).join(""):'<div class="vazio">Nada por aqui ainda. Anota algo acima — ou manda pra Noemi.</div>';
+}
+$("filtros").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;
+  FILTRO=b.dataset.t;[...$("filtros").children].forEach(x=>x.classList.toggle("on",x===b));carregar();});
+carregar();
+</script></body></html>
