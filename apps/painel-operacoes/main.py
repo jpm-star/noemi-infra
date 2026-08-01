@@ -403,6 +403,15 @@ async def pessoal_deletar(req: Request) -> JSONResponse:
     return JSONResponse({"ok": pessoal.deletar(int(d.get("id") or 0))})
 
 
+# -- Leads-alvo (sem site): fila de WhatsApp/telefone, filtrável. read-only. --------
+@app.get("/api/leads-alvo")
+def leads_alvo_listar(motivo: str = "", categoria: str = "", cidade: str = "",
+                      tier: str = "", q: str = "") -> JSONResponse:
+    import leads_alvo
+    return JSONResponse({"leads": leads_alvo.listar(motivo, categoria, cidade, tier, q),
+                         "resumo": leads_alvo.resumo()})
+
+
 # -- Radar Grátis (PÚBLICO, sem auth): upload de vídeo → insight. 15MB, 10/dia. -----
 @app.post("/api/radar/publico")
 async def radar_publico_analisar(request: Request,
@@ -593,6 +602,11 @@ def ideias_pagina() -> str:
 @app.get("/obs/pessoal", response_class=HTMLResponse)
 def pessoal_pagina() -> str:
     return (_AQUI / "static" / "pessoal.html").read_text(encoding="utf-8")
+
+
+@app.get("/obs/leads", response_class=HTMLResponse)
+def leads_pagina() -> str:
+    return (_AQUI / "static" / "leads.html").read_text(encoding="utf-8")
 
 
 # Radar Grátis — página PÚBLICA (liberada no Caddy sem basic-auth). Self-serve.

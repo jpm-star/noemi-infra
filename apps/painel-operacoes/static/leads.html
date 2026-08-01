@@ -1,0 +1,101 @@
+<!doctype html><html lang="pt-BR"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Leads sem site</title>
+<style>
+:root{--bg:#060a12;--panel:#0c1422;--panel2:#0f1a2c;--line:#1b2942;--cy:#34e2ff;--op:#2fe6a0;
+      --ri:#ffb020;--mut:#8aa2c0;--txt:#e6edf7}
+*{box-sizing:border-box;margin:0}
+body{background:radial-gradient(700px 400px at 100% 0%,rgba(52,226,255,.06),transparent 55%),var(--bg);
+     color:var(--txt);font:14px/1.5 system-ui,-apple-system,sans-serif;padding:20px 16px;max-width:1080px;margin:0 auto}
+a{color:var(--cy);text-decoration:none}
+.top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px}
+h1{font-size:1.3rem}.sub{color:var(--mut);font-size:.84rem;margin-bottom:14px}
+.stats{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.pill{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);
+      border-radius:11px;padding:9px 13px;font-size:.82rem;color:var(--mut)}
+.pill b{color:var(--txt);font-size:1.15rem;display:block;font-weight:800}
+.pill.t34{border-color:#3a2d5a}.pill.t34 b{color:#c9a9ff}
+.filtros{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+select,input{font:inherit;border-radius:9px;border:1px solid var(--line);background:#08101d;color:var(--txt);padding:8px 10px}
+input#q{flex:1 1 200px;min-width:160px}
+select:focus,input:focus{outline:1px solid var(--cy)}
+.cnt{color:var(--mut);font-size:.8rem;margin:2px 0 8px}
+table{width:100%;border-collapse:collapse;font-size:.83rem}
+th{text-align:left;color:var(--mut);font-weight:600;padding:7px 9px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg)}
+td{padding:8px 9px;border-bottom:1px solid #121c2e;vertical-align:top}
+tr:hover td{background:rgba(52,226,255,.04)}
+.dor{font-weight:800}.dor.hi{color:var(--op)}.dor.mid{color:var(--cy)}.dor.lo{color:var(--mut)}
+.mot{font-size:.72rem;padding:2px 8px;border-radius:20px;white-space:nowrap}
+.mot.sem_website{background:rgba(47,230,160,.12);color:var(--op)}
+.mot.social_only{background:rgba(52,226,255,.12);color:var(--cy)}
+.mot.site_morto{background:rgba(255,176,32,.12);color:var(--ri)}
+.wa{color:var(--op);font-weight:600}
+.vazio{color:var(--mut);text-align:center;padding:36px}
+.tier{font-size:.72rem;color:var(--mut)}
+</style></head><body>
+<div class="top"><h1>🎯 Leads sem site</h1><a href="/obs">← QG</a></div>
+<div class="sub">Deduplicado, sem franquia, verificado por HTTP. Fila de WhatsApp/telefone — ordenada por dor.</div>
+
+<div class="stats" id="stats"></div>
+
+<div class="filtros">
+  <select id="motivo"><option value="">motivo — todos</option>
+    <option value="sem_website">sem site</option>
+    <option value="social_only">só rede social</option>
+    <option value="site_morto">site morto</option></select>
+  <select id="tier"><option value="">tier — todos</option></select>
+  <select id="categoria"><option value="">categoria — todas</option></select>
+  <select id="cidade"><option value="">cidade — todas</option></select>
+  <input id="q" placeholder="buscar nome/telefone…" autocomplete="off">
+</div>
+<div class="cnt" id="cnt"></div>
+<table id="tab"><thead><tr>
+  <th>Dor</th><th>Nome</th><th>Categoria</th><th>Cidade</th><th>Telefone</th><th>Motivo</th><th>Tier</th><th>WhatsApp</th>
+</tr></thead><tbody id="tb"></tbody></table>
+
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const soDig=t=>(t||"").replace(/\D/g,"");
+function waLink(tel){const d=soDig(tel);if(!d)return"";const n=d.length<=11?("55"+d):d;
+  return"https://wa.me/"+n+"?text="+encodeURIComponent("Olá! Aqui é da JPOS — vi que o seu negócio ainda não tem site e queria te mostrar uma ideia rápida.");}
+const dorCls=v=>v>=50?"hi":v>=25?"mid":"lo";
+
+let RESUMO=null;
+function fill(sel,vals,label){const cur=$(sel).value;
+  $(sel).innerHTML=`<option value="">${label}</option>`+vals.map(v=>`<option ${v===cur?'selected':''}>${esc(v)}</option>`).join("");}
+
+async function load(){
+  const p=new URLSearchParams();
+  for(const k of["motivo","categoria","cidade","tier"])if($(k).value)p.set(k,$(k).value);
+  if($("q").value.trim())p.set("q",$("q").value.trim());
+  const d=await(await fetch("/api/leads-alvo?"+p)).json();
+  const r=d.resumo||{}; RESUMO=r;
+  $("stats").innerHTML=[
+    `<div class="pill"><b>${r.total||0}</b>leads sem site</div>`,
+    `<div class="pill"><b>${r.com_telefone||0}</b>com telefone</div>`,
+    `<div class="pill"><b>${(r.por_motivo&&r.por_motivo.sem_website)||0}</b>sem website</div>`,
+    `<div class="pill"><b>${(r.por_motivo&&r.por_motivo.social_only)||0}</b>só rede social</div>`,
+    `<div class="pill"><b>${(r.por_motivo&&r.por_motivo.site_morto)||0}</b>site morto</div>`,
+    `<div class="pill t34"><b>${r.t3t4||0}</b>com email → reservados T3/T4</div>`,
+  ].join("");
+  fill("tier",Object.keys(r.por_tier||{}),"tier — todos");
+  fill("categoria",r.categorias||[],"categoria — todas");
+  fill("cidade",r.cidades||[],"cidade — todas");
+  const L=d.leads||[];
+  $("cnt").textContent=`${L.length} exibidos`+(L.length>=500?" (limite 500 — refine o filtro)":"");
+  $("tb").innerHTML=L.length?L.map(x=>{
+    const wl=waLink(x.telefone);
+    return `<tr>
+      <td class="dor ${dorCls(x.score_dor)}">${x.score_dor??"-"}</td>
+      <td>${esc(x.nome)}</td><td>${esc(x.categoria)}</td><td>${esc(x.cidade_origem)}</td>
+      <td>${esc(x.telefone||"-")}</td>
+      <td><span class="mot ${x.motivo}">${x.motivo==='sem_website'?'sem site':x.motivo==='social_only'?'rede social':'site morto'}</span></td>
+      <td class="tier">${esc(x.tier_sugerido||"")}</td>
+      <td>${wl?`<a class="wa" href="${wl}" target="_blank" rel="noopener">abrir ↗</a>`:"—"}</td>
+    </tr>`;}).join(""):'<tr><td colspan="8" class="vazio">Nenhum lead com esse filtro.</td></tr>';
+}
+["motivo","tier","categoria","cidade"].forEach(k=>$(k).addEventListener("change",load));
+let t;$("q").addEventListener("input",()=>{clearTimeout(t);t=setTimeout(load,300);});
+load();
+</script></body></html>
