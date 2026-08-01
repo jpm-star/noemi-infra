@@ -412,6 +412,27 @@ def leads_alvo_listar(motivo: str = "", categoria: str = "", cidade: str = "",
                          "resumo": leads_alvo.resumo()})
 
 
+# -- Criação: interface operacional do motor de sites (fala com montar_site real). --
+@app.get("/api/criacao/sites")
+def criacao_sites() -> JSONResponse:
+    import criacao
+    return JSONResponse({"sites": criacao.listar_sites()})
+
+
+@app.post("/api/criacao/gerar")
+async def criacao_gerar(req: Request) -> JSONResponse:
+    import asyncio
+
+    import criacao
+    d = await req.json()
+    # geração é pesada (LLM + template + deploy) — fora do event loop
+    res = await asyncio.to_thread(
+        criacao.gerar, str(d.get("nome") or ""), str(d.get("nicho") or ""),
+        str(d.get("whatsapp") or ""), str(d.get("diferenciais") or ""),
+        str(d.get("publico") or ""), str(d.get("cor") or ""))
+    return JSONResponse(res, status_code=200 if res.get("ok") else 422)
+
+
 # -- Radar Grátis (PÚBLICO, sem auth): upload de vídeo → insight. 15MB, 10/dia. -----
 @app.post("/api/radar/publico")
 async def radar_publico_analisar(request: Request,
@@ -607,6 +628,11 @@ def pessoal_pagina() -> str:
 @app.get("/obs/leads", response_class=HTMLResponse)
 def leads_pagina() -> str:
     return (_AQUI / "static" / "leads.html").read_text(encoding="utf-8")
+
+
+@app.get("/obs/criacao", response_class=HTMLResponse)
+def criacao_pagina() -> str:
+    return (_AQUI / "static" / "criacao.html").read_text(encoding="utf-8")
 
 
 # Radar Grátis — página PÚBLICA (liberada no Caddy sem basic-auth). Self-serve.

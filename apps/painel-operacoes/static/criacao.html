@@ -1,0 +1,116 @@
+<!doctype html><html lang="pt-BR"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Criação — Gerar site</title>
+<style>
+:root{--bg:#060a12;--panel:#0c1422;--panel2:#0f1a2c;--line:#1b2942;--cy:#34e2ff;--op:#2fe6a0;
+      --ri:#ffb020;--mut:#8aa2c0;--txt:#e6edf7;--roxo:#c9a9ff}
+*{box-sizing:border-box;margin:0}
+body{background:radial-gradient(700px 400px at 100% 0%,rgba(52,226,255,.06),transparent 55%),var(--bg);
+     color:var(--txt);font:14px/1.55 system-ui,-apple-system,sans-serif;padding:20px 16px;max-width:1020px;margin:0 auto}
+a{color:var(--cy);text-decoration:none}
+.top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px}
+h1{font-size:1.3rem}h2{font-size:1rem;margin:22px 0 10px;color:var(--mut)}
+.sub{color:var(--mut);font-size:.84rem;margin-bottom:14px}
+.gap{background:rgba(255,176,32,.09);border:1px solid rgba(255,176,32,.35);border-radius:11px;
+     padding:11px 14px;font-size:.82rem;color:#ffd28a;margin-bottom:16px;line-height:1.5}
+.gap b{color:var(--ri)}
+.card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:14px;padding:16px}
+label{display:block;font-size:.8rem;color:var(--mut);margin:10px 0 4px}
+input,textarea,select{width:100%;font:inherit;border-radius:9px;border:1px solid var(--line);background:#08101d;color:var(--txt);padding:9px 11px}
+input:focus,textarea:focus{outline:1px solid var(--cy)}
+textarea{min-height:64px;resize:vertical}
+.row{display:flex;gap:12px;flex-wrap:wrap}.row>div{flex:1 1 200px}
+.hint{font-size:.72rem;color:var(--mut);margin-top:3px}
+button.gerar{margin-top:14px;background:var(--op);color:#04140d;font-weight:800;border:0;border-radius:10px;padding:11px 20px;cursor:pointer;font-size:.95rem}
+button.gerar:disabled{opacity:.5;cursor:wait}
+#res{margin-top:12px}
+.ok{background:rgba(47,230,160,.1);border:1px solid rgba(47,230,160,.4);border-radius:10px;padding:12px}
+.err{background:rgba(255,80,80,.1);border:1px solid rgba(255,80,80,.4);border-radius:10px;padding:12px;color:#ff9a9a}
+table{width:100%;border-collapse:collapse;font-size:.83rem;margin-top:6px}
+th{text-align:left;color:var(--mut);font-weight:600;padding:7px 9px;border-bottom:1px solid var(--line)}
+td{padding:8px 9px;border-bottom:1px solid #121c2e}
+tr:hover td{background:rgba(52,226,255,.04)}
+.st{font-size:.72rem;padding:2px 9px;border-radius:20px;white-space:nowrap;font-weight:600}
+.st.noar{background:rgba(47,230,160,.14);color:var(--op)}
+.st.stub{background:rgba(255,176,32,.14);color:var(--ri)}
+.st.orfao{background:rgba(138,162,192,.14);color:var(--mut)}
+.flag{font-size:.72rem;color:var(--mut)}.flag b{color:var(--txt)}
+.on{color:var(--op)}.off{color:#5a6b82}
+.cnt{color:var(--mut);font-size:.8rem;margin:4px 0}
+</style></head><body>
+<div class="top"><h1>🏗️ Criação de site</h1><a href="/obs">← QG</a></div>
+<div class="sub">Interface operacional do motor (motor-isca-sites → <code>montar_site</code>). Gera de verdade em /var/www/sites.</div>
+
+<div class="gap">⚠️ <b>Contrato do motor hoje:</b> ele gera a partir de <b>briefing de texto</b> — a copy é escrita por IA (Groq) e o motion é CSS nativo.
+<b>Upload de foto/vídeo custom NÃO é suportado pelo motor ainda</b> (confirmado no código: <code>montar_site</code> só aceita nome/nicho/whatsapp/diferenciais/público/cor). Por isso não tem campo de upload aqui — seria botão que não faz nada. Pra habilitar foto/vídeo, o gerador precisa aceitar caminhos de asset (ver relatório).</div>
+
+<div class="card">
+  <div class="row">
+    <div>
+      <label>Empresa / lead</label>
+      <input id="nome" list="leads" placeholder="digite ou escolha um lead pesquisado" autocomplete="off">
+      <datalist id="leads"></datalist>
+      <div class="hint">Escolher um lead da lista preenche o nicho automaticamente.</div>
+    </div>
+    <div><label>Nicho / segmento</label><input id="nicho" placeholder="ex: clínica odontológica"></div>
+  </div>
+  <div class="row">
+    <div><label>WhatsApp</label><input id="whatsapp" placeholder="14 99999-9999"></div>
+    <div><label>Público-alvo</label><input id="publico" placeholder="ex: famílias da região"></div>
+    <div><label>Cor primária (opcional)</label><input id="cor" placeholder="#00e6a2 ou vazio = tema"></div>
+  </div>
+  <label>Diferenciais / conteúdo pesquisado <span class="hint">(uma linha cada — é isto que a IA usa pra escrever a copy)</span></label>
+  <textarea id="diferenciais" placeholder="atendimento no mesmo dia&#10;aceita convênio&#10;20 anos de experiência"></textarea>
+  <button class="gerar" id="btn" onclick="gerar()">🚀 Gerar site</button>
+  <div id="res"></div>
+</div>
+
+<h2>Sites gerados</h2>
+<div class="cnt" id="cnt"></div>
+<table><thead><tr><th>Site</th><th>Nicho</th><th>Status</th><th>Qualidade</th><th>Criado</th><th></th></tr></thead>
+<tbody id="tb"></tbody></table>
+
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+let LEADCAT={};
+async function carregarLeads(){
+  try{const d=await(await fetch("/api/leads-alvo")).json();
+    const seen=new Set();
+    $("leads").innerHTML=(d.leads||[]).filter(l=>{if(seen.has(l.nome))return false;seen.add(l.nome);LEADCAT[l.nome]=l.categoria;return true;})
+      .map(l=>`<option value="${esc(l.nome)}">`).join("");
+  }catch(e){}
+}
+$("nome").addEventListener("change",()=>{const c=LEADCAT[$("nome").value];if(c&&!$("nicho").value)$("nicho").value=c;});
+const stCls=s=>s.startsWith("no ar")?"noar":s==="stub"?"stub":"orfao";
+const dot=(on,txt)=>`<span class="${on?'on':'off'}">${on?'●':'○'} ${txt}</span>`;
+async function carregarSites(){
+  const d=await(await fetch("/api/criacao/sites")).json();
+  const S=d.sites||[];
+  const noar=S.filter(x=>x.status.startsWith("no ar")).length, stub=S.filter(x=>x.status==="stub").length;
+  $("cnt").textContent=`${S.length} sites · ${noar} no ar · ${stub} stub/incompleto · dedup por slug`;
+  $("tb").innerHTML=S.map(x=>`<tr>
+    <td><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.slug)}</a></td>
+    <td>${esc(x.segmento||"—")}</td>
+    <td><span class="st ${stCls(x.status)}">${esc(x.status)}</span></td>
+    <td class="flag">${dot(x.motion,"motion")} · ${dot(x.video,"vídeo")} · <b>${x.kb||0}kb</b>${x.tem_stub?' · <span class="off">stub!</span>':''}</td>
+    <td class="flag">${(x.criado_em||"").slice(0,10)||"—"}</td>
+    <td><a href="${esc(x.url)}" target="_blank" rel="noopener">abrir ↗</a></td></tr>`).join("");
+}
+async function gerar(){
+  const nome=$("nome").value.trim(), nicho=$("nicho").value.trim();
+  if(!nome||!nicho){$("res").innerHTML='<div class="err">Empresa e nicho são obrigatórios.</div>';return;}
+  $("btn").disabled=true;$("btn").textContent="⏳ gerando (IA escrevendo a copy)…";
+  $("res").innerHTML="";
+  try{
+    const r=await fetch("/api/criacao/gerar",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({nome,nicho,whatsapp:$("whatsapp").value,publico:$("publico").value,
+        cor:$("cor").value,diferenciais:$("diferenciais").value})});
+    const d=await r.json();
+    if(d.ok){$("res").innerHTML=`<div class="ok">✅ Publicado: <a href="${esc(d.url)}" target="_blank" rel="noopener">${esc(d.url)}</a></div>`;carregarSites();}
+    else $("res").innerHTML=`<div class="err">Falhou: ${esc(d.erro||"erro")}</div>`;
+  }catch(e){$("res").innerHTML=`<div class="err">Erro de rede: ${esc(e.message)}</div>`;}
+  $("btn").disabled=false;$("btn").textContent="🚀 Gerar site";
+}
+carregarLeads();carregarSites();
+</script></body></html>
