@@ -27,7 +27,7 @@ def _existe(c, tabela: str) -> bool:
 
 
 def listar(motivo: str = "", categoria: str = "", cidade: str = "", tier: str = "",
-           q: str = "", limite: int = 500) -> list[dict]:
+           q: str = "", limite: int = 2000) -> list[dict]:
     """leads_alvo filtrado. Ordenado por dor (melhores primeiro)."""
     with _db() as c:
         if not _existe(c, "leads_alvo"):
