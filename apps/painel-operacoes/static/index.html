@@ -200,6 +200,16 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
     <input id="tk-impn" type="number" value="500" min="1" max="500" style="width:64px;background:#0c131d;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:5px 8px" title="quantos leads puxar (máx 500)">
     <span id="tk-msg" style="color:var(--ok);font-size:.8rem"></span>
   </div>
+  <div id="tk-filtros" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px;font-size:.78rem;color:var(--mut)">
+    <input id="tkf-q" placeholder="🔎 empresa / razão / contato" style="width:210px;background:#0c131d;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:5px 8px">
+    <select id="tkf-tier" style="background:#0c131d;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:5px 8px"><option value="">Tier: todos</option></select>
+    <select id="tkf-seg" style="background:#0c131d;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:5px 8px"><option value="">Segmento: todos</option></select>
+    <select id="tkf-cid" style="background:#0c131d;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:5px 8px"><option value="">Cidade: todas</option></select>
+    <select id="tkf-status" style="background:#0c131d;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:5px 8px"><option value="">Status: todos</option></select>
+    <label style="display:flex;gap:4px;align-items:center;cursor:pointer"><input id="tkf-cnpj" type="checkbox"> só com CNPJ</label>
+    <button id="tkf-clear" class="op op-ghost" style="font-size:.76rem;padding:5px 10px">limpar</button>
+    <span id="tkf-cnt" style="color:var(--cy)"></span>
+  </div>
   <div id="tk-nav"></div>
   <div style="overflow-x:auto"><table id="tk-tab" style="width:100%;border-collapse:collapse;font-size:.8rem;min-width:1320px"></table></div>
   <details style="margin-top:14px">
@@ -657,6 +667,22 @@ plLoad();
 // === Tracker de prospecção (board de leads: paginado, editável, com anotação) ===
 let TK={prospects:[],socios:[],status:['A contatar'],tiers:['T1','T2','T3','T4']};
 let TKPG=0; const TKPP=50; const TKOPEN=new Set();  // página atual, 50/pág, cards abertos
+const TKF={q:'',tier:'',seg:'',cid:'',status:'',cnpj:false};  // filtros ativos (client-side)
+function tkList(){return TK.prospects.filter(p=>{
+  if(TKF.tier&&(p.tier||'')!==TKF.tier)return false;
+  if(TKF.seg&&(p.segmento||'')!==TKF.seg)return false;
+  if(TKF.cid&&(p.cidade_uf||'')!==TKF.cid)return false;
+  if(TKF.status&&(p.status||'')!==TKF.status)return false;
+  if(TKF.cnpj&&!String(p.cnpj||'').trim())return false;
+  if(TKF.q){const q=TKF.q.toLowerCase();
+    if(!([p.empresa,p.razao_social,p.contato,p.cidade_uf].some(v=>String(v||'').toLowerCase().includes(q))))return false;}
+  return true;});}
+function tkDistinct(k){return [...new Set(TK.prospects.map(p=>String(p[k]||'').trim()).filter(Boolean))].sort();}
+function tkFiltrosPop(){  // popula os dropdowns a partir dos dados carregados (preserva seleção)
+  const set=(id,vals,pre)=>{const el=$(id);if(!el)return;const cur=el.value;
+    el.innerHTML=`<option value="">${pre}</option>`+vals.map(v=>`<option>${esc(v)}</option>`).join('');el.value=cur;};
+  set('tkf-tier',TK.tiers,'Tier: todos');set('tkf-seg',tkDistinct('segmento'),'Segmento: todos');
+  set('tkf-cid',tkDistinct('cidade_uf'),'Cidade: todas');set('tkf-status',TK.status,'Status: todos');}
 const TKCOLS=[['empresa','Empresa',180],['razao_social','Razão social',170],['cnpj','CNPJ',150],
   ['segmento','Segmento',120],['cidade_uf','Cidade/UF',100],['contato','Contato',120],['cargo','Cargo',110],
   ['telefone','Telefone',120],['tier','Tier',62,'tier'],['sinal','Sinal detectado',170],
@@ -673,18 +699,20 @@ async function tkLoad(){try{const d=await (await fetch('/api/tracker')).json();
   TK={prospects:d.prospects||[],socios:d.socios||[],status:d.status||TK.status,tiers:d.tiers||TK.tiers};
   const R=d.resumo||{};
   $('tk-sub').textContent=R.prospects?`${R.prospects} leads · ${R.contatados} contatados · ${R.a_contatar} a contatar · ${R.fechados||0} fechados`:'';
-  const maxpg=Math.max(0,Math.ceil(TK.prospects.length/TKPP)-1); if(TKPG>maxpg)TKPG=maxpg;
+  tkFiltrosPop();
+  const maxpg=Math.max(0,Math.ceil(tkList().length/TKPP)-1); if(TKPG>maxpg)TKPG=maxpg;
   tkRenderProspects();tkRenderSocios();}catch(e){}}
-function tkNav(){const n=TK.prospects.length,pgs=Math.ceil(n/TKPP)||1;
+function tkNav(){const n=tkList().length,pgs=Math.ceil(n/TKPP)||1;
   return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0;font-size:.8rem">
     <button class="tk-pg" data-d="-1" ${TKPG<=0?'disabled':''} style="padding:4px 11px;cursor:pointer">◀</button>
     <span style="color:var(--mut)">pág <b>${TKPG+1}</b>/${pgs} · leads ${n?TKPG*TKPP+1:0}–${Math.min(n,(TKPG+1)*TKPP)} de ${n}</span>
     <button class="tk-pg" data-d="1" ${TKPG>=pgs-1?'disabled':''} style="padding:4px 11px;cursor:pointer">▶</button></div>`;}
-function tkRenderProspects(){const t=$('tk-tab');
+function tkRenderProspects(){const t=$('tk-tab');const L=tkList();
   const head='<tr style="text-align:left;color:var(--mut);font-size:.72rem"><th></th>'+TKCOLS.map(c=>`<th style="padding:4px 6px;font-weight:600">${c[1]}</th>`).join('')+'<th style="padding:4px 6px;color:var(--cy)">Último contato</th><th></th></tr>';
-  $('tk-nav').innerHTML=TK.prospects.length?tkNav():'';
-  if(!TK.prospects.length){t.innerHTML=head+`<tr><td colspan="${TKCOLS.length+3}" style="padding:14px;color:var(--mut)">nenhum lead — clique <b>⬇ puxar leads</b> pra trazer os ligáveis (T1→T4, 50/página)</td></tr>`;return;}
-  const page=TK.prospects.slice(TKPG*TKPP,(TKPG+1)*TKPP);
+  $('tk-nav').innerHTML=L.length?tkNav():'';
+  const cnt=$('tkf-cnt');if(cnt)cnt.textContent=L.length===TK.prospects.length?'':`${L.length} de ${TK.prospects.length}`;
+  if(!L.length){t.innerHTML=head+`<tr><td colspan="${TKCOLS.length+3}" style="padding:14px;color:var(--mut)">${TK.prospects.length?'nenhum lead com esse filtro — <b>limpar</b> pra ver todos':'nenhum lead — clique <b>⬇ puxar leads</b> pra trazer os ligáveis (T1→T4, 50/página)'}</td></tr>`;return;}
+  const page=L.slice(TKPG*TKPP,(TKPG+1)*TKPP);
   t.innerHTML=head+page.map(p=>{
     const cont=p.contatado?`<span class="pill" style="color:var(--ok)">${p.canal_ultimo_contato||'contato'} · ${p.data_ultimo_contato}</span>`:'<span style="color:var(--mut)">—</span>';
     let linha=`<tr data-id="${p.id}" style="border-top:1px solid var(--line)"><td style="padding:3px 4px"><span class="tk-note" title="anotar" style="cursor:pointer">${TKOPEN.has(p.id)?'▾':'📝'}</span></td>`+TKCOLS.map(c=>`<td style="padding:3px 4px">${tkCell(p,c)}</td>`).join('')+
@@ -736,6 +764,12 @@ $('so-add').onclick=async()=>{if(!$('so-nome').value.trim())return $('so-nome').
   ['so-nome','so-cargo','so-tel','so-obs'].forEach(i=>$(i).value='');tkLoad();};
 $('so-lista').addEventListener('click',async e=>{if(!e.target.classList.contains('so-del'))return;
   const d=e.target.closest('[data-id]');if(!d)return;await tkPost('/api/tracker/socio/deletar',{id:+d.dataset.id});tkLoad();});
+function tkFiltroAplica(){TKF.q=$('tkf-q').value.trim();TKF.tier=$('tkf-tier').value;TKF.seg=$('tkf-seg').value;
+  TKF.cid=$('tkf-cid').value;TKF.status=$('tkf-status').value;TKF.cnpj=$('tkf-cnpj').checked;
+  TKPG=0;TKOPEN.clear();tkRenderProspects();}
+['tkf-tier','tkf-seg','tkf-cid','tkf-status'].forEach(id=>$(id).addEventListener('change',tkFiltroAplica));
+$('tkf-cnpj').addEventListener('change',tkFiltroAplica);$('tkf-q').addEventListener('input',tkFiltroAplica);
+$('tkf-clear').onclick=()=>{$('tkf-q').value='';['tkf-tier','tkf-seg','tkf-cid','tkf-status'].forEach(id=>$(id).value='');$('tkf-cnpj').checked=false;tkFiltroAplica();};
 tkLoad();
 // === Radar Grátis: leads de quem usou o radar público (prova social) ===
 async function rpLoad(){try{const d=await (await fetch('/api/radar/publico/leads')).json();const L=d.leads||[];
