@@ -83,7 +83,7 @@ async function load(){
   fill("categoria",r.categorias||[],"categoria — todas");
   fill("cidade",r.cidades||[],"cidade — todas");
   const L=d.leads||[];
-  $("cnt").textContent=`${L.length} exibidos`+(L.length>=500?" (limite 500 — refine o filtro)":"");
+  $("cnt").textContent=`${L.length} exibidos`+(L.length>=2000?" (limite 2000 — refine o filtro)":"");
   $("tb").innerHTML=L.length?L.map(x=>{
     const wl=waLink(x.telefone);
     return `<tr>
