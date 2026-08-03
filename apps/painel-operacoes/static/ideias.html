@@ -18,11 +18,16 @@ a{color:var(--cy)}h1{font-size:1.4rem;margin:.2em 0}.sub{color:var(--mut);font-s
 .filtros{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
 .chip{cursor:pointer;font-size:.8rem;padding:4px 12px;border-radius:20px;background:#0c131d;border:1px solid var(--line);color:var(--mut)}
 .chip.on{background:var(--cy);color:#001;border-color:var(--cy);font-weight:600}
+.csv{font-size:.72rem;font-weight:600;text-decoration:none;background:var(--ok);color:#001;padding:4px 11px;border-radius:20px;vertical-align:middle;margin-left:10px;white-space:nowrap}
+.busca{width:100%;margin-bottom:12px;background:#0c131d;border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:9px 12px;font:inherit}
+.busca::placeholder{color:var(--mut)}
+.ideia .m{display:inline-block;font-size:.72rem;font-weight:700;background:var(--warn);color:#001;padding:0 8px;border-radius:20px;margin-right:6px}
 </style></head><body>
 <a class="voltar" href="/obs" title="Voltar" onclick="if(history.length>1){history.back();return false}">‹ Voltar</a>
-<h1>💡 Caixa de Ideias</h1>
+<h1>💡 Caixa de Ideias <a class="csv" href="/api/ideias.csv" title="Baixar tudo em CSV (UTF-8, abre no Excel PT-BR)">⬇️ CSV</a></h1>
 <p class="sub">Templates replicáveis colhidos de <b>tudo</b> que o Radar analisou — por domínio, com a fonte. O que dá pra transformar em vídeo, site, produto, operação. Cresce sozinho a cada análise.</p>
 <div class="filtros" id="filtros"></div>
+<input class="busca" id="busca" type="search" placeholder="🔎 buscar em todas as ideias…" oninput="render()" autocomplete="off">
 <div id="lista"><p class="empty">carregando…</p></div>
 <script>
 const $ = id => document.getElementById(id);
@@ -60,25 +65,40 @@ function fonte(i){
   const link = i.url ? `<a href="${i.url}" target="_blank" rel="noopener">${org}</a>` : org;
   return `de ${link} · ${d} · ★${i.score??'?'}`;
 }
+function q(){ return ($('busca')?.value||'').trim().toLowerCase(); }
+function casa(txt){ const t=q(); return !t || (txt||'').toLowerCase().includes(t); }
 function render(){
   if(vista==='auto') return renderAuto();
+  if(vista==='produto') return renderProdutos();
   const {meta,g} = ativo();
   if(!DADOS.total){ $('lista').innerHTML = `<p class="empty">Ainda sem ideias. Manda vídeos pro Radar (@noemi_alert_bot) que a caixa enche sozinha.</p>`; return; }
   const chaves = Object.keys(meta).filter(d => (filtro==='todos'||filtro===d) && (g[d]||[]).length);
   $('lista').innerHTML = chaves.map(d => {
-    const its = g[d]||[];
+    const its = (g[d]||[]).filter(i => casa(i.ideia));
+    if(!its.length) return '';
     const ic = meta[d];
     return `<div class="dom"><h2>${ic[0]} ${ic[1]} <span class="n">${its.length}</span></h2>`+
       its.map(i => `<div class="ideia"><div class="txt">${i.ideia}</div><div class="src">${fonte(i)}</div></div>`).join('')+
     `</div>`;
-  }).join('') || `<p class="empty">nada nesse ${vista==='motor'?'motor':'domínio'}</p>`;
+  }).join('') || `<p class="empty">${q()?'nada casa com a busca':'nada nesse '+(vista==='motor'?'motor':'domínio')}</p>`;
+}
+function renderProdutos(){
+  // upgrade: a Caixa passa a MOSTRAR as ferramentas/produtos candidatos (dado que o
+  // harvest já colhia mas a UI descartava). Recorrência (menções) = sinal de demanda.
+  const fs = (DADOS.ferramentas||[]).filter(f => casa(f.nome));
+  if(!fs.length){ $('lista').innerHTML = `<p class="empty">${q()?'nada casa com a busca':'Nenhuma ferramenta/produto citado ainda nas análises.'}</p>`; return; }
+  $('lista').innerHTML = `<div class="dom"><h2>📦 Produtos candidatos <span class="n">${fs.length}</span></h2>`+
+    `<p class="src" style="margin:-4px 0 10px">Ferramentas citadas nos vídeos analisados — recorrência = sinal de demanda.</p>`+
+    fs.map(f => `<div class="ideia"><div class="txt"><span class="m">${f.mencoes}×</span>${f.nome}</div><div class="src">${fonte(f)}</div></div>`).join('')+
+  `</div>`;
 }
 function pintarFiltros(){
   const toggles =
     `<span class="chip ${vista==='dominio'?'on':''}" onclick="setVista('dominio')">📂 Por domínio</span>`+
     `<span class="chip ${vista==='motor'?'on':''}" onclick="setVista('motor')">🚀 Por motor</span>`+
-    `<span class="chip ${vista==='auto'?'on':''}" onclick="setVista('auto')">🔎 Auto-análise</span>`;
-  if(vista==='auto'){ $('filtros').innerHTML = toggles; return; }  // auto não tem chips de domínio
+    `<span class="chip ${vista==='auto'?'on':''}" onclick="setVista('auto')">🔎 Auto-análise</span>`+
+    `<span class="chip ${vista==='produto'?'on':''}" onclick="setVista('produto')">📦 Produtos</span>`;
+  if(vista==='auto'||vista==='produto'){ $('filtros').innerHTML = toggles; return; }  // sem chips de domínio
   const {meta,g} = ativo();
   const cnt = d => (g[d]||[]).length;
   const total = Object.keys(meta).reduce((s,d)=>s+cnt(d),0);
@@ -91,6 +111,7 @@ function pintarFiltros(){
 }
 window.setVista = v => {
   vista=v; filtro='todos'; pintarFiltros();
+  const b=$('busca'); if(b) b.style.display = v==='auto' ? 'none' : '';  // busca não se aplica ao auto
   if(v==='auto' && AUTO===null){ fetch('/api/auto-analise').then(r=>r.json())
     .then(d=>{AUTO=d.itens||[];renderAuto();}).catch(()=>{AUTO=[];renderAuto();}); }
   render();

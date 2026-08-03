@@ -697,6 +697,29 @@ def harvest_ideias(limite: int = 300) -> dict:
     return {"grupos": grupos, "por_motor": por_motor, "ferramentas": cand, "total": total}
 
 
+def harvest_ideias_csv(limite: int = 300) -> str:
+    """CSV da Caixa de Ideias com UTF-8 BOM (abre certo no Excel PT-BR, sem quebrar
+    acento). Achata `grupos` (ideias por domínio, a fonte canônica) + `ferramentas`
+    (produtos candidatos). Reusa harvest_ideias — zero query extra. `por_motor` fica de
+    fora de propósito: é o MESMO dado roteado, duplicaria linha."""
+    import csv
+    import io
+    dados = harvest_ideias(limite)
+    buf = io.StringIO()
+    buf.write("﻿")  # BOM: Excel PT-BR abre com acento certo
+    w = csv.writer(buf)
+    w.writerow(["tipo", "grupo", "ideia", "mencoes", "origem", "url", "data", "score", "analise_id"])
+    for dom, itens in (dados.get("grupos") or {}).items():
+        for i in itens:
+            w.writerow(["ideia", dom, i.get("ideia", ""), "", i.get("origem", ""),
+                        i.get("url", ""), (i.get("data") or "")[:10], i.get("score", ""), i.get("aid", "")])
+    for f in (dados.get("ferramentas") or []):
+        w.writerow(["ferramenta", "produto_candidato", f.get("nome", ""), f.get("mencoes", ""),
+                    f.get("origem", ""), f.get("url", ""), (f.get("data") or "")[:10],
+                    f.get("score", ""), f.get("aid", "")])
+    return buf.getvalue()
+
+
 def obter(aid: int) -> dict | None:
     from shared_core.storage import db
     with db.conn() as c:

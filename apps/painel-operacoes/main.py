@@ -491,6 +491,16 @@ def ideias_dados() -> JSONResponse:
     return JSONResponse(radar.harvest_ideias())
 
 
+@app.get("/api/ideias.csv")
+def ideias_csv():
+    """Export CSV da caixa de ideias (UTF-8 BOM p/ Excel PT-BR). Herda o basic_auth do
+    Caddy como toda rota /api do painel — não é rota pública."""
+    from fastapi.responses import Response as _R
+    import radar
+    return _R(content=radar.harvest_ideias_csv(), media_type="text/csv; charset=utf-8",
+              headers={"Content-Disposition": "attachment; filename=caixa_de_ideias.csv"})
+
+
 @app.get("/api/auto-analise")
 def auto_analise_dados() -> JSONResponse:
     """Auto-análise (task 2): retrato atual amarelo/vermelho da própria operação."""
