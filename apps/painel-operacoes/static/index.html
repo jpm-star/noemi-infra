@@ -131,6 +131,12 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
   <div class="meta"><span id="saude"></span><br><span id="upd">—</span></div>
 </div>
 
+<div class="card v-qg" id="auto-card" style="margin-bottom:12px;border-color:rgba(251,191,36,.28);background:linear-gradient(180deg,rgba(251,191,36,.05),var(--panel))">
+  <h3>🎯 Ações do dia — o que o Radar aponta
+    <a href="/obs/ideias" style="float:right;font-size:.8rem;color:var(--cy);text-decoration:none">caixa de ideias ↗</a></h3>
+  <div id="auto-lista" class="empty" style="font-size:.85rem">carregando achados do Radar…</div>
+</div>
+
 <div class="card" data-sec="site" style="margin-bottom:12px;border-color:rgba(52,226,255,.25);background:linear-gradient(180deg,rgba(52,226,255,.06),var(--panel))">
   <h3>🌐 Site — jpos.com.br
     <a href="https://jpos.com.br" target="_blank" rel="noopener" style="float:right;font-size:.8rem;color:var(--cy);text-decoration:none">ver site ↗</a></h3>
@@ -412,6 +418,26 @@ window.addEventListener('hashchange',()=>{const h=location.hash.slice(1);if(SECS
 (function(){  // seção inicial: hash > pathname /obs > início
   const h=location.hash.slice(1);
   mostrarSec(SECS[h]?h:(/\/obs\/?$/.test(location.pathname)?'analise':'inicio'));
+})();
+// #8: "Ações do dia" no QG — top-3 achados do Radar (vermelho antes, depois score).
+// Reusa /api/auto-analise (mesmo dado da Caixa de Ideias, antes só visível lá dentro).
+(async function(){
+  const el=document.getElementById('auto-lista'); if(!el) return;
+  try{
+    const d=await (await fetch('api/auto-analise')).json();
+    const its=(d.itens||[]).slice().sort((a,b)=>
+      ((a.nivel==='vermelho'?0:1)-(b.nivel==='vermelho'?0:1)) || ((b.score||0)-(a.score||0))).slice(0,3);
+    if(!its.length){ el.innerHTML='<span class="empty">sem achado forte ainda — manda vídeos pro Radar que os padrões sobem</span>'; return; }
+    el.classList.remove('empty');
+    el.innerHTML=its.map(i=>{
+      const v=i.nivel==='vermelho';
+      return `<div class="dica" style="border-left:3px solid ${v?'var(--bad)':'var(--warn)'};padding-left:10px">`+
+        `${v?'🔴':'🟡'} ${i.achado}`+
+        `<div style="color:var(--ok);font-size:.85rem;margin-top:2px">→ ${i.acao||''}</div>`+
+        (i.origem?`<div style="color:var(--mut);font-size:.72rem">de ${i.origem} · ★${i.score??'?'}</div>`:'')+
+      `</div>`;
+    }).join('');
+  }catch(e){ el.innerHTML='<span class="empty">não deu pra carregar os achados</span>'; }
 })();
 const $=id=>document.getElementById(id);
 const money=v=>"$"+(v||0).toFixed(v<0.01?6:4);
