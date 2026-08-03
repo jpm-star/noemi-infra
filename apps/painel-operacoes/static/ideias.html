@@ -37,6 +37,7 @@ const META = {video:['🎬','Vídeo'],site:['🌐','Site'],negocio:['💼','Neg�
 const MOTOR_META = {'arbitragem':['💱','Arbitragem'],'motor-site':['🌐','Motor Site'],
                     'motor-b':['🎬','Motor B'],'noemi':['💬','Noemi']};
 let DADOS = {grupos:{},por_motor:{},total:0}, filtro = 'todos', vista = 'dominio';
+let EXPAND = {};  // #10: por domínio, mostra top-8 (já ordenadas por feedback×score) + "ver mais"
 let AUTO = null;  // task 2: auto-análise da própria operação (amarelo/vermelho)
 
 function renderAuto(){
@@ -73,12 +74,16 @@ function render(){
   const {meta,g} = ativo();
   if(!DADOS.total){ $('lista').innerHTML = `<p class="empty">Ainda sem ideias. Manda vídeos pro Radar (@noemi_alert_bot) que a caixa enche sozinha.</p>`; return; }
   const chaves = Object.keys(meta).filter(d => (filtro==='todos'||filtro===d) && (g[d]||[]).length);
+  const LIM = 8, buscando = !!q();
   $('lista').innerHTML = chaves.map(d => {
     const its = (g[d]||[]).filter(i => casa(i.ideia));
     if(!its.length) return '';
     const ic = meta[d];
+    const vis = (EXPAND[d] || buscando) ? its : its.slice(0, LIM);  // busca mostra tudo que casa
+    const resto = its.length - vis.length;
     return `<div class="dom"><h2>${ic[0]} ${ic[1]} <span class="n">${its.length}</span></h2>`+
-      its.map(i => `<div class="ideia"><div class="txt">${i.ideia}</div><div class="src">${fonte(i)}</div></div>`).join('')+
+      vis.map(i => `<div class="ideia"><div class="txt">${i.ideia}</div><div class="src">${fonte(i)}</div></div>`).join('')+
+      (resto > 0 ? `<span class="chip" style="margin-top:8px" onclick="EXPAND['${d}']=1;render()">+${resto} mais</span>` : '')+
     `</div>`;
   }).join('') || `<p class="empty">${q()?'nada casa com a busca':'nada nesse '+(vista==='motor'?'motor':'domínio')}</p>`;
 }
