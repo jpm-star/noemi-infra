@@ -122,9 +122,24 @@ def lista_do_dia(tier: str = "", limite: int = 200, incluir_contatados: bool = F
         })
     fora.sort(key=lambda x: (ordem.get(x["tier"], 9), not x["tem_whatsapp"], x["empresa"].lower()))
     por_tier = {t: sum(1 for x in fora if x["tier"] == t) for t in TIERS}
+    # DECISOR na ficha (QSA da CNPJá): ligar sabendo o nome muda a conversa —
+    # "posso falar com o responsável?" vs "o Wagner está?". Quem DECIDE vem primeiro.
+    dec: dict[int, list[dict]] = {}
+    try:
+        with _db() as c:
+            for r in c.execute("SELECT prospect_id,nome,cargo,poder_decisao FROM tracker_socios "
+                               "WHERE prospect_id IS NOT NULL "
+                               "ORDER BY CASE WHEN poder_decisao='decide' THEN 0 ELSE 1 END, id"):
+                dec.setdefault(r["prospect_id"], []).append(
+                    {"nome": r["nome"] or "", "cargo": r["cargo"] or "",
+                     "decide": (r["poder_decisao"] or "") == "decide"})
+    except sqlite3.Error:
+        dec = {}
     nt = notas_todas()
     for x in fora:
         x["nota"] = nt.get(x["id"], {"ligacao": "", "reacao_demo": ""})
+        x["socios"] = dec.get(x["id"], [])
+        x["decisor"] = x["socios"][0]["nome"] if x["socios"] else ""
     return {
         "leads": fora[:limite], "total": len(fora), "por_tier": por_tier,
         "sem_whatsapp": sum(1 for x in fora if not x["tem_whatsapp"]),
@@ -148,11 +163,13 @@ def csv_lista(tiers: str = "T3,T4", limite: int = 500) -> str:
     buf = io.StringIO()
     buf.write("﻿")  # BOM: sem isto o Excel PT-BR come os acentos
     w = csv.writer(buf, delimiter=";")  # ; = separador que o Excel PT-BR espera
-    w.writerow(["tier", "empresa", "segmento", "cidade", "telefone", "tem_whatsapp",
-                "link_whatsapp", "o_que_falar", "achado", "achado_sensivel", "status"])
+    w.writerow(["tier", "empresa", "decisor", "cargo_decisor", "segmento", "cidade", "telefone",
+                "tem_whatsapp", "link_whatsapp", "o_que_falar", "achado", "achado_sensivel", "status"])
     escolhidos = [x for x in dados["leads"] if not alvos or x["tier"] in alvos][:limite]
     for x in escolhidos:
-        w.writerow([x["tier"], x["empresa"], x["segmento"], x["cidade"], x["telefone"],
+        _s0 = (x.get("socios") or [{}])[0]
+        w.writerow([x["tier"], x["empresa"], _s0.get("nome", ""), _s0.get("cargo", ""),
+                    x["segmento"], x["cidade"], x["telefone"],
                     "sim" if x["tem_whatsapp"] else "NAO (so fixo)",
                     f"https://wa.me/{x['wa']}" if x["wa"] else "",
                     x["gancho"], x["achado"],

@@ -80,6 +80,9 @@ h1{font-size:1.45rem;letter-spacing:-.02em}
 .bt.off{background:rgba(0,0,0,.06);color:#6b7f78;cursor:not-allowed}
 .bt.csv{background:var(--esmeralda);color:#fff;font-size:.8rem;padding:7px 13px}
 .bt.csv:hover{filter:brightness(1.08)}
+.decisor{margin-top:5px;font-size:.82rem;color:var(--esmeralda-esc);background:rgba(5,150,105,.10);
+  border:1px solid rgba(5,150,105,.22);border-radius:9px;padding:4px 10px;display:inline-block}
+.decisor .mais{color:var(--mut);font-size:.72rem}
 .tel{font-size:.82rem;color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
 .empty{color:var(--mut);text-align:center;padding:40px}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(80px);
@@ -174,7 +177,8 @@ function render(){
     return `<div class="lead ${cls} ${feito?'feito':''}" id="l${l.id}">
       <div class="lh">
         <div><div class="nome">${esc(l.empresa)}</div>
-          <div class="meta2">${esc(l.segmento||"—")}${l.cidade?" · "+esc(l.cidade):""} · <span class="tel">${esc(l.telefone)}</span></div></div>
+          <div class="meta2">${esc(l.segmento||"—")}${l.cidade?" · "+esc(l.cidade):""} · <span class="tel">${esc(l.telefone)}</span></div>
+          ${l.decisor?`<div class="decisor">👤 falar com <b>${esc(l.decisor)}</b>${(l.socios[0]||{}).cargo?` · ${esc(l.socios[0].cargo)}`:""}${l.socios.length>1?` <span class="mais">+${l.socios.length-1}</span>`:""}</div>`:""}</div>
         <span class="badge ${cls}">${esc(l.tier)}</span>
       </div>
       <div class="fala"><span class="rot">FALE ISTO</span>${esc(l.gancho)}</div>
