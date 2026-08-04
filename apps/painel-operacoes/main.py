@@ -763,6 +763,15 @@ async def prospeccao_nota(req: Request) -> JSONResponse:
         int(c.get("prospect_id") or 0), c.get("ligacao", ""), c.get("reacao_demo", "")))
 
 
+@app.post("/api/prospeccao/status")
+async def prospeccao_status(req: Request) -> JSONResponse:
+    """Move o lead no funil pela AÇÃO do botão/kanban (status que já existem)."""
+    import prospeccao_dia
+    c = await req.json()
+    r = prospeccao_dia.status_salvar(int(c.get("prospect_id") or 0), c.get("acao", ""))
+    return JSONResponse(r, status_code=200 if r.get("ok") else 422)
+
+
 @app.get("/api/prospeccao/dia.csv")
 def prospeccao_dia_csv(tiers: str = "T3,T4", limite: int = 500):
     """CSV pra ligar offline. Default T3/T4 — os que o JP liga pessoalmente."""

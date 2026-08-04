@@ -110,6 +110,42 @@ h1{font-size:1.45rem;letter-spacing:-.02em}
   padding:7px 15px;font:inherit;font-size:.8rem;font-weight:700;cursor:pointer}
 .nota .salvar:hover{background:var(--esmeralda-esc)}
 .nota .preenchida{color:var(--esmeralda-esc)}
+
+/* toggle de view */
+.views{display:flex;gap:6px;margin-bottom:12px}
+.vbt{cursor:pointer;font-size:.8rem;font-weight:700;padding:7px 15px;border-radius:20px;
+  background:rgba(255,255,255,.66);border:1px solid var(--glass-borda);color:var(--mut);
+  backdrop-filter:blur(8px)}
+.vbt.on{background:var(--esmeralda);color:#fff;border-color:var(--esmeralda)}
+/* indicadores de canal no card */
+.canais{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.cn{font-size:.68rem;font-weight:700;padding:2px 9px;border-radius:20px;border:1px solid transparent}
+.cn.ok{background:rgba(5,150,105,.14);color:var(--esmeralda-esc);border-color:rgba(5,150,105,.3)}
+.cn.na{background:rgba(0,0,0,.05);color:#6b7f78}
+.cn.wait{background:rgba(180,83,9,.12);color:#92400e;border-color:rgba(180,83,9,.28)}
+/* ações */
+.acbar{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;padding-top:9px;border-top:1px dashed var(--line)}
+.ac{cursor:pointer;font-size:.74rem;font-weight:700;padding:6px 11px;border-radius:8px;
+  border:1px solid var(--line);background:rgba(255,255,255,.8);color:var(--ink)}
+.ac:hover{border-color:var(--esmeralda);color:var(--esmeralda-esc)}
+.ac.perigo:hover{border-color:var(--bad);color:var(--bad)}
+/* perfil (expansão do card, sem sair da página) */
+.perfil{margin-top:11px;padding-top:10px;border-top:1px solid var(--line);font-size:.84rem}
+.perfil .linha{display:flex;gap:8px;margin-bottom:4px}
+.perfil .rot{color:var(--mut);font-weight:700;min-width:74px;font-size:.72rem;text-transform:uppercase;letter-spacing:.03em}
+/* kanban */
+.kb{display:grid;grid-template-columns:repeat(5,minmax(190px,1fr));gap:10px;overflow-x:auto;padding-bottom:8px}
+.kbcol{background:rgba(255,255,255,.45);border:1px solid var(--glass-borda);border-radius:16px;
+  padding:10px;min-height:160px;backdrop-filter:blur(10px)}
+.kbcol.alvo{border-color:var(--esmeralda);background:rgba(5,150,105,.10)}
+.kbcol h4{font-size:.76rem;color:var(--esmeralda-esc);font-weight:800;letter-spacing:.04em;
+  text-transform:uppercase;margin-bottom:8px;display:flex;justify-content:space-between}
+.kbc{background:var(--glass);border:1px solid var(--glass-borda);border-left:3px solid var(--esmeralda);
+  border-radius:11px;padding:9px 10px;margin-bottom:7px;cursor:grab;font-size:.8rem;
+  box-shadow:0 3px 12px rgba(6,95,70,.08)}
+.kbc:active{cursor:grabbing}
+.kbc .e{font-weight:700;line-height:1.3}
+.kbc .m{color:var(--mut);font-size:.71rem;margin-top:2px}
 @media (max-width:560px){.lh{flex-direction:column}.acoes{width:100%}.bt{flex:1;justify-content:center}}
 </style></head><body>
 
@@ -131,8 +167,13 @@ h1{font-size:1.45rem;letter-spacing:-.02em}
   Achado marcado <span class="sens">⚠ sensível</span> (ex: reclamação de review) <b>não se fala na cara</b>.
 </div>
 
+<div class="views">
+  <span class="vbt on" id="v-lista" onclick="setView('lista')">📋 Lista</span>
+  <span class="vbt" id="v-kanban" onclick="setView('kanban')">🗂️ Funil</span>
+</div>
 <div class="filtros" id="filtros"></div>
 <div id="lista"><p class="empty">carregando…</p></div>
+<div id="kanban" style="display:none"></div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -163,6 +204,7 @@ function filtros(){
 }
 window.setTier=t=>{TIER=t;filtros();render();};
 function render(){
+  if(VIEW==="kanban") return renderKanban();
   const q=($("q")?.value||"").trim().toLowerCase();
   const L=D.leads.filter(l=>(!TIER||l.tier===TIER)&&
     (!q||[l.empresa,l.cidade,l.segmento].join(" ").toLowerCase().includes(q)));
@@ -183,9 +225,23 @@ function render(){
       </div>
       <div class="fala"><span class="rot">FALE ISTO</span>${esc(l.gancho)}</div>
       ${l.achado?`<div class="achado">${l.sensivel?'<span class="sens">⚠ sensível — não fale na cara:</span> ':'<b>achado:</b> '}${esc(l.achado)}</div>`:""}
+      <div class="canais">
+        <span class="cn ${l.email_enviado?'ok':'na'}">✉ ${l.email_enviado?'e-mail enviado':'sem e-mail'}</span>
+        <span class="cn ${l.wpp==='enviado'?'ok':(l.wpp==='na fila'?'wait':'na')}">💬 ${esc(l.wpp)}</span>
+        <span class="cn ${l.coluna==='Ganho'?'ok':'na'}">🗂️ ${esc(l.coluna)}</span>
+      </div>
+      ${ABERTO[l.id]?perfilHTML(l):""}
       <div class="acoes">${wa}
         <button class="bt cp" onclick="copiar(${l.id})">📋 copiar fala</button>
         <button class="bt ok" onclick="marcar(${l.id},'ligacao')">✓ marquei contato</button>
+        <button class="bt cp" onclick="togglePerfil(${l.id})">${ABERTO[l.id]?'▲ fechar':'▼ perfil'}</button>
+      </div>
+      <div class="acbar">
+        <button class="ac" onclick="acao(${l.id},'qualificar')">Qualificar</button>
+        <button class="ac" onclick="acao(${l.id},'demo_agendada')">Demo agendada</button>
+        <button class="ac" onclick="acao(${l.id},'nao_respondeu')">Não respondeu</button>
+        <button class="ac perigo" onclick="acao(${l.id},'sem_interesse')">Sem interesse</button>
+        <button class="ac" onclick="acao(${l.id},'ganho')">✓ Ganho</button>
       </div>
       <details class="nota"${temNota?" open":""}>
         <summary class="${temNota?'preenchida':''}">${temNota?'anotação salva — abrir':'anotar ligação / reação à demo'}</summary>
@@ -198,6 +254,55 @@ function render(){
         <button class="salvar" onclick="salvarNota(${l.id})">salvar anotação</button>
       </details></div>`;}).join("");
 }
+let ABERTO={}, VIEW='lista';
+function perfilHTML(l){
+  const s=(l.socios||[]);
+  const soc=s.length?s.map(x=>`${esc(x.nome)}${x.cargo?` · ${esc(x.cargo)}`:""}${x.decide?' <b>(decide)</b>':""}`).join("<br>"):"—";
+  return `<div class="perfil">
+    <div class="linha"><span class="rot">decisor</span><span>${soc}</span></div>
+    <div class="linha"><span class="rot">telefone</span><span>${esc(l.telefone)}${l.wa?` · <a href="https://wa.me/${l.wa}" target="_blank" rel="noopener">abrir zap</a>`:""}</span></div>
+    ${l.cnpj?`<div class="linha"><span class="rot">cnpj</span><span>${esc(l.cnpj)}</span></div>`:""}
+    ${l.razao_social?`<div class="linha"><span class="rot">razão</span><span>${esc(l.razao_social)}</span></div>`:""}
+    <div class="linha"><span class="rot">funil</span><span>${esc(l.coluna)}${l.status_auto?` · automação: ${esc(l.status_auto)}`:""}</span></div>
+  </div>`;
+}
+window.togglePerfil=id=>{ABERTO[id]=!ABERTO[id];render();};
+window.acao=async(id,a)=>{
+  try{
+    const r=await(await fetch("/api/prospeccao/status",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({prospect_id:id,acao:a})})).json();
+    if(r.ok){const l=D.leads.find(x=>x.id===id); if(l){l.status=r.status;l.coluna=r.coluna;}
+      toast(`→ ${r.coluna}`); render();} else toast("falhou");
+  }catch(e){toast("erro de rede");}
+};
+window.setView=v=>{VIEW=v;
+  document.getElementById("v-lista").className="vbt"+(v==="lista"?" on":"");
+  document.getElementById("v-kanban").className="vbt"+(v==="kanban"?" on":"");
+  $("lista").style.display = v==="lista"?"":"none";
+  $("kanban").style.display= v==="kanban"?"":"none";
+  render();};
+const COLS=["Prospecção","Qualificação","Demo Agendada","Proposta","Ganho"];
+const ACAO_DA_COL={"Qualificação":"qualificar","Demo Agendada":"demo_agendada",
+                   "Proposta":"demo_agendada","Ganho":"ganho","Prospecção":"nao_respondeu"};
+function renderKanban(){
+  const q=($("q")?.value||"").trim().toLowerCase();
+  const L=D.leads.filter(l=>(!TIER||l.tier===TIER)&&(!q||[l.empresa,l.cidade,l.segmento].join(" ").toLowerCase().includes(q)));
+  $("kanban").innerHTML=`<div class="kb">`+COLS.map(col=>{
+    const its=L.filter(l=>l.coluna===col);
+    return `<div class="kbcol" data-col="${esc(col)}" ondragover="event.preventDefault();this.classList.add('alvo')"
+      ondragleave="this.classList.remove('alvo')" ondrop="solta(event,'${esc(col)}')">
+      <h4>${esc(col)} <span>${its.length}</span></h4>`+
+      its.slice(0,40).map(l=>`<div class="kbc" draggable="true" ondragstart="pega(event,${l.id})">
+        <div class="e">${esc(l.empresa.slice(0,40))}</div>
+        <div class="m">${esc(l.tier)}${l.cidade?" · "+esc(l.cidade):""}${l.decisor?" · 👤 "+esc(l.decisor.split(" ")[0]):""}</div>
+      </div>`).join("")+`</div>`;}).join("")+`</div>`;
+}
+window.pega=(e,id)=>{e.dataTransfer.setData("id",String(id));};
+window.solta=async(e,col)=>{
+  e.preventDefault(); document.querySelectorAll(".kbcol").forEach(x=>x.classList.remove("alvo"));
+  const id=+e.dataTransfer.getData("id"); const a=ACAO_DA_COL[col];
+  if(id&&a) await acao(id,a);
+};
 window.salvarNota=async id=>{
   const lig=document.getElementById('lig'+id).value, rea=document.getElementById('rea'+id).value;
   try{

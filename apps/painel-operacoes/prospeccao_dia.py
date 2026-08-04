@@ -96,7 +96,7 @@ def lista_do_dia(tier: str = "", limite: int = 200, incluir_contatados: bool = F
         except sqlite3.Error:
             ja = set()
         rows = [dict(r) for r in c.execute(
-            "SELECT id,empresa,segmento,cidade_uf,telefone,tier,sinal,notas,status "
+            "SELECT id,empresa,segmento,cidade_uf,telefone,tier,sinal,notas,status,cnpj,razao_social "
             "FROM tracker_prospects")]
     ordem = {"T1": 0, "T2": 1, "T3": 2, "T4": 3}
     fora: list[dict] = []
@@ -119,6 +119,7 @@ def lista_do_dia(tier: str = "", limite: int = 200, incluir_contatados: bool = F
             "achado": achado, "sensivel": any(s in achado.lower() for s in _SENSIVEL),
             "gancho": gancho(tr, r["segmento"] or "", cidade, achado),
             "status": (r["status"] or "").strip(), "contatado": contatado,
+            "cnpj": (r["cnpj"] or "").strip(), "razao_social": (r["razao_social"] or "").strip(),
         })
     fora.sort(key=lambda x: (ordem.get(x["tier"], 9), not x["tem_whatsapp"], x["empresa"].lower()))
     por_tier = {t: sum(1 for x in fora if x["tier"] == t) for t in TIERS}
@@ -136,8 +137,17 @@ def lista_do_dia(tier: str = "", limite: int = 200, incluir_contatados: bool = F
     except sqlite3.Error:
         dec = {}
     nt = notas_todas()
+    sdr = _estado_sdr()
+    mails = _emails_enviados()
     for x in fora:
         x["nota"] = nt.get(x["id"], {"ligacao": "", "reacao_demo": ""})
+        x["status_auto"] = sdr.get(_tel8(x["telefone"]), "")
+        x["coluna"] = coluna_de(x.get("status", ""), x["status_auto"])
+        # indicadores de canal, visíveis no card sem abrir nada
+        x["email_enviado"] = bool((x.get("email") or "").lower() in mails)
+        x["wpp"] = ("enviado" if x["status_auto"] in ("enviado", "respondeu", "demo_enviada",
+                                                      "handoff_jp") else
+                    ("sem número" if not x["tem_whatsapp"] else "na fila"))
         x["socios"] = dec.get(x["id"], [])
         x["decisor"] = x["socios"][0]["nome"] if x["socios"] else ""
     return {
@@ -176,6 +186,82 @@ def csv_lista(tiers: str = "T3,T4", limite: int = 500) -> str:
                     "SIM - nao falar na cara" if x["sensivel"] else "",
                     x["status"]])
     return buf.getvalue()
+
+
+# ── funil: DUAS fontes de verdade, cada uma com seu dono ─────────────────────
+# tracker_prospects.status = o funil que o JP move na mão (A contatar → Fechado).
+# prospects.status (sdr-motor) = o estado da AUTOMAÇÃO (enviado/respondeu/demo_enviada/
+# handoff_jp/arquivado). Não são concorrentes: a automação empurra, o JP confirma.
+# O kanban mostra a coluna derivada dos dois — a automação adianta a coluna, o JP
+# corrige arrastando.
+COLUNAS = ("Prospecção", "Qualificação", "Demo Agendada", "Proposta", "Ganho")
+# status manual (tracker) -> coluna. É o que vence quando o JP move o card.
+_COL_MANUAL = {"a contatar": "Prospecção", "contato inicial": "Qualificação",
+               "em conversa": "Qualificação", "proposta enviada": "Proposta",
+               "fechado": "Ganho", "perdido": "Perdido"}
+# status da automação (sdr) -> coluna, quando o manual ainda está no início
+_COL_AUTO = {"respondeu": "Qualificação", "demo_enviada": "Demo Agendada",
+             "handoff_jp": "Demo Agendada", "arquivado": "Perdido"}
+# botão da UI -> status MANUAL gravado (nenhum status novo é inventado)
+ACOES = {"qualificar": "Em conversa", "demo_agendada": "Proposta enviada",
+         "nao_respondeu": "A contatar", "sem_interesse": "Perdido",
+         "ganho": "Fechado"}
+
+
+def coluna_de(status_manual: str, status_auto: str) -> str:
+    """Coluna do kanban. Manual vence; a automação só adianta quem ainda não foi mexido."""
+    m = (status_manual or "").strip().lower()
+    col = _COL_MANUAL.get(m, "Prospecção")
+    if col == "Prospecção":  # ainda não mexido na mão: deixa a automação adiantar
+        return _COL_AUTO.get((status_auto or "").strip().lower(), col)
+    return col
+
+
+def _estado_sdr() -> dict[str, str]:
+    """{tel8 -> status da automação} lido do sdr-motor (Postgres, banco separado).
+    Falha => {} e o card mostra só o status manual (degrada, não quebra)."""
+    fora: dict[str, str] = {}
+    try:
+        import subprocess
+        out = subprocess.run(
+            ["docker", "exec", os.environ.get("PG_CONTAINER", "evolution_postgres"),
+             "psql", "-U", os.environ.get("PG_USER", "evolution"),
+             "-d", os.environ.get("PG_DB", "sdr_motor_papai"),
+             "-tAc", "SELECT telefone||'|'||status FROM prospects"],
+            capture_output=True, text=True, timeout=30)
+        for ln in out.stdout.splitlines():
+            if "|" in ln:
+                tel, _, st = ln.strip().partition("|")
+                k = _tel8(tel)
+                if k:
+                    fora[k] = st
+    except Exception:  # noqa: BLE001
+        pass
+    return fora
+
+
+def _emails_enviados() -> set[str]:
+    """E-mails já enfileirados/enviados — alimenta o indicador de canal no card."""
+    try:
+        with _db() as c:
+            return {str(r[0] or "").lower() for r in c.execute("SELECT to_addr FROM emails")}
+    except sqlite3.Error:
+        return set()
+
+
+def status_salvar(prospect_id: int, acao: str) -> dict:
+    """Move o lead no funil pela AÇÃO do botão (mapeada em ACOES). Grava no status
+    manual do tracker — o campo que o JP controla."""
+    novo = ACOES.get((acao or "").strip().lower())
+    if not prospect_id or not novo:
+        return {"ok": False, "erro": f"ação inválida: {acao!r}"}
+    with _db() as c:
+        c.execute("UPDATE tracker_prospects SET status=?, atualizado_em=? WHERE id=?",
+                  (novo, __import__("datetime").datetime.now(
+                      __import__("datetime").timezone.utc).isoformat(), int(prospect_id)))
+        c.commit()
+    return {"ok": True, "prospect_id": prospect_id, "status": novo,
+            "coluna": coluna_de(novo, "")}
 
 
 # ─────────────────── anotações da ligação (CRM leve) ───────────────────
