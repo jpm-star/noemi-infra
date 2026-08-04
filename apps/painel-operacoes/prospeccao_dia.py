@@ -129,6 +129,33 @@ def lista_do_dia(tier: str = "", limite: int = 200, incluir_contatados: bool = F
     }
 
 
+def csv_lista(tiers: str = "T3,T4", limite: int = 500) -> str:
+    """CSV da fila pra ligar (UTF-8 BOM p/ abrir certo no Excel PT-BR).
+
+    Default T3/T4: são os tiers que o JP liga PESSOALMENTE (T3 = já tem site, vende
+    SEO/AEO; T4 = reunião com demo + Noemi). Leva o gancho e o achado prontos — o
+    achado sensível vai marcado, pra não ser dito na cara."""
+    import csv
+    import io
+    alvos = {t.strip().upper() for t in (tiers or "").split(",") if t.strip()}
+    dados = lista_do_dia(limite=limite)
+    buf = io.StringIO()
+    buf.write("﻿")  # BOM: sem isto o Excel PT-BR come os acentos
+    w = csv.writer(buf, delimiter=";")  # ; = separador que o Excel PT-BR espera
+    w.writerow(["tier", "empresa", "segmento", "cidade", "telefone", "tem_whatsapp",
+                "link_whatsapp", "o_que_falar", "achado", "achado_sensivel", "status"])
+    for x in dados["leads"]:
+        if alvos and x["tier"] not in alvos:
+            continue
+        w.writerow([x["tier"], x["empresa"], x["segmento"], x["cidade"], x["telefone"],
+                    "sim" if x["tem_whatsapp"] else "NAO (so fixo)",
+                    f"https://wa.me/{x['wa']}" if x["wa"] else "",
+                    x["gancho"], x["achado"],
+                    "SIM - nao falar na cara" if x["sensivel"] else "",
+                    x["status"]])
+    return buf.getvalue()
+
+
 if __name__ == "__main__":  # self-check
     import tempfile
     os.environ["LEADS_DB"] = tempfile.mktemp(suffix="_prosp.db")
@@ -168,5 +195,13 @@ if __name__ == "__main__":  # self-check
         assert "reserva" not in g and "conversamos" not in g and "nosso contato" not in g, g
     assert lista_do_dia(tier="T3")["total"] == 1
     assert r["por_tier"]["T1"] == 2 and r["sem_whatsapp"] == 1
+    # CSV T3/T4: BOM pro Excel, só os tiers pedidos, gancho e achado vão junto
+    c = csv_lista("T3,T4")
+    assert c.startswith("﻿") and "o_que_falar" in c
+    linhas = [ln for ln in c.splitlines() if ln.strip()]
+    assert len(linhas) == 2, linhas          # cabeçalho + só a Clinica B (T3)
+    assert "Clinica B" in c and "Academia A" not in c, "T1 não pode vazar no CSV de T3/T4"
+    assert "nao falar na cara" in c          # achado sensível vai MARCADO
+    assert len([ln for ln in csv_lista("T1").splitlines() if ln.strip()]) == 3  # 2 T1 + header
     print(f"prospeccao_dia OK — {r['total']} na fila, T1 primeiro, contatado sai, "
           f"fixo marcado, achado sensível não abre conversa")

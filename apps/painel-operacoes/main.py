@@ -754,6 +754,17 @@ def prospeccao_dia_listar(tier: str = "", limite: int = 200) -> JSONResponse:
     return JSONResponse(prospeccao_dia.lista_do_dia(tier, limite))
 
 
+@app.get("/api/prospeccao/dia.csv")
+def prospeccao_dia_csv(tiers: str = "T3,T4", limite: int = 500):
+    """CSV pra ligar offline. Default T3/T4 — os que o JP liga pessoalmente."""
+    from fastapi.responses import Response as _R
+    import prospeccao_dia
+    nome = tiers.replace(",", "-").lower() or "fila"
+    return _R(content=prospeccao_dia.csv_lista(tiers, limite),
+              media_type="text/csv; charset=utf-8",
+              headers={"Content-Disposition": f'attachment; filename="ligar_{nome}.csv"'})
+
+
 # Radar Grátis — página PÚBLICA (liberada no Caddy sem basic-auth). Self-serve.
 @app.get("/radar-gratis", response_class=HTMLResponse)
 def radar_gratis_pagina() -> str:

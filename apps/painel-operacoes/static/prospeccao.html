@@ -60,6 +60,8 @@ h1{font-size:1.45rem;letter-spacing:-.02em}
 .bt.ok{background:transparent;color:var(--mut);border:1px solid var(--line)}
 .bt.ok:hover{color:var(--ok);border-color:var(--ok)}
 .bt.off{background:#1a2233;color:#5f7290;cursor:not-allowed}
+.bt.csv{background:var(--ok);color:#04240f;font-size:.8rem;padding:7px 13px}
+.bt.csv:hover{filter:brightness(1.08)}
 .tel{font-size:.82rem;color:var(--mut);font-variant-numeric:tabular-nums}
 .empty{color:var(--mut);text-align:center;padding:40px}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(80px);
@@ -73,7 +75,11 @@ h1{font-size:1.45rem;letter-spacing:-.02em}
 
 <div class="top">
   <h1>📞 Prospecção do dia</h1>
-  <a href="/obs">← QG</a>
+  <div style="display:flex;gap:8px;align-items:center">
+    <a class="bt csv" href="/api/prospeccao/dia.csv?tiers=T3,T4"
+       title="Baixar T3+T4 com telefone, gancho e achado — pra ligar offline">⬇️ CSV T3/T4</a>
+    <a href="/obs">← QG</a>
+  </div>
 </div>
 <p class="sub" id="sub">carregando fila…</p>
 
