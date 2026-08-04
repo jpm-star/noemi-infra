@@ -1,0 +1,11 @@
+[Unit]
+Description=Checa cota a cada 30min (alerta 1x por chave/dia)
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=30min
+RandomizedDelaySec=3min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

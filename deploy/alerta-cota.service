@@ -1,0 +1,9 @@
+[Unit]
+Description=Alerta de cota em 80% (Groq/CNPJa) — avisa ANTES de estourar
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/noemi-infra
+EnvironmentFile=-/root/noemi-infra/infra/.env
+ExecStart=/root/noemi-infra/.venv/bin/python deploy/alerta_cota.py
