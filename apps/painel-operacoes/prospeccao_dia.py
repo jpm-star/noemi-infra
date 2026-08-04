@@ -122,6 +122,9 @@ def lista_do_dia(tier: str = "", limite: int = 200, incluir_contatados: bool = F
         })
     fora.sort(key=lambda x: (ordem.get(x["tier"], 9), not x["tem_whatsapp"], x["empresa"].lower()))
     por_tier = {t: sum(1 for x in fora if x["tier"] == t) for t in TIERS}
+    nt = notas_todas()
+    for x in fora:
+        x["nota"] = nt.get(x["id"], {"ligacao": "", "reacao_demo": ""})
     return {
         "leads": fora[:limite], "total": len(fora), "por_tier": por_tier,
         "sem_whatsapp": sum(1 for x in fora if not x["tem_whatsapp"]),
@@ -156,6 +159,40 @@ def csv_lista(tiers: str = "T3,T4", limite: int = 500) -> str:
                     "SIM - nao falar na cara" if x["sensivel"] else "",
                     x["status"]])
     return buf.getvalue()
+
+
+# ─────────────────── anotações da ligação (CRM leve) ───────────────────
+def _tabela_notas(c) -> None:
+    c.execute("""CREATE TABLE IF NOT EXISTS prospeccao_notas (
+        prospect_id INTEGER PRIMARY KEY, ligacao TEXT, reacao_demo TEXT, atualizado_em TEXT)""")
+    c.commit()
+
+
+def nota_salvar(prospect_id: int, ligacao: str = "", reacao_demo: str = "") -> dict:
+    """Anotação por lead: como foi a ligação e como reagiu à demo. UPSERT — o JP
+    escreve na hora, sem trocar de tela. Tabela PRÓPRIA (não usa tracker.notas) porque
+    `notas` alimenta o autofill do site: nota de ligação lá dentro viraria copy."""
+    from datetime import datetime, timezone
+    if not prospect_id:
+        return {"ok": False, "erro": "prospect_id obrigatório"}
+    with _db() as c:
+        _tabela_notas(c)
+        c.execute("INSERT INTO prospeccao_notas (prospect_id,ligacao,reacao_demo,atualizado_em) "
+                  "VALUES (?,?,?,?) ON CONFLICT(prospect_id) DO UPDATE SET "
+                  "ligacao=excluded.ligacao, reacao_demo=excluded.reacao_demo, "
+                  "atualizado_em=excluded.atualizado_em",
+                  (int(prospect_id), (ligacao or "").strip()[:800],
+                   (reacao_demo or "").strip()[:800],
+                   datetime.now(timezone.utc).isoformat()))
+        c.commit()
+    return {"ok": True, "prospect_id": prospect_id}
+
+
+def notas_todas() -> dict:
+    with _db() as c:
+        _tabela_notas(c)
+        return {r["prospect_id"]: {"ligacao": r["ligacao"] or "", "reacao_demo": r["reacao_demo"] or ""}
+                for r in c.execute("SELECT * FROM prospeccao_notas")}
 
 
 if __name__ == "__main__":  # self-check
@@ -198,6 +235,13 @@ if __name__ == "__main__":  # self-check
     assert lista_do_dia(tier="T3")["total"] == 1
     assert r["por_tier"]["T1"] == 2 and r["sem_whatsapp"] == 1
     # CSV T3/T4: BOM pro Excel, só os tiers pedidos, gancho e achado vão junto
+    # anotação por lead: upsert e volta na lista
+    assert nota_salvar(0)["ok"] is False
+    assert nota_salvar(1, "não atendeu", "—")["ok"]
+    assert nota_salvar(1, "atendeu, gostou", "achou a demo boa")["ok"]
+    n = notas_todas()[1]
+    assert n["ligacao"] == "atendeu, gostou" and "demo boa" in n["reacao_demo"], n
+    assert lista_do_dia()["leads"][0].get("nota") is not None
     c = csv_lista("T3,T4")
     assert c.startswith("﻿") and "o_que_falar" in c
     linhas = [ln for ln in c.splitlines() if ln.strip()]

@@ -754,6 +754,15 @@ def prospeccao_dia_listar(tier: str = "", limite: int = 200) -> JSONResponse:
     return JSONResponse(prospeccao_dia.lista_do_dia(tier, limite))
 
 
+@app.post("/api/prospeccao/nota")
+async def prospeccao_nota(req: Request) -> JSONResponse:
+    """Anotação do JP por lead: como foi a ligação e a reação à demo."""
+    import prospeccao_dia
+    c = await req.json()
+    return JSONResponse(prospeccao_dia.nota_salvar(
+        int(c.get("prospect_id") or 0), c.get("ligacao", ""), c.get("reacao_demo", "")))
+
+
 @app.get("/api/prospeccao/dia.csv")
 def prospeccao_dia_csv(tiers: str = "T3,T4", limite: int = 500):
     """CSV pra ligar offline. Default T3/T4 — os que o JP liga pessoalmente."""
