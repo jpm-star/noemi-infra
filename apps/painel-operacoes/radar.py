@@ -93,6 +93,38 @@ def _baixar_audio(link: str, destino: Path) -> Path:
     return mp3s[0]
 
 
+def _baixar_video(link: str, destino: Path) -> Path:
+    """Baixa o VÍDEO (não só o áudio) pra dar OLHOS ao caminho de URL.
+
+    O `_baixar_audio` usa `-x` (extrai áudio e joga o vídeo fora), por isso todo link
+    analisado perdia a visão — só áudio+legenda. Aqui pega o arquivo de vídeo, de onde
+    saem TANTO os frames quanto o áudio (1 download, 2 usos). Prefere um formato leve
+    (<=480p): frames pra OCR/visão não precisam de 1080p e o download fica rápido."""
+    saida = destino / "video.%(ext)s"
+    cmd = ["yt-dlp", "-f", "best[height<=480]/best", "--no-playlist",
+           "--write-info-json", "-o", str(saida)] + _yt_extra()
+    try:
+        subprocess.run([*cmd, link], check=True, capture_output=True, text=True, timeout=300)
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"yt-dlp (vídeo) falhou: {(e.stderr or '')[-200:]}")
+    vids = [p for p in destino.iterdir() if p.suffix.lower() in (".mp4", ".mkv", ".webm", ".mov")]
+    if not vids:
+        raise RuntimeError("yt-dlp não gerou arquivo de vídeo")
+    return vids[0]
+
+
+def _audio_do_video(video: Path, destino: Path) -> Path | None:
+    """Extrai o mp3 do vídeo já baixado (mesmo caminho do analisar_arquivo)."""
+    audio = destino / "audio.mp3"
+    try:
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(video),
+                        "-vn", "-acodec", "libmp3lame", "-q:a", "4", str(audio)],
+                       check=True, capture_output=True, timeout=180)
+        return audio if audio.exists() else None
+    except Exception:  # noqa: BLE001 — vídeo mudo: a visão carrega sozinha
+        return None
+
+
 def _metadados(link: str) -> tuple[str, str]:
     """(legenda, @handle) via `yt-dlp --dump-json --skip-download` — pega caption/
     título SEM baixar mídia. No IG isso funciona bem mais que baixar o vídeo (que
@@ -472,6 +504,7 @@ def analisar(url: str, origem: str | None = None, instrucao: str = "",
     `instrucao` = pedido do JP na legenda (replicar/adaptar/comparar). `forcar`=True
     reanalisa mesmo se a URL já existe (senão devolve a análise anterior — economia)."""
     from shared_core.ai import transcricao as trans
+    from shared_core.ai import visao
     url = _limpar_url((url or "").strip())  # (1) higiene
     if not url.startswith("http"):
         raise ValueError("url inválida")
@@ -481,24 +514,33 @@ def analisar(url: str, origem: str | None = None, instrucao: str = "",
             return {**ja, "reaproveitada": True}
     origem_dada = (origem or "").strip()
     legenda, handle = _metadados(url)  # caption/título — funciona mesmo quando a mídia não baixa
-    texto_audio = ""
+    texto_audio, visao_txt = "", ""
     with tempfile.TemporaryDirectory(prefix="radar_") as td:
         try:
-            audio = _baixar_audio(url, Path(td))
-            # a conta/autor REAL vem do metadado do download (yt-dlp), não da URL.
+            # VISÃO NO CAMINHO DE URL: baixa o VÍDEO (1 download) e tira dele os frames
+            # E o áudio. Antes vinha só o áudio (-x), então todo link perdia o que está
+            # na TELA — e a tela é a fonte do nome do produto/preço (áudio pode ser música).
+            video = _baixar_video(url, Path(td))
             origem = origem_dada or _conta_do_dir(Path(td)) or handle or _origem_da_url(url)
-            texto_audio = trans.transcrever(str(audio))
-        except RuntimeError as e:
-            # IG/YT bloqueou a mídia → NÃO morre: segue com a legenda (análise sempre).
-            origem = origem_dada or handle or _origem_da_url(url)
-            if not legenda:
-                registrar_job(False, origem=origem, url=url, motivo=f"sem mídia nem legenda: {e}")
-                raise RuntimeError(f"não deu pra baixar o vídeo nem ler a legenda: {e}")
+            visao_txt, _fv = visao.analisar_frames(_frames(str(video), Path(td)))
+            if a := _audio_do_video(video, Path(td)):
+                texto_audio = trans.transcrever(str(a)) or ""
+        except RuntimeError:
+            # vídeo bloqueado → tenta o caminho antigo (só áudio); depois só legenda.
+            try:
+                audio = _baixar_audio(url, Path(td))
+                origem = origem_dada or _conta_do_dir(Path(td)) or handle or _origem_da_url(url)
+                texto_audio = trans.transcrever(str(audio))
+            except RuntimeError as e:
+                # IG/YT bloqueou a mídia → NÃO morre: segue com a legenda (análise sempre).
+                origem = origem_dada or handle or _origem_da_url(url)
+                if not legenda:
+                    registrar_job(False, origem=origem, url=url, motivo=f"sem mídia nem legenda: {e}")
+                    raise RuntimeError(f"não deu pra baixar o vídeo nem ler a legenda: {e}")
     # legenda (nome do produto/oferta) + transcrição (narração) → análise fiel, sem
     # confundir música de fundo com o produto (a legenda é a âncora do "o quê").
-    texto = "\n".join(filter(None, [
-        ("LEGENDA/TÍTULO: " + legenda) if legenda else "",
-        ("TRANSCRIÇÃO DO ÁUDIO: " + texto_audio) if texto_audio else ""]))
+    # mesma combinação rotulada do caminho de arquivo: visão + legenda + áudio
+    texto = _combinar(visao_txt, legenda, texto_audio)
     if not texto.strip():
         registrar_job(False, origem=origem, url=url, motivo="sem transcrição e sem legenda")
         raise RuntimeError("sem transcrição e sem legenda — link privado/inacessível")
