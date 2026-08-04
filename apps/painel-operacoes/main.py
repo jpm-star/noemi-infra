@@ -419,20 +419,45 @@ def criacao_sites() -> JSONResponse:
     return JSONResponse({"sites": criacao.listar_sites()})
 
 
+@app.get("/api/criacao/lead")
+def criacao_lead(nome: str = "") -> JSONResponse:
+    """C1 — autofill: devolve o que a pesquisa já sabe do lead (tracker + leads-alvo)."""
+    import criacao
+    return JSONResponse(criacao.dados_lead(nome))
+
+
+@app.post("/api/criacao/apagar")
+def criacao_apagar(slug: str = Form(...)) -> JSONResponse:
+    """C2 — apaga site (pasta + registro). Irreversível; confirmação é na UI."""
+    import criacao
+    r = criacao.apagar(slug)
+    return JSONResponse(r, status_code=200 if r.get("ok") else 422)
+
+
+@app.post("/api/criacao/limpar-orfaos")
+def criacao_limpar_orfaos() -> JSONResponse:
+    """C2 — varre o registro e remove linhas cujo site não existe mais em disco."""
+    import criacao
+    return JSONResponse(criacao.limpar_orfaos())
+
+
 @app.post("/api/criacao/gerar")
 async def criacao_gerar(nome: str = Form(...), nicho: str = Form(...), whatsapp: str = Form(""),
                         diferenciais: str = Form(""), publico: str = Form(""), cor: str = Form(""),
                         copy_livre: str = Form(""), foto: UploadFile | None = File(None),
-                        video: UploadFile | None = File(None)) -> JSONResponse:
+                        video: UploadFile | None = File(None),
+                        fotos: list[UploadFile] = File([])) -> JSONResponse:
     import asyncio
 
     import criacao
     # PROMPT 2: foto/vídeo/copy opcionais (multipart). Sem eles = geração por briefing (fallback).
     f = (await foto.read(), foto.filename) if (foto and foto.filename) else None
     v = (await video.read(), video.filename) if (video and video.filename) else None
+    # C3: acervo do cliente (20+ fotos) — OCR vira contexto da copy + galeria no site
+    fs = [(await u.read(), u.filename) for u in (fotos or []) if u and u.filename]
     # geração é pesada (LLM + template + deploy) — fora do event loop
     res = await asyncio.to_thread(criacao.gerar, nome, nicho, whatsapp, diferenciais,
-                                  publico, cor, 0, f, v, copy_livre)
+                                  publico, cor, 0, f, v, copy_livre, fs)
     return JSONResponse(res, status_code=200 if res.get("ok") else 422)
 
 

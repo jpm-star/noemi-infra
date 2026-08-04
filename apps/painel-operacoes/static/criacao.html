@@ -41,6 +41,12 @@ tr:hover td{background:rgba(52,226,255,.04)}
 .flag{font-size:.72rem;color:var(--mut)}.flag b{color:var(--txt)}
 .on{color:var(--op)}.off{color:#5a6b82}
 .cnt{color:var(--mut);font-size:.8rem;margin:4px 0}
+button.del{background:transparent;border:1px solid transparent;color:var(--mut);cursor:pointer;
+  font-size:.95rem;border-radius:7px;padding:2px 7px;margin-left:8px;line-height:1}
+button.del:hover{color:#ff9a9a;border-color:rgba(255,80,80,.4);background:rgba(255,80,80,.09)}
+button.orf{background:#12233a;color:var(--mut);border:1px solid var(--line);border-radius:8px;
+  padding:5px 11px;font-size:.78rem;cursor:pointer;margin-left:8px}
+button.orf:hover{color:var(--txt);border-color:var(--cy)}
 </style></head><body>
 <div class="top"><h1>🏗️ Criação de site</h1><a href="/obs">← QG</a></div>
 <div class="sub">Interface operacional do motor (motor-isca-sites → <code>montar_site</code>). Gera de verdade em /var/www/sites.</div>
@@ -53,7 +59,8 @@ tr:hover td{background:rgba(52,226,255,.04)}
       <label>Empresa / lead</label>
       <input id="nome" list="leads" placeholder="digite ou escolha um lead pesquisado" autocomplete="off">
       <datalist id="leads"></datalist>
-      <div class="hint">Escolher um lead da lista preenche o nicho automaticamente.</div>
+      <div class="hint">Escolher um lead pesquisado preenche nicho, WhatsApp, público e achados sozinho.</div>
+      <div class="hint" id="af" style="color:var(--op)"></div>
     </div>
     <div><label>Nicho / segmento</label><input id="nicho" placeholder="ex: clínica odontológica"></div>
   </div>
@@ -68,6 +75,9 @@ tr:hover td{background:rgba(52,226,255,.04)}
     <div><label>📷 Foto de hero <span class="hint">(opcional — vira o fundo do hero)</span></label><input id="foto" type="file" accept="image/*"></div>
     <div><label>🎬 Vídeo de hero <span class="hint">(opcional — embute &lt;video&gt; real)</span></label><input id="video" type="file" accept="video/*"></div>
   </div>
+  <label>🖼️ Acervo do cliente <span class="hint">(20+ fotos — viram galeria no fim da página; o OCR lê o que está ESCRITO nelas (placa, tabela de planos, horário) e usa como contexto da copy)</span></label>
+  <input id="fotos" type="file" accept="image/*" multiple onchange="contarFotos()">
+  <div class="hint" id="cfotos"></div>
   <label>✍️ Copy pronta do cliente <span class="hint">(opcional — sobrescreve a copy da IA; um parágrafo por linha)</span></label>
   <textarea id="copy_livre" placeholder="cole aqui o texto que o cliente já mandou pronto — vai literal no site"></textarea>
   <button class="gerar" id="btn" onclick="gerar()">🚀 Gerar site</button>
@@ -76,6 +86,7 @@ tr:hover td{background:rgba(52,226,255,.04)}
 
 <h2>Sites gerados</h2>
 <div class="cnt" id="cnt"></div>
+<div style="margin:2px 0 6px"><button class="orf" onclick="limparOrfaos()">🧹 limpar órfãos do registro</button></div>
 <table><thead><tr><th>Site</th><th>Nicho</th><th>Status</th><th>Qualidade</th><th>Criado</th><th></th></tr></thead>
 <tbody id="tb"></tbody></table>
 
@@ -90,7 +101,26 @@ async function carregarLeads(){
       .map(l=>`<option value="${esc(l.nome)}">`).join("");
   }catch(e){}
 }
-$("nome").addEventListener("change",()=>{const c=LEADCAT[$("nome").value];if(c&&!$("nicho").value)$("nicho").value=c;});
+// C1 — autofill: tudo que a pesquisa já sabe (tracker_prospects + leads_alvo) entra
+// sozinho. Só preenche campo VAZIO — o que o operador digitou por cima nunca é pisado.
+async function autofill(){
+  const nome=$("nome").value.trim(); if(!nome)return;
+  const c=LEADCAT[nome]; if(c&&!$("nicho").value)$("nicho").value=c;  // fallback imediato
+  try{
+    const d=await(await fetch("/api/criacao/lead?nome="+encodeURIComponent(nome))).json();
+    if(!d||!d.achou){$("af").textContent="";return;}
+    const posto=[];
+    for(const [id,val] of [["nicho",d.nicho],["whatsapp",d.whatsapp],["publico",d.publico],
+                           ["diferenciais",d.diferenciais]]){
+      if(val&&!$(id).value.trim()){$(id).value=val;posto.push(id);}
+    }
+    $("af").innerHTML=posto.length
+      ? `✅ autopreenchido de <b>${esc(d.fonte)}</b>${d.tier?" · "+esc(d.tier):""}: ${posto.join(", ")} <span class="hint">(edite por cima se quiser)</span>`
+      : `ℹ️ lead achado em ${esc(d.fonte)}, mas os campos já estavam preenchidos`;
+  }catch(e){}
+}
+$("nome").addEventListener("change",autofill);
+$("nome").addEventListener("blur",autofill);
 const stCls=s=>s.startsWith("no ar")?"noar":s==="stub"?"stub":"orfao";
 const dot=(on,txt)=>`<span class="${on?'on':'off'}">${on?'●':'○'} ${txt}</span>`;
 async function carregarSites(){
@@ -104,7 +134,29 @@ async function carregarSites(){
     <td><span class="st ${stCls(x.status)}">${esc(x.status)}</span></td>
     <td class="flag">${dot(x.motion,"motion")} · ${dot(x.video,"vídeo")} · <b>${x.kb||0}kb</b>${x.tem_stub?' · <span class="off">stub!</span>':''}</td>
     <td class="flag">${(x.criado_em||"").slice(0,10)||"—"}</td>
-    <td><a href="${esc(x.url)}" target="_blank" rel="noopener">abrir ↗</a></td></tr>`).join("");
+    <td style="white-space:nowrap"><a href="${esc(x.url)}" target="_blank" rel="noopener">abrir ↗</a>
+      <button class="del" title="Apagar site (irreversível)" onclick="apagar('${esc(x.slug)}')">🗑</button></td></tr>`).join("");
+}
+// C2 — apagar: pasta em /var/www/sites + linha no registro. Irreversível => confirma.
+async function apagar(slug){
+  if(!confirm(`Apagar o site "${slug}"?\n\nIsso remove a pasta em /var/www/sites e o registro.\nIRREVERSÍVEL.`))return;
+  try{
+    const fd=new FormData();fd.append("slug",slug);
+    const d=await(await fetch("/api/criacao/apagar",{method:"POST",body:fd})).json();
+    if(d.ok){$("res").innerHTML=`<div class="ok">🗑 Apagado: <b>${esc(slug)}</b> (pasta: ${d.pasta?"sim":"não existia"} · registro: ${d.linhas})</div>`;carregarSites();}
+    else $("res").innerHTML=`<div class="err">Falhou apagar: ${esc(d.erro||"erro")}</div>`;
+  }catch(e){$("res").innerHTML=`<div class="err">Erro de rede: ${esc(e.message)}</div>`;}
+}
+async function limparOrfaos(){
+  if(!confirm("Remover do registro os sites que não existem mais em disco (órfãos)?"))return;
+  const d=await(await fetch("/api/criacao/limpar-orfaos",{method:"POST"})).json();
+  $("res").innerHTML=d.ok?`<div class="ok">🧹 ${d.total} órfão(s) removido(s)${d.total?": "+d.removidos.map(esc).join(", "):""}</div>`
+                         :`<div class="err">${esc(d.erro||"erro")}</div>`;
+  carregarSites();
+}
+function contarFotos(){
+  const n=($("fotos").files||[]).length;
+  $("cfotos").innerHTML=n?`${n} foto(s) selecionada(s)${n<20?' <span style="color:var(--ri)">— o alvo é 20+ pra galeria encher</span>':' ✅'}`:"";
 }
 async function gerar(){
   const nome=$("nome").value.trim(), nicho=$("nicho").value.trim();
@@ -119,6 +171,7 @@ async function gerar(){
     fd.append("copy_livre",$("copy_livre").value);
     if($("foto").files[0])fd.append("foto",$("foto").files[0]);
     if($("video").files[0])fd.append("video",$("video").files[0]);
+    for(const f of ($("fotos").files||[]))fd.append("fotos",f);  // C3: acervo (N arquivos, mesmo campo)
     const r=await fetch("/api/criacao/gerar",{method:"POST",body:fd});  // multipart: browser põe o boundary
     const d=await r.json();
     if(d.ok){$("res").innerHTML=`<div class="ok">✅ Publicado: <a href="${esc(d.url)}" target="_blank" rel="noopener">${esc(d.url)}</a></div>`;carregarSites();}
