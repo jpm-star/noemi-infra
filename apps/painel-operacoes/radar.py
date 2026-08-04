@@ -422,6 +422,10 @@ def _insight(transcricao: str, contexto: list[dict], instrucao: str = "") -> dic
             "score": score,
             "tags": (persuasao[:6] or assinatura.lower().replace(",", " ").split()[:6]),
             "fonte": "llm",
+            # #7: tier JPOS onde o insight é acionável (vazio = não crava)
+            **{"tier_jpos": tier_do_insight({
+                "insight": resumo, "resumo": resumo, "assinatura_tema": assinatura,
+                "aplicar_em": aplicar, "tags": persuasao})["tier"]},
             # schema NOVO de 10 campos
             "resumo": resumo, "estrutura_narrativa": estrut, "tecnicas_persuasao": persuasao,
             "objecoes_tratadas": _lista(bruto.get("objecoes_tratadas")), "promessa_vs_entrega": pve,
@@ -499,6 +503,63 @@ def _limpar_url(url: str) -> str:
     return urlunparse(p._replace(query=urlencode(q), fragment=""))
 
 
+def _assinatura(texto: str) -> str:
+    """Impressão digital do CONTEÚDO (não da URL). Normaliza (minúsculo, sem acento,
+    sem pontuação) e guarda as palavras distintivas ordenadas — assim o mesmo vídeo
+    reforwardado por outro perfil, com legenda levemente diferente, gera assinaturas
+    parecidas. Curto e determinístico: dá pra comparar 400 análises sem custo."""
+    import unicodedata
+    t = unicodedata.normalize("NFKD", (texto or "").lower()).encode("ascii", "ignore").decode()
+    palavras = [w for w in re.findall(r"[a-z0-9]{4,}", t)]
+    # stop-words de legenda que aparecem em quase todo reel e não distinguem nada
+    ruido = {"video", "reel", "instagram", "legenda", "transcricao", "audio", "titulo",
+             "comment", "link", "https", "www", "para", "como", "isso", "mais", "voce",
+             "seu", "sua", "que", "com", "por", "uma", "the", "and", "you", "your", "this"}
+    uteis = [w for w in palavras if w not in ruido]
+    if len(uteis) < 8:
+        return ""  # texto curto demais pra ter assinatura confiável
+    from collections import Counter
+    # as 24 palavras mais frequentes, ordenadas: estável a pequenas variações de corte
+    top = sorted(w for w, _ in Counter(uteis).most_common(24))
+    return " ".join(top)
+
+
+def _semelhanca(a: str, b: str) -> float:
+    """Jaccard entre duas assinaturas. 1.0 = idênticas."""
+    A, B = set((a or "").split()), set((b or "").split())
+    if not A or not B:
+        return 0.0
+    return len(A & B) / len(A | B)
+
+
+_CORTE_SEMANTICO = float(os.environ.get("RADAR_DEDUP_CORTE", "0.72"))
+
+
+def ja_analisada_por_conteudo(texto: str, limite: int = 400) -> dict | None:
+    """DEDUP SEMÂNTICO (#6): o mesmo conteúdo repostado por outro perfil tem URL
+    diferente e passava batido — reanalisava do zero e poluía a caixa com duplicata.
+    Compara a assinatura do conteúdo com as últimas análises. None se é novo.
+
+    Corte alto (0.72) de propósito: dois vídeos do MESMO tema não são o mesmo vídeo;
+    marcar como duplicata o que é só parecido perderia análise legítima."""
+    assin = _assinatura(texto)
+    if not assin:
+        return None
+    from shared_core.storage import db
+    try:
+        with db.conn() as c:
+            rows = c.execute("SELECT id, transcricao FROM video_analises "
+                             "WHERE transcricao IS NOT NULL ORDER BY id DESC LIMIT ?",
+                             (limite,)).fetchall()
+    except Exception:  # noqa: BLE001
+        return None
+    for r in rows:
+        d = dict(r)
+        if _semelhanca(assin, _assinatura(d.get("transcricao") or "")) >= _CORTE_SEMANTICO:
+            return obter(d["id"])
+    return None
+
+
 def _ja_analisada(url: str) -> dict | None:
     """(2) Dedup: se essa URL já foi analisada, devolve a análise existente (evita
     gastar LLM/Whisper de novo). None se é nova."""
@@ -572,6 +633,10 @@ def analisar(url: str, origem: str | None = None, instrucao: str = "",
     if not texto.strip():
         registrar_job(False, origem=origem, url=url, motivo="sem transcrição e sem legenda")
         raise RuntimeError("sem transcrição e sem legenda — link privado/inacessível")
+    if not forcar:  # (2b) dedup SEMÂNTICO: mesmo conteúdo, outra URL (repost)
+        if igual := ja_analisada_por_conteudo(texto):
+            registrar_job(True, origem=origem, url=url, motivo="duplicata de conteúdo")
+            return {**igual, "reaproveitada": True, "motivo_dedup": "conteúdo idêntico"}
     res = _processar(texto, origem, url, instrucao)
     registrar_job(bool(res.get("id")), origem=origem, url=url,
                   motivo="" if res.get("fonte") == "llm" else f"degradado ({res.get('fonte')})")
@@ -643,6 +708,47 @@ def analisar_imagens(caminhos: list[str], origem: str = "telegram", instrucao: s
         raise RuntimeError("carrossel sem texto legível e sem legenda — manda com uma legenda")
     return _processar(f"CARROSSEL ({len(frames)} slides)\n{texto}", origem,
                       f"(carrossel {len(frames)} imagens)", instrucao)
+
+
+# ── #7: CROSS-REFERÊNCIA com a operação JPOS ─────────────────────────────────
+# Todo insight sai marcado com o TIER/produto onde ele é acionável, pra não virar
+# leitura manual depois. A fonte da verdade é `prospeccao_dia.TIERS` (oferta e
+# abordagem por tier) — o doc OPERACAO_JPOS.md citado no pedido NÃO EXISTE no repo,
+# então cruzar com ele seria inventar. Quando existir, é só trocar a fonte aqui.
+_TIER_SINAIS = {
+    "T1": ("sem site", "landing", "primeiro cliente", "isca", "gancho", "cold",
+           "prospec", "lead frio", "captacao", "captação", "outbound"),
+    "T2": ("institucional", "autoridade", "prova social", "seo", "aeo", "google",
+           "busca", "encontrado", "reputacao", "reputação", "review"),
+    "T3": ("ecommerce", "e-commerce", "loja", "checkout", "conversao", "conversão",
+           "catalogo", "catálogo", "produto", "venda online", "carrinho", "preco", "preço"),
+    "T4": ("atendimento", "whatsapp", "agendamento", "agenda", "chatbot", "ia ",
+           "automacao", "automação", "24h", "secretaria", "recepcao", "recepção",
+           "follow", "retencao", "retenção"),
+}
+
+
+def tier_do_insight(d: dict) -> dict:
+    """Marca o insight com o tier JPOS onde ele é acionável. Devolve
+    {tier, confianca, motivo}. tier='' quando nada bate — melhor vazio que chute:
+    um insight marcado no tier errado empurra o JP pra oferta errada."""
+    texto = " ".join(str(d.get(k) or "") for k in
+                     ("insight", "resumo", "assinatura_tema", "axioma")).lower()
+    texto += " " + " ".join(str(x).lower() for x in (d.get("aplicar_em") or []))
+    texto += " " + " ".join(str(x).lower() for x in (d.get("tags") or []))
+    if not texto.strip():
+        return {"tier": "", "confianca": 0.0, "motivo": "sem texto"}
+    pontos = {t: sum(1 for s in sinais if s in texto) for t, sinais in _TIER_SINAIS.items()}
+    melhor = max(pontos, key=lambda k: pontos[k])
+    total = sum(pontos.values())
+    if pontos[melhor] == 0:
+        return {"tier": "", "confianca": 0.0, "motivo": "nenhum sinal de tier"}
+    # empate real => não crava: dois tiers com o mesmo peso é ambiguidade, não escolha
+    segundo = sorted(pontos.values(), reverse=True)[1] if len(pontos) > 1 else 0
+    if pontos[melhor] == segundo:
+        return {"tier": "", "confianca": 0.0, "motivo": "ambíguo entre tiers"}
+    return {"tier": melhor, "confianca": round(pontos[melhor] / max(1, total), 2),
+            "motivo": f"{pontos[melhor]} sinal(is) de {melhor}"}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
