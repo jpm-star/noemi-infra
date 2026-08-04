@@ -178,9 +178,11 @@ def captar(cnaes: list[str], cidades: list[str], maximo: int = 500) -> dict:
             for nome in cnaes:
                 cursor = None
                 while novos < maximo:
-                    p = {**_filtros(mun, CNAE[nome]), "limit": PAGINA}
-                    if cursor:
-                        p["token"] = cursor
+                    # PAGINAÇÃO: o `token` é EXCLUSIVO — mandar os filtros junto dá 400
+                    # ("token is mutually exclusive with other properties"). A 1ª página
+                    # leva os filtros; as seguintes levam SÓ o token.
+                    p = ({"token": cursor} if cursor
+                         else {**_filtros(mun, CNAE[nome]), "limit": PAGINA})
                     try:
                         d = _get(p)
                     except SemCredito:
