@@ -632,6 +632,10 @@ def _expandir(d: dict) -> dict:
             d.update({k: det.get(k) for k in
                       ("onde_usar", "verticais", "axioma", "assimilacao", "comparacao",
                        "modelos", "motores", "pedido", "fonte_tipo",
+                       # `fonte`: llm = analisado de verdade | extrativo = o LLM estava
+                       # FORA e isto é só um resumo. Sem expor isto, score 0 por falha de
+                       # LLM ficava idêntico a "vídeo ruim" — foi o que enganou o JP.
+                       "fonte",
                        "vertical", "vertical_nova", "marketing", "ferramentas")})
     except (ValueError, TypeError):
         pass
