@@ -615,6 +615,36 @@ def analisar_imagem(caminho: str, origem: str = "telegram", instrucao: str = "")
     return _processar(texto, origem, "(imagem enviada)", instrucao)
 
 
+def analisar_imagens(caminhos: list[str], origem: str = "telegram", instrucao: str = "") -> dict:
+    """CARROSSEL: N imagens => UMA análise. Os slides de um carrossel contam UMA ideia
+    (gancho no 1, desenvolvimento no meio, CTA no último) — analisar slide a slide perde
+    o argumento inteiro e polui a caixa com 8 fragmentos.
+
+    Manda todos os frames de uma vez pra visão (mesma cascata Groq→Gemini→OCR) e ordena
+    a leitura por slide, pra o LLM ver a sequência."""
+    from shared_core.ai import visao
+    if not caminhos:
+        raise RuntimeError("nenhuma imagem recebida")
+    if len(caminhos) == 1:
+        return analisar_imagem(caminhos[0], origem, instrucao)
+    frames = []
+    for c in caminhos[:10]:  # teto: visão custa token por imagem
+        try:
+            with open(c, "rb") as f:
+                frames.append(f.read())
+        except OSError:
+            continue
+    prompt = (f"Estas sao {len(frames)} imagens de UM carrossel, EM ORDEM. Leia TODAS e "
+              "conte a ideia COMPLETA: gancho (slide 1), desenvolvimento e CTA (ultimo). "
+              "Cite os textos como aparecem. NAO invente o que nao esta visivel.")
+    visao_txt, _ = visao.analisar_frames(frames, prompt=prompt)
+    texto = _combinar(visao_txt, (instrucao or "").strip(), "")
+    if not texto.strip():
+        raise RuntimeError("carrossel sem texto legível e sem legenda — manda com uma legenda")
+    return _processar(f"CARROSSEL ({len(frames)} slides)\n{texto}", origem,
+                      f"(carrossel {len(frames)} imagens)", instrucao)
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # FRONTEIRA fonte↔núcleo (Radar Omnisciente). Um ADAPTER (reel hoje; SDR/site/
 # auto-observação depois) produz uma OBSERVAÇÃO no formato padrão abaixo. O NÚCLEO
