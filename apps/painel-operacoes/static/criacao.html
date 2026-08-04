@@ -87,6 +87,23 @@ button.orf:hover{color:var(--txt);border-color:var(--cy)}
   <div id="res"></div>
 </div>
 
+<h2>🧠 Aprendizado — referências de estrutura</h2>
+<div class="card">
+  <p class="hint" style="margin:0 0 10px">
+    Viu um site com estrutura boa? Sobe o print aqui. A visão lê a <b>ordem das seções</b> e
+    vira candidata de ESTRUTURA <b>pro segmento que você marcar</b> — entra no sorteio junto
+    com as receitas padrão. Isso é canal permanente: alimente sempre que vir algo que funciona.
+  </p>
+  <div class="row">
+    <div><label>Print do site de referência</label><input id="rimg" type="file" accept="image/*"></div>
+    <div><label>Tag / contexto</label><input id="rtag" placeholder="ex: hero com vídeo, prova social com números grandes"></div>
+    <div><label>Segmento</label><select id="rseg"></select></div>
+  </div>
+  <button class="gerar" id="rbtn" style="background:var(--roxo);color:#150a25" onclick="subirRef()">🧠 Ensinar estrutura</button>
+  <div id="rres"></div>
+  <div id="rlista" style="margin-top:12px"></div>
+</div>
+
 <h2>Sites gerados</h2>
 <div class="cnt" id="cnt"></div>
 <div style="margin:2px 0 6px"><button class="orf" onclick="limparOrfaos()">🧹 limpar órfãos do registro</button></div>
@@ -96,7 +113,7 @@ button.orf:hover{color:var(--txt);border-color:var(--cy)}
 <script>
 const $=id=>document.getElementById(id);
 const esc=s=>(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-let LEADCAT={};
+let LEADCAT={}, AUTOFILL={};  // AUTOFILL = o que o motor preencheu -> a ficha compara com o final
 async function carregarLeads(){
   try{const d=await(await fetch("/api/leads-alvo")).json();
     const seen=new Set();
@@ -115,7 +132,7 @@ async function autofill(){
     const posto=[];
     for(const [id,val] of [["nicho",d.nicho],["whatsapp",d.whatsapp],["publico",d.publico],
                            ["diferenciais",d.diferenciais]]){
-      if(val&&!$(id).value.trim()){$(id).value=val;posto.push(id);}
+      if(val&&!$(id).value.trim()){$(id).value=val;posto.push(id);AUTOFILL[id]=val;}
     }
     $("af").innerHTML=posto.length
       ? `✅ autopreenchido de <b>${esc(d.fonte)}</b>${d.tier?" · "+esc(d.tier):""}: ${posto.join(", ")} <span class="hint">(edite por cima se quiser)</span>`
@@ -172,13 +189,16 @@ async function gerar(){
     fd.append("whatsapp",$("whatsapp").value);fd.append("publico",$("publico").value);
     fd.append("cor",$("cor").value);fd.append("diferenciais",$("diferenciais").value);
     fd.append("estilo",$("estilo").value);
+    fd.append("autofill",JSON.stringify(AUTOFILL));  // ficha: autofill acertou ou foi corrigido?
     fd.append("copy_livre",$("copy_livre").value);
     if($("foto").files[0])fd.append("foto",$("foto").files[0]);
     if($("video").files[0])fd.append("video",$("video").files[0]);
     for(const f of ($("fotos").files||[]))fd.append("fotos",f);  // C3: acervo (N arquivos, mesmo campo)
     const r=await fetch("/api/criacao/gerar",{method:"POST",body:fd});  // multipart: browser põe o boundary
     const d=await r.json();
-    if(d.ok){$("res").innerHTML=`<div class="ok">✅ Publicado: <a href="${esc(d.url)}" target="_blank" rel="noopener">${esc(d.url)}</a></div>`;carregarSites();}
+    if(d.ok){$("res").innerHTML=`<div class="ok">✅ Publicado: <a href="${esc(d.url)}" target="_blank" rel="noopener">${esc(d.url)}</a>`+
+      `<div class="hint" style="margin-top:6px;color:#a9f0cf">estrutura: <b>${esc(d.estrutura||"default")}</b> (${esc(d.estrutura_origem||"default")})`+
+      ` · ${d.fotos||0} fotos · ${d.segundos||"?"}s · ficha: <code>${esc(d.ficha||"—")}</code></div></div>`;carregarSites();}
     else $("res").innerHTML=`<div class="err">Falhou: ${esc(d.erro||"erro")}</div>`;
   }catch(e){$("res").innerHTML=`<div class="err">Erro de rede: ${esc(e.message)}</div>`;}
   $("btn").disabled=false;$("btn").textContent="🚀 Gerar site";
@@ -196,5 +216,47 @@ function descEstilo(){
   const e=ESTILOS.find(x=>x.valor===$("estilo").value);
   $("desest").textContent=e?e.desc:"";
 }
-carregarLeads();carregarSites();carregarEstilos();
+// ── Aprendizado: referências de ESTRUTURA por segmento ──────────────────────
+async function carregarRefs(){
+  try{
+    const d=await(await fetch("/api/criacao/referencias")).json();
+    if(!$("rseg").innerHTML)
+      $("rseg").innerHTML=`<option value="">(detectar pelo nicho)</option>`+
+        (d.segmentos||[]).map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join("");
+    const R=d.referencias||[];
+    $("rlista").innerHTML=R.length?`<table><thead><tr><th>Tag</th><th>Segmento</th><th>Ordem lida</th><th>No pool?</th><th></th></tr></thead><tbody>`+
+      R.map(r=>`<tr>
+        <td>${esc(r.tag||"—")}</td><td>${esc(r.segmento||"—")}</td>
+        <td class="flag">${esc(((r.receita||{}).ordem||[]).join(" → ")||"não lida")}</td>
+        <td>${r.aprovada?'<span class="st noar">no pool</span>':'<span class="st orfao">fora</span>'}</td>
+        <td style="white-space:nowrap">
+          <button class="orf" onclick="aprovarRef(${r.id},${r.aprovada?'false':'true'})">${r.aprovada?'tirar':'usar'}</button>
+          <button class="del" onclick="apagarRef(${r.id})">🗑</button></td></tr>`).join("")+
+      `</tbody></table>`:'<p class="hint">nenhuma referência ainda — suba a primeira acima.</p>';
+  }catch(e){}
+}
+async function subirRef(){
+  const f=$("rimg").files[0];
+  if(!f){$("rres").innerHTML='<div class="err">escolha um print de referência.</div>';return;}
+  $("rbtn").disabled=true;$("rbtn").textContent="⏳ lendo a estrutura…";
+  try{
+    const fd=new FormData();
+    fd.append("imagem",f);fd.append("tag",$("rtag").value);fd.append("segmento",$("rseg").value);
+    const d=await(await fetch("/api/criacao/referencia",{method:"POST",body:fd})).json();
+    if(d.ok){
+      const o=((d.referencia||{}).receita||{}).ordem||[];
+      $("rres").innerHTML=`<div class="ok">🧠 ${d.leu?`Estrutura lida: <b>${esc(o.join(" → "))}</b> — já entrou no pool de <b>${esc(d.referencia.segmento||"?")}</b>`:esc(d.aviso)}</div>`;
+      $("rimg").value="";$("rtag").value="";carregarRefs();
+    } else $("rres").innerHTML=`<div class="err">${esc(d.erro||"falhou")}</div>`;
+  }catch(e){$("rres").innerHTML=`<div class="err">erro de rede: ${esc(e.message)}</div>`;}
+  $("rbtn").disabled=false;$("rbtn").textContent="🧠 Ensinar estrutura";
+}
+window.aprovarRef=async(id,ap)=>{
+  await fetch("/api/criacao/referencia/aprovar",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({id:id,aprovada:ap})});carregarRefs();};
+window.apagarRef=async id=>{
+  if(!confirm("Apagar esta referência?"))return;
+  await fetch("/api/criacao/referencia/apagar",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({id:id})});carregarRefs();};
+carregarLeads();carregarSites();carregarEstilos();carregarRefs();
 </script></body></html>

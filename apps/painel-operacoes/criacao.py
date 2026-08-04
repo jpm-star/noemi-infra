@@ -180,7 +180,8 @@ def _ext(nome_arq: str, permitidos: set[str], padrao: str) -> str:
 def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | str = "",
           publico: str = "", cor: str = "", preset: int = 0,
           foto: tuple | None = None, video: tuple | None = None, copy_livre: str = "",
-          fotos: list[tuple] | None = None, estilo: str = "") -> dict:
+          fotos: list[tuple] | None = None, estilo: str = "",
+          autofill: dict | None = None, lead_id: int = 0) -> dict:
     """Dispara o motor REAL com o briefing. `foto`/`video` = (bytes, nome_arquivo) opcionais
     (PROMPT 2): salvos em <slug>/{img,vid} e embutidos no hero via contrato estendido do motor.
     `fotos` = lista (bytes, nome) do acervo do cliente (C3): passam por OCR (contexto pra copy)
@@ -192,13 +193,22 @@ def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | s
     if isinstance(diferenciais, str):
         diferenciais = [d.strip() for d in diferenciais.splitlines() if d.strip()]
     fotos = [f for f in (fotos or []) if f and f[0]]
+    import time as _t
+    t_inicio = _t.time()
     # C3: o que está ESCRITO nas fotos (placa/tabela de planos/horário) vira contexto da copy
     ocr_txt = _ocr_fotos(fotos)
     if ocr_txt:
         diferenciais = list(diferenciais) + [f"[lido nas fotos do cliente] {ocr_txt[:600]}"]
+    # ESTRUTURA: receita do SEGMENTO do lead (default do nicho + referências aprovadas).
+    # semente = lead_id -> leads diferentes do mesmo nicho pegam receitas diferentes.
+    import receitas as _rec
+    receita = _rec.escolher(nicho, semente=lead_id or abs(hash(nome)) % 997)
     briefing = {"nome_empresa": nome, "nicho": nicho.strip(), "whatsapp": (whatsapp or "").strip(),
                 "diferenciais": diferenciais, "publico": (publico or "").strip(),
-                "cor_primaria": (cor or "").strip() or None}
+                "cor_primaria": (cor or "").strip() or None,
+                # ESTRUTURA: ordem das seções + tipo de hero (vazio = default do motor)
+                "receita_ordem": receita.get("ordem") or [],
+                "receita_hero": receita.get("hero") or ""}
     # assets do cliente: passa o caminho RELATIVO no briefing; os bytes são gravados pós-geração.
     foto_ext = video_ext = None
     if foto and foto[0]:
@@ -251,8 +261,75 @@ def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | s
             c.commit()
     except Exception:  # noqa: BLE001 — registro é secundário; o site já está no disco
         pass
+    ficha = _ficha(site_dir, {
+        "nome": nome, "nicho": nicho, "lead_id": lead_id, "slug": slug, "url": url,
+        "autofill": autofill or {}, "final": {"nicho": nicho, "whatsapp": whatsapp,
+                                              "publico": publico, "diferenciais": diferenciais},
+        "fotos_enviadas": len(fotos), "fotos_gravadas": len(rels), "ocr": ocr_txt,
+        "estilo": estilo, "receita": receita, "segundos": round(_t.time() - t_inicio, 1),
+        "hero_foto": bool(foto and foto[0]), "hero_video": bool(video and video[0]),
+        "copy_livre": bool((copy_livre or "").strip()),
+    })
     return {"ok": True, "url": url, "slug": slug, "fotos": len(rels), "estilo": estilo,
+            "estrutura": receita.get("nome"), "estrutura_origem": receita.get("origem"),
+            "ficha": ficha, "segundos": round(_t.time() - t_inicio, 1),
             "ocr": (ocr_txt[:180] + "…") if len(ocr_txt) > 180 else ocr_txt}
+
+
+def _ficha(site_dir: Path, d: dict) -> str:
+    """FICHA.md por site: o que foi automático vs o que o JP teve que ajustar.
+
+    O campo que importa é "intervenção humana" — o que o motor NÃO resolveu sozinho
+    vira o backlog de automação. Fica em branco pro JP preencher enquanto testa."""
+    auto, manual = [], []
+    for campo, valor_auto in (d.get("autofill") or {}).items():
+        final = str((d.get("final") or {}).get(campo, ""))
+        va = str(valor_auto or "")
+        if not va:
+            continue
+        (auto if va.strip() == final.strip() else manual).append(
+            f"`{campo}`" + ("" if va.strip() == final.strip() else f" — autofill deu «{va[:60]}», virou «{final[:60]}»"))
+    r = d.get("receita") or {}
+    agora = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+    txt = f"""# FICHA — {d['nome']}
+
+- **URL:** {d['url']}
+- **Gerado em:** {agora.isoformat(timespec='seconds')} · **levou {d['segundos']}s** (briefing → no ar)
+- **Nicho:** {d['nicho']} · **lead_id:** {d.get('lead_id') or '—'}
+
+## Estrutura (o que variou além da pele)
+- **Receita:** `{r.get('nome','default')}` · **origem:** `{r.get('origem','default')}`
+- **Por quê:** {r.get('porque','—')}
+- **Ordem das seções:** {' → '.join(r.get('ordem') or []) or 'default do motor'}
+- **Hero:** {r.get('hero') or 'pelo dado enviado'}
+- **Estilo (morfismo):** {d.get('estilo') or 'padrão do motor'}
+
+## Entrada
+- **Veio do autofill e ficou:** {', '.join(auto) if auto else '—'}
+- **Autofill errou / corrigido à mão:** {', '.join(manual) if manual else '—'}
+- Copy pronta do cliente: {'sim (sobrescreveu a IA)' if d.get('copy_livre') else 'não (copy da IA)'}
+
+## Mídia
+- Fotos enviadas: **{d['fotos_enviadas']}** · gravadas na galeria: **{d['fotos_gravadas']}**
+- Hero: {'vídeo do cliente' if d.get('hero_video') else ('foto do cliente' if d.get('hero_foto') else 'sem mídia (gradiente)')}
+- Visão/OCR leu: {('sim — ' + (d.get('ocr') or '')[:300]) if d.get('ocr') else 'NÃO (caiu no briefing sem contexto de imagem)'}
+
+## Intervenção humana (preencher enquanto testa)
+> O que EU tive que ajustar que o motor não resolveu sozinho.
+> Cada linha aqui é candidata a virar automação.
+
+- [ ]
+- [ ]
+
+## Diagnóstico
+- **100% automático hoje:** estrutura escolhida por segmento, copy, galeria, {'OCR/visão das fotos, ' if d.get('ocr') else ''}publicação.
+- **Ainda depende do JP:** seleção das fotos, revisão da copy, escolha do morfismo{'' if d.get('ocr') else ', contexto visual (nenhuma foto lida)'}.
+"""
+    try:
+        (site_dir / "FICHA.md").write_text(txt, encoding="utf-8")
+        return f"{site_dir}/FICHA.md"
+    except OSError:
+        return ""
 
 
 def _ocr_fotos(fotos: list[tuple]) -> str:

@@ -426,6 +426,59 @@ def criacao_lead(nome: str = "") -> JSONResponse:
     return JSONResponse(criacao.dados_lead(nome))
 
 
+@app.get("/api/criacao/referencias")
+def criacao_referencias(segmento: str = "") -> JSONResponse:
+    """Repositório de aprendizado: referências de ESTRUTURA que o JP subiu."""
+    import receitas
+    return JSONResponse({"referencias": receitas.referencias_listar(segmento),
+                         "segmentos": sorted(receitas.RECEITAS),
+                         "receitas": {s: [r["nome"] for r in v] for s, v in receitas.RECEITAS.items()}})
+
+
+@app.post("/api/criacao/referencia")
+async def criacao_referencia_subir(tag: str = Form(""), segmento: str = Form(""),
+                                   tipo: str = Form("estrutura"),
+                                   imagem: UploadFile | None = File(None)) -> JSONResponse:
+    """Input de aprendizado: print de site bom + tag + segmento. A visão (Groq, grátis)
+    lê e PROPÕE a receita de estrutura; o JP aprova pra ela entrar no pool do segmento."""
+    import asyncio
+    import os as _os
+    from pathlib import Path as _P
+
+    import receitas
+    if not imagem or not imagem.filename:
+        return JSONResponse({"ok": False, "erro": "envie uma imagem de referência"}, status_code=422)
+    dados = await imagem.read()
+    if not dados:
+        return JSONResponse({"ok": False, "erro": "imagem vazia"}, status_code=422)
+    destino = _P(_os.environ.get("NOEMI_DATA_DIR", str(_AQUI.parents[1] / "data"))) / "referencias"
+    destino.mkdir(parents=True, exist_ok=True)
+    ext = (imagem.filename.rsplit(".", 1)[-1] or "jpg").lower()[:5]
+    nome_arq = f"ref-{int(time.time())}.{ext if ext.isalnum() else 'jpg'}"
+    (destino / nome_arq).write_bytes(dados)
+    # visão é I/O de rede: fora do event loop
+    proposta = await asyncio.to_thread(receitas.ler_referencia, dados, tag)
+    r = receitas.referencia_salvar(tag, segmento, nome_arq, proposta, tipo=tipo,
+                                   aprovada=bool(proposta.get("ordem")))
+    return JSONResponse({"ok": True, "referencia": r,
+                         "leu": bool(proposta.get("ordem")),
+                         "aviso": "" if proposta.get("ordem") else
+                                  "a visão não conseguiu ler a estrutura — guardada, aprove/edite à mão"})
+
+
+@app.post("/api/criacao/referencia/aprovar")
+async def criacao_referencia_aprovar(req: Request) -> JSONResponse:
+    import receitas
+    c = await req.json()
+    return JSONResponse(receitas.referencia_aprovar(int(c.get("id") or 0), bool(c.get("aprovada", True))))
+
+
+@app.post("/api/criacao/referencia/apagar")
+async def criacao_referencia_apagar(req: Request) -> JSONResponse:
+    import receitas
+    return JSONResponse(receitas.referencia_apagar(int((await req.json()).get("id") or 0)))
+
+
 @app.get("/api/criacao/estilos")
 def criacao_estilos(segmento: str = "") -> JSONResponse:
     """Morfismos aplicáveis (camada de acabamento) + conceitos estruturais do segmento."""
@@ -454,7 +507,8 @@ async def criacao_gerar(nome: str = Form(...), nicho: str = Form(...), whatsapp:
                         copy_livre: str = Form(""), foto: UploadFile | None = File(None),
                         video: UploadFile | None = File(None),
                         fotos: list[UploadFile] = File([]),
-                        estilo: str = Form("")) -> JSONResponse:
+                        estilo: str = Form(""), autofill: str = Form(""),
+                        lead_id: int = Form(0)) -> JSONResponse:
     import asyncio
 
     import criacao
@@ -464,8 +518,14 @@ async def criacao_gerar(nome: str = Form(...), nicho: str = Form(...), whatsapp:
     # C3: acervo do cliente (20+ fotos) — OCR vira contexto da copy + galeria no site
     fs = [(await u.read(), u.filename) for u in (fotos or []) if u and u.filename]
     # geração é pesada (LLM + template + deploy) — fora do event loop
+    # snapshot do que o autofill preencheu — a ficha compara com o valor final pra
+    # saber o que o motor acertou sozinho vs o que o JP teve que corrigir.
+    try:
+        af = __import__("json").loads(autofill) if autofill else {}
+    except ValueError:
+        af = {}
     res = await asyncio.to_thread(criacao.gerar, nome, nicho, whatsapp, diferenciais,
-                                  publico, cor, 0, f, v, copy_livre, fs, estilo)
+                                  publico, cor, 0, f, v, copy_livre, fs, estilo, af, lead_id)
     return JSONResponse(res, status_code=200 if res.get("ok") else 422)
 
 
