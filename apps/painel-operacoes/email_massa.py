@@ -117,42 +117,78 @@ def segmentar() -> dict:
 
 
 # ── copy ─────────────────────────────────────────────────────────────────────
-# Mesmo gancho honesto já validado no WhatsApp: dor verificável, sem contato forjado.
+# Estrutura (decisão do JP): (1) GARGALO ESPECÍFICO do segmento, não elogio genérico —
+# elogio genérico é o que todo mundo manda e o dono já filtra; (2) vender TEMPO
+# RECUPERADO, nunca "IA" — dono de clínica não compra tecnologia, compra a agenda
+# cheia e a recepção livre; (3) fechar com PERGUNTA DE BAIXA FRICÇÃO, nunca pedindo
+# reunião — reunião é caro pro lead responder no primeiro contato.
+#
+# gargalo = a dor concreta daquele segmento · ganho = o tempo que volta pro dono
+_GARGALO = {
+    "odontologia": ("paciente que liga pra remarcar e ninguém atende — some e não volta",
+                    "a recepção deixa de repetir horário e convênio o dia inteiro"),
+    "medico":      ("paciente que liga fora do horário e desiste na secretária eletrônica",
+                    "a secretária para de anotar recado e volta a cuidar de quem está na sala"),
+    "fisioterapia": ("aluno que cancela em cima da hora e a vaga fica ociosa",
+                     "a agenda se reencaixa sozinha em vez de você remanejar no WhatsApp"),
+    "academia":    ("quem pergunta o valor do plano à noite e não recebe resposta",
+                    "você para de responder 'quanto é a mensalidade?' 20 vezes por dia"),
+    "cabeleireiro": ("cliente que manda mensagem pra marcar e a resposta vem 3 horas depois",
+                     "você atende no salão sem parar pra olhar o celular a cada corte"),
+    "estetica":    ("orçamento pedido no Instagram que morre sem resposta",
+                    "some o retrabalho de explicar o mesmo procedimento toda semana"),
+    "imobiliaria": ("interessado que pergunta do imóvel no fim de semana e some na segunda",
+                    "o corretor chega na segunda com a visita marcada, não com 40 mensagens"),
+    "advocacia":   ("consulta que chega por WhatsApp e leva um dia pra ser respondida",
+                    "você deixa de triar caso por caso e só olha o que já veio filtrado"),
+}
+_GARGALO_PADRAO = ("cliente que procura fora do horário e não encontra resposta",
+                   "você para de responder a mesma pergunta várias vezes por dia")
 def _assunto(lead: dict, nomeado: bool) -> str:
     cidade = lead.get("cidade") or "sua região"
     emp = nome_negocio(lead)
+    seg = lead.get("segmento") or "seu segmento"
+    # assunto ancora no GARGALO, não no elogio: "uma observação sobre X" some na caixa
+    # de entrada; a dor específica do segmento faz o dono parar pra ler.
     if nomeado:
         pn = _primeiro_nome(lead["decisor"])
-        return f"{pn}, uma observação sobre {emp}" if emp else f"{pn}, sobre a presença de vocês no Google"
-    return f"Site pra {emp} em {cidade}" if emp else f"Site pra {lead.get('segmento','seu negócio')} em {cidade}"
+        alvo = emp or f"{seg} em {cidade}"
+        return f"{pn}, sobre os pacientes que ligam e não conseguem falar" if seg in (
+            "odontologia", "medico") else f"{pn}, sobre {alvo}"
+    return (f"Quem procura {seg} em {cidade} está achando vocês?" if not emp
+            else f"{emp}: quem procura {seg} em {cidade} acha vocês?")
 
 
 def corpo(lead: dict, nomeado: bool) -> str:
     nome_emp = nome_negocio(lead)
     cidade = lead.get("cidade") or "sua região"
     seg = lead.get("segmento") or "seu segmento"
+    gargalo, ganho = _GARGALO.get(seg, _GARGALO_PADRAO)
+    quem = f"na {nome_emp}" if nome_emp else "aí"
     if nomeado:
-        # T4: e-mail que PRECEDE a ligação. Avisa que vai ligar — é isso que faz o
-        # "sou eu que te mandei o e-mail" funcionar quando a recepcionista atende.
+        # Faixa C: o e-mail PRECEDE a ligação e avisa dela — é o que faz o "sou eu que
+        # te mandei o e-mail" funcionar quando a recepcionista atende. NÃO mexer nisso.
         return (
             f"Oi, {_primeiro_nome(lead['decisor'])}, tudo bem?\n\n"
-            f"Aqui é o João, da JPOS. Trabalhamos com site e integração de IA pra "
-            f"negócios locais.\n\n"
-            f"Dei uma olhada {('na ' + nome_emp) if nome_emp else 'no negócio de vocês'} e reparei alguns pontos que dá pra melhorar "
-            f"na presença de vocês na internet — quem procura \"{seg} em {cidade}\" "
-            f"hoje tem dificuldade de achar vocês.\n\n"
-            f"Preparei um exemplo de como ficaria. Vou te ligar nos próximos dias pra "
-            f"te mostrar em 2 minutos; se preferir, é só responder este e-mail que eu "
-            f"mando o link antes.\n\n"
+            f"Aqui é o João, da JPOS. Trabalho com {seg} aqui na região e vejo sempre o "
+            f"mesmo gargalo: {gargalo}.\n\n"
+            f"O que a gente monta resolve isso em duas frentes — o cliente encontra "
+            f"vocês quando procura \"{seg} em {cidade}\", e o primeiro atendimento "
+            f"acontece sozinho, na hora. Na prática, {ganho}.\n\n"
+            f"Montei um exemplo de como ficaria {quem}. Vou te ligar nos próximos dias "
+            f"pra te mostrar em 2 minutos.\n\n"
+            f"Faz sentido pra vocês hoje, ou o gargalo aí é outro?\n\n"
             f"Abraço,\nJoão · JPOS"
         )
     return (
         f"Oi! Aqui é o João, da JPOS.\n\n"
-        f"Reparei que {('a ' + nome_emp) if nome_emp else 'vocês'} não aparece{'' if nome_emp else 'm'} quando alguém procura "
-        f"\"{seg} em {cidade}\" no Google — e quem aparece acaba levando esse cliente.\n\n"
-        f"A gente faz site pra negócio local, com atendimento no WhatsApp integrado. "
-        f"Posso te mandar um exemplo pronto, do jeito que ficaria pra vocês, "
-        f"sem compromisso?\n\n"
+        f"Trabalho com {seg} aqui na região e o gargalo que mais aparece é esse: "
+        f"{gargalo}.\n\n"
+        f"O que a gente monta faz o cliente encontrar vocês quando procura "
+        f"\"{seg} em {cidade}\" — e o primeiro atendimento acontece sozinho, na hora. "
+        f"Na prática, {ganho}.\n\n"
+        f"Montei um exemplo de como ficaria {quem}.\n\n"
+        f"Quer que eu mande o link pra você dar uma olhada?\n\n"
         f"Abraço,\nJoão · JPOS"
     )
 
