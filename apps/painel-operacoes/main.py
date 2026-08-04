@@ -681,6 +681,19 @@ def criacao_pagina() -> str:
     return (_AQUI / "static" / "criacao.html").read_text(encoding="utf-8")
 
 
+@app.get("/obs/prospeccao", response_class=HTMLResponse)
+def prospeccao_pagina() -> str:
+    """Fila do dia pronta pra ligar: quem, em que ordem, falando o quê."""
+    return (_AQUI / "static" / "prospeccao.html").read_text(encoding="utf-8")
+
+
+@app.get("/api/prospeccao/dia")
+def prospeccao_dia_listar(tier: str = "", limite: int = 200) -> JSONResponse:
+    """Leads ainda sem contato (T1 primeiro), com gancho honesto pronto por tier."""
+    import prospeccao_dia
+    return JSONResponse(prospeccao_dia.lista_do_dia(tier, limite))
+
+
 # Radar Grátis — página PÚBLICA (liberada no Caddy sem basic-auth). Self-serve.
 @app.get("/radar-gratis", response_class=HTMLResponse)
 def radar_gratis_pagina() -> str:
