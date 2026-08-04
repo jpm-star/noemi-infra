@@ -1,0 +1,11 @@
+[Unit]
+Description=Retry das análises degradadas do Radar (de 30 em 30 min)
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=30min
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

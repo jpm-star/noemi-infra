@@ -1,0 +1,12 @@
+[Unit]
+Description=Radar — reprocessa análises degradadas (LLM estava fora) quando o provider volta
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/noemi-infra/apps/painel-operacoes
+EnvironmentFile=-/root/noemi-infra/infra/.env
+Environment=PYTHONPATH=/root/noemi-infra/packages
+# -n 3 por rodada: o teto é TPM/TPD do provider, não a fila. Rodadas pequenas e
+# frequentes recuperam sem reestourar a cota (foi o erro do lote manual de hoje).
+ExecStart=/root/noemi-infra/.venv/bin/python reanalisar.py --rodar -n 3
