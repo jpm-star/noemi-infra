@@ -36,19 +36,68 @@ _PROMPT_PADRAO = (
 
 
 def analisar_frames(frames: list[bytes], *, prompt: str | None = None,
-                    _post=None, _ocr_fn=None) -> tuple[str, str]:
-    """(texto_da_tela, fonte). frames = bytes JPEG. Padrão = OCR grátis; Gemini só se
-    VISAO_GEMINI=1 e houver chave. ('', 'sem_visao') se nada legível."""
+                    _post=None, _ocr_fn=None, _groq_fn=None) -> tuple[str, str]:
+    """(texto_da_tela, fonte). frames = bytes JPEG.
+
+    Cascata (do que ENTENDE pro que só LÊ), toda degradando sem crashar:
+      1. Groq multimodal — GRÁTIS na key que já existe, descreve a CENA (não só o texto).
+      2. Gemini — só se VISAO_GEMINI=1 e a chave tiver quota (hoje o projeto está sem).
+      3. OCR local (Tesseract) — grátis, lê o TEXTO na imagem.
+    ('', 'sem_visao') se nada legível."""
     if not frames:
         return "", "sem_visao"
-    # upgrade pago (opcional): Gemini descreve a cena inteira, se ligado e com crédito
+    # 1) Groq multimodal: entende a cena de graça (default ON — a key já é a da operação)
+    if os.environ.get("VISAO_GROQ", "1") == "1" and os.environ.get("GROQ_API_KEY", "").strip():
+        txt = (_groq_fn or _groq)(frames, prompt)
+        if txt:
+            return txt, "groq"
+    # 2) upgrade pago (opcional): Gemini, se ligado e com crédito
     if os.environ.get("VISAO_GEMINI") == "1" and os.environ.get("GEMINI_API_KEY", "").strip():
         txt = _gemini(frames, prompt, _post)
         if txt:
             return txt, "gemini"
-    # padrão GRÁTIS: OCR local do texto na tela
+    # 3) padrão GRÁTIS: OCR local do texto na tela
     ocr = (_ocr_fn or _ocr)(frames)
     return (ocr, "ocr") if ocr else ("", "sem_visao")
+
+
+_GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+_GROQ_MODELO = os.environ.get("VISAO_GROQ_MODELO", "qwen/qwen3.6-27b")
+
+
+def _groq(frames: list[bytes], prompt: str | None) -> str:
+    """Visão multimodal via Groq (grátis na key da operação). '' em qualquer falha.
+
+    Cuidados aprendidos na marra: (a) o WAF da Cloudflare bloqueia o UA padrão do
+    urllib (403/1010) — manda UA explícito; (b) o modelo emite bloco <think>, que é
+    raciocínio e NÃO pode vazar pra copy do site."""
+    key = os.environ.get("GROQ_API_KEY", "").strip()
+    if not key:
+        return ""
+    conteudo: list[dict] = [{"type": "text", "text": prompt or _PROMPT_PADRAO}]
+    for b in frames[:4]:  # visão é cara em token: 4 imagens já dão o contexto
+        conteudo.append({"type": "image_url", "image_url":
+                         {"url": "data:image/jpeg;base64," + base64.b64encode(b).decode()}})
+    corpo = json.dumps({"model": _GROQ_MODELO, "temperature": 0.2, "max_tokens": 900,
+                        "messages": [{"role": "user", "content": conteudo}]}).encode()
+    req = urllib.request.Request(_GROQ_URL, data=corpo, headers={
+        "Authorization": f"Bearer {key}", "Content-Type": "application/json",
+        "User-Agent": "curl/8.5.0"})  # UA explícito: sem isso o WAF devolve 403/1010
+    try:
+        with urllib.request.urlopen(req, timeout=int(os.environ.get("VISAO_TIMEOUT_S", "60"))) as r:
+            d = json.loads(r.read().decode("utf-8"))
+        txt = d["choices"][0]["message"]["content"] or ""
+    except Exception:  # noqa: BLE001 — 429/timeout/rede → cai pro próximo nível
+        return ""
+    return _sem_think(txt)
+
+
+def _sem_think(txt: str) -> str:
+    """Remove o raciocínio <think>…</think> (e um <think> sem fechamento)."""
+    import re
+    t = re.sub(r"<think>.*?</think>", "", txt, flags=re.S)
+    t = re.sub(r"<think>.*$", "", t, flags=re.S)  # truncado por max_tokens
+    return t.strip()
 
 
 def _preproc_ocr(b: bytes) -> bytes:
@@ -132,9 +181,22 @@ def _post_http(url: str, corpo: bytes) -> str:
     return d["candidates"][0]["content"]["parts"][0]["text"]
 
 
-if __name__ == "__main__":  # self-check: OCR grátis por padrão; honesto sem frames
+if __name__ == "__main__":  # self-check: cascata Groq -> Gemini -> OCR; honesto sem frames
     os.environ.pop("VISAO_GEMINI", None)
+    os.environ["VISAO_GROQ"] = "0"  # nos testes de baixo, Groq desligado (sem rede)
     assert analisar_frames([]) == ("", "sem_visao")
+    # <think> do modelo NUNCA vaza pra copy
+    assert _sem_think("<think>raciocinio interno</think>Sala de musculação.") == "Sala de musculação."
+    assert _sem_think("Academia.<think>truncado sem fechar") == "Academia."
+    # nível 1: Groq entende a cena e VENCE o OCR quando responde
+    os.environ["VISAO_GROQ"] = "1"; os.environ["GROQ_API_KEY"] = "fake"
+    t, f = analisar_frames([b"jpg"], _groq_fn=lambda fr, p: "Sala de musculação com 3 racks",
+                           _ocr_fn=lambda fr: "TEXTO NA PLACA")
+    assert f == "groq" and "racks" in t, (t, f)
+    # Groq falhou (429/rede) -> degrada pro OCR sem crashar
+    t, f = analisar_frames([b"jpg"], _groq_fn=lambda fr, p: "", _ocr_fn=lambda fr: "PLANO R$ 89")
+    assert f == "ocr" and "89" in t, (t, f)
+    os.environ["VISAO_GROQ"] = "0"
     # OCR mockado (não depende do tesseract no self-check)
     t, fonte = analisar_frames([b"jpg"], _ocr_fn=lambda fr: "GALLERY LED FRAME $18")
     assert fonte == "ocr" and "GALLERY LED FRAME" in t, (t, fonte)
