@@ -138,15 +138,17 @@ def csv_lista(tiers: str = "T3,T4", limite: int = 500) -> str:
     import csv
     import io
     alvos = {t.strip().upper() for t in (tiers or "").split(",") if t.strip()}
-    dados = lista_do_dia(limite=limite)
+    # limite ALTO de propósito: lista_do_dia corta ANTES daqui e ordena T1 primeiro —
+    # com o corte padrão, T3/T4 (o fim da fila) nunca chegariam ao filtro. Trunca só
+    # DEPOIS de filtrar por tier.
+    dados = lista_do_dia(limite=10**7)
     buf = io.StringIO()
     buf.write("﻿")  # BOM: sem isto o Excel PT-BR come os acentos
     w = csv.writer(buf, delimiter=";")  # ; = separador que o Excel PT-BR espera
     w.writerow(["tier", "empresa", "segmento", "cidade", "telefone", "tem_whatsapp",
                 "link_whatsapp", "o_que_falar", "achado", "achado_sensivel", "status"])
-    for x in dados["leads"]:
-        if alvos and x["tier"] not in alvos:
-            continue
+    escolhidos = [x for x in dados["leads"] if not alvos or x["tier"] in alvos][:limite]
+    for x in escolhidos:
         w.writerow([x["tier"], x["empresa"], x["segmento"], x["cidade"], x["telefone"],
                     "sim" if x["tem_whatsapp"] else "NAO (so fixo)",
                     f"https://wa.me/{x['wa']}" if x["wa"] else "",
@@ -203,5 +205,16 @@ if __name__ == "__main__":  # self-check
     assert "Clinica B" in c and "Academia A" not in c, "T1 não pode vazar no CSV de T3/T4"
     assert "nao falar na cara" in c          # achado sensível vai MARCADO
     assert len([ln for ln in csv_lista("T1").splitlines() if ln.strip()]) == 3  # 2 T1 + header
+    # REGRESSÃO: com fila grande, o corte de `limite` acontecia ANTES do filtro de tier
+    # e como T1 vem primeiro, T3/T4 (o fim da fila) sumiam do CSV. Enche de T1 e confere
+    # que o T3 continua saindo.
+    con2 = sqlite3.connect(os.environ["LEADS_DB"])
+    con2.executemany("INSERT INTO tracker_prospects (empresa,segmento,cidade_uf,telefone,tier,sinal) "
+                     "VALUES (?,?,?,?,?,?)",
+                     [(f"Enche {i}", "x", "Bauru", f"(14) 9{i:04d}-{i:04d}", "T1", "sem site")
+                      for i in range(1, 300)])
+    con2.commit(); con2.close()
+    c2 = csv_lista("T3,T4")
+    assert "Clinica B" in c2, "T3 sumiu do CSV quando a fila de T1 cresceu (bug do corte antes do filtro)"
     print(f"prospeccao_dia OK — {r['total']} na fila, T1 primeiro, contatado sai, "
           f"fixo marcado, achado sensível não abre conversa")
