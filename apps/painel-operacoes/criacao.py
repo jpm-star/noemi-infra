@@ -202,7 +202,10 @@ def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | s
     # ESTRUTURA: receita do SEGMENTO do lead (default do nicho + referências aprovadas).
     # semente = lead_id -> leads diferentes do mesmo nicho pegam receitas diferentes.
     import receitas as _rec
-    receita = _rec.escolher(nicho, semente=lead_id or abs(hash(nome)) % 997)
+    # semente ESTÁVEL: hash() do Python é randomizado por processo — usar ele faria a
+    # estrutura mudar a cada regeração do MESMO site (péssimo pra iterar numa demo).
+    _sem = lead_id or (int(__import__("hashlib").md5(nome.encode()).hexdigest()[:8], 16) % 997)
+    receita = _rec.escolher(nicho, semente=_sem)
     briefing = {"nome_empresa": nome, "nicho": nicho.strip(), "whatsapp": (whatsapp or "").strip(),
                 "diferenciais": diferenciais, "publico": (publico or "").strip(),
                 "cor_primaria": (cor or "").strip() or None,
