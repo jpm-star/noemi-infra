@@ -47,11 +47,25 @@ def _origem_da_url(url: str) -> str:
     """Deriva a origem (conta/domínio) pra agrupar o radar. Instagram → @handle."""
     try:
         u = urlparse(url)
-        if "instagram.com" in u.netloc:
-            partes = [p for p in u.path.split("/") if p and p not in ("reel", "p", "reels", "tv")]
+        net = u.netloc.lower()
+        partes = [p for p in u.path.split("/") if p]
+        if "instagram.com" in net:
+            partes = [p for p in partes if p not in ("reel", "p", "reels", "tv")]
             if partes and partes[0] not in ("", "explore"):
                 return "@" + partes[0]
-        return u.netloc or "desconhecida"
+        # #10 TikTok: /@handle/video/123 — o handle já vem com @ no path
+        if "tiktok.com" in net:
+            for p in partes:
+                if p.startswith("@"):
+                    return p
+            return "tiktok"
+        # #10 YouTube Shorts/watch: /@canal/... ou /shorts/<id> (sem canal na URL)
+        if "youtube.com" in net or "youtu.be" in net:
+            for p in partes:
+                if p.startswith("@"):
+                    return p
+            return "youtube"
+        return net or "desconhecida"
     except ValueError:
         return "desconhecida"
 
@@ -496,6 +510,20 @@ def _ja_analisada(url: str) -> dict | None:
     except Exception:  # noqa: BLE001
         return None
     return obter(r["id"]) if r else None
+
+
+def quota_ok() -> tuple[bool, str]:
+    """#4 — o LLM responde AGORA? Checagem barata (1 chamada minúscula) ANTES de
+    gastar download + transcrição numa análise que já nasceria degradada.
+
+    Mede o que importa: não é "a chave existe", é "o provider aceita trabalho".
+    True em qualquer dúvida — pré-checagem NUNCA pode ser o motivo de não analisar."""
+    try:
+        from shared_core.ai import llm_proxy
+        t = llm_proxy.completar("ok", model="analise", max_tokens=5, temperature=0)
+        return (True, "ok") if t else (False, "LLM sem resposta (cota/provider fora)")
+    except Exception as e:  # noqa: BLE001
+        return True, f"pré-checagem falhou ({type(e).__name__}) — segue mesmo assim"
 
 
 def analisar(url: str, origem: str | None = None, instrucao: str = "",
