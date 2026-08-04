@@ -113,7 +113,7 @@ button.orf:hover{color:var(--txt);border-color:var(--cy)}
 <script>
 const $=id=>document.getElementById(id);
 const esc=s=>(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-let LEADCAT={}, AUTOFILL={};  // AUTOFILL = o que o motor preencheu -> a ficha compara com o final
+let LEADCAT={}, AUTOFILL={}, TIER="";  // AUTOFILL = o que o motor preencheu -> a ficha compara com o final
 async function carregarLeads(){
   try{const d=await(await fetch("/api/leads-alvo")).json();
     const seen=new Set();
@@ -134,6 +134,7 @@ async function autofill(){
                            ["diferenciais",d.diferenciais]]){
       if(val&&!$(id).value.trim()){$(id).value=val;posto.push(id);AUTOFILL[id]=val;}
     }
+    TIER=d.tier||"";
     $("af").innerHTML=posto.length
       ? `✅ autopreenchido de <b>${esc(d.fonte)}</b>${d.tier?" · "+esc(d.tier):""}: ${posto.join(", ")} <span class="hint">(edite por cima se quiser)</span>`
       : `ℹ️ lead achado em ${esc(d.fonte)}, mas os campos já estavam preenchidos`;
@@ -189,7 +190,8 @@ async function gerar(){
     fd.append("whatsapp",$("whatsapp").value);fd.append("publico",$("publico").value);
     fd.append("cor",$("cor").value);fd.append("diferenciais",$("diferenciais").value);
     fd.append("estilo",$("estilo").value);
-    fd.append("autofill",JSON.stringify(AUTOFILL));  // ficha: autofill acertou ou foi corrigido?
+    fd.append("autofill",JSON.stringify(AUTOFILL));
+    fd.append("tier",TIER||"");  // ficha: autofill acertou ou foi corrigido?
     fd.append("copy_livre",$("copy_livre").value);
     if($("foto").files[0])fd.append("foto",$("foto").files[0]);
     if($("video").files[0])fd.append("video",$("video").files[0]);
@@ -208,12 +210,14 @@ let ESTILOS=[];
 async function carregarEstilos(){
   try{const d=await(await fetch("/api/criacao/estilos")).json();
     ESTILOS=d.estilos||[];
-    $("estilo").innerHTML=ESTILOS.map(e=>`<option value="${esc(e.valor)}">${esc(e.rotulo)}</option>`).join("");
+    $("estilo").innerHTML=`<option value="">✨ Automático (por segmento + tier)</option>`+ESTILOS.filter(e=>e.valor).map(e=>`<option value="${esc(e.valor)}">${esc(e.rotulo)}</option>`).join("");
     descEstilo();
   }catch(e){}
 }
 function descEstilo(){
-  const e=ESTILOS.find(x=>x.valor===$("estilo").value);
+  const v=$("estilo").value;
+  if(!v){$("desest").textContent="eu escolho o morfismo pelo segmento e tier, com acento numa seção onde outro comunica melhor";return;}
+  const e=ESTILOS.find(x=>x.valor===v);
   $("desest").textContent=e?e.desc:"";
 }
 // ── Aprendizado: referências de ESTRUTURA por segmento ──────────────────────

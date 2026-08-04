@@ -181,7 +181,7 @@ def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | s
           publico: str = "", cor: str = "", preset: int = 0,
           foto: tuple | None = None, video: tuple | None = None, copy_livre: str = "",
           fotos: list[tuple] | None = None, estilo: str = "",
-          autofill: dict | None = None, lead_id: int = 0) -> dict:
+          autofill: dict | None = None, lead_id: int = 0, tier: str = "") -> dict:
     """Dispara o motor REAL com o briefing. `foto`/`video` = (bytes, nome_arquivo) opcionais
     (PROMPT 2): salvos em <slug>/{img,vid} e embutidos no hero via contrato estendido do motor.
     `fotos` = lista (bytes, nome) do acervo do cliente (C3): passam por OCR (contexto pra copy)
@@ -253,9 +253,16 @@ def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | s
         return {"ok": False, "erro": f"site gerado mas falhou salvar asset: {e}"}
     if rels:
         _injetar(site_dir / "index.html", _galeria_html(rels, f"{nome} por dentro"))
-    if estilo:  # camada de acabamento (morfismo) por cima do tema do motor
-        import estilos as _est
-        _injetar(site_dir / "index.html", _est.bloco(estilo))
+    # ACABAMENTO (morfismo). Vazio = AUTOMÁTICO: escolhido por segmento+tier, com acento
+    # numa seção onde outro morfismo comunica melhor (ex: preço em brutalismo dentro de
+    # um site minimal). Estilo explícito da UI continua vencendo.
+    import estilos as _est
+    _auto = _est.escolher(nicho, tier=str(tier or ""), semente=_sem)
+    _principal = estilo or _auto["principal"]
+    _acento = {} if estilo else _auto["acento"]   # estilo manual = pele única, sem acento
+    if _bloco_est := _est.bloco(_principal, _acento):
+        _injetar(site_dir / "index.html", _bloco_est)
+    _est_desc = _auto["porque"] if not estilo else estilo
     try:
         with _db_noemi() as c:
             c.execute("INSERT INTO sites_gerados (cliente,segmento,slug,url,criado_em) VALUES (?,?,?,?,?)",
@@ -269,11 +276,11 @@ def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | s
         "autofill": autofill or {}, "final": {"nicho": nicho, "whatsapp": whatsapp,
                                               "publico": publico, "diferenciais": diferenciais},
         "fotos_enviadas": len(fotos), "fotos_gravadas": len(rels), "ocr": ocr_txt,
-        "estilo": estilo, "receita": receita, "segundos": round(_t.time() - t_inicio, 1),
+        "estilo": _est_desc, "receita": receita, "segundos": round(_t.time() - t_inicio, 1),
         "hero_foto": bool(foto and foto[0]), "hero_video": bool(video and video[0]),
         "copy_livre": bool((copy_livre or "").strip()),
     })
-    return {"ok": True, "url": url, "slug": slug, "fotos": len(rels), "estilo": estilo,
+    return {"ok": True, "url": url, "slug": slug, "fotos": len(rels), "estilo": _est_desc,
             "estrutura": receita.get("nome"), "estrutura_origem": receita.get("origem"),
             "ficha": ficha, "segundos": round(_t.time() - t_inicio, 1),
             "ocr": (ocr_txt[:180] + "…") if len(ocr_txt) > 180 else ocr_txt}

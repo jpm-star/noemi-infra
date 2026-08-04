@@ -196,15 +196,94 @@ CONCEITOS: dict[str, list[str]] = {
 }
 
 
-def css(estilo: str) -> str:
-    """CSS overlay do estilo. '' se não existir (degrada pro tema do motor)."""
-    return (ESTILOS.get((estilo or "").strip().lower()) or {}).get("css", "") or ""
+# ── ESCOLHA AUTOMÁTICA por segmento/tier + acento por seção ──────────────────────
+# Morfismo não é enfeite: cada um comunica uma coisa. Vidro/spatial = tecnologia e
+# leveza; neumorfismo/clay = suavidade e cuidado; brutalismo = preço e urgência;
+# minimal = sofisticação e autoridade; skeuomorph = tradição e solidez.
+#
+# `principal` veste a página; `acento` troca o morfismo SÓ na seção onde outro
+# comunica melhor (ex: preço em brutalismo grita a oferta dentro de um site minimal).
+# Máx 1 acento por perfil de propósito: 3 morfismos na mesma página viram bagunça.
+PERFIS: dict[str, dict] = {
+    "academia":    {"principal": "spatial",       "acento": {"preco": "brutalism"}},
+    "clinica":     {"principal": "neumorphism",   "acento": {"depo": "glassmorphism"}},
+    "salao":       {"principal": "claymorphism",  "acento": {"antes-depois": "glassmorphism"}},
+    "imobiliaria": {"principal": "minimal",       "acento": {"preco": "glassmorphism"}},
+    "advocacia":   {"principal": "minimal",       "acento": {"faq": "skeuomorphism"}},
+    "restaurante": {"principal": "maximal",       "acento": {"servicos": "glassmorphism"}},
+    "ecommerce":   {"principal": "liquid-glass",  "acento": {"preco": "brutalism"}},
+}
+# Tier ajusta a AMBIÇÃO visual: T1 é isca (tem que carregar rápido e ser óbvio);
+# T4 é apresentação com a Noemi junto (pode ousar). Motor único, densidade por tier.
+_TIER_PRINCIPAL = {"T1": "minimal", "T2": ""}  # '' = usa o do segmento
 
 
-def bloco(estilo: str) -> str:
-    """<style> pronto pra injetar no HTML gerado. '' quando não há estilo."""
-    c = css(estilo)
-    return f'\n<style data-jpos-estilo="{estilo}">/* estilo: {estilo} */{c}</style>' if c else ""
+def escolher(segmento: str, tier: str = "", semente: int = 0) -> dict:
+    """Morfismo automático: {principal, acento:{secao:morfismo}}. Sem dropdown.
+
+    T1 força minimal (isca: leve e direto). T2+ herda o perfil do segmento. `semente`
+    (id do lead) alterna o acento entre gerações do mesmo nicho — variedade sem virar
+    loteria: o principal, que dá a cara, permanece estável."""
+    # sem acento: o nicho vem escrito "clínica odontológica"/"salão", as chaves são ASCII
+    import unicodedata
+    seg = unicodedata.normalize("NFKD", (segmento or "").strip().lower())
+    seg = seg.encode("ascii", "ignore").decode()
+    perfil = None
+    for chave, p in PERFIS.items():
+        if chave in seg:
+            perfil = p
+            break
+    perfil = perfil or {"principal": "", "acento": {}}
+    t = (tier or "").strip().upper()
+    # T1 força minimal; T2/T3/T4 (ou tier vazio) herdam o perfil do segmento
+    principal = _TIER_PRINCIPAL.get(t) or perfil["principal"]
+    acentos = list((perfil.get("acento") or {}).items())
+    acento = dict([acentos[semente % len(acentos)]]) if acentos else {}
+    return {"principal": principal, "acento": acento,
+            "porque": f"{principal or 'tema do motor'} p/ {seg or 'genérico'}"
+                      f"{f' + {list(acento.values())[0]} em {list(acento)[0]}' if acento else ''}"}
+
+
+def css(estilo: str, escopo: str = "") -> str:
+    """CSS overlay do estilo. `escopo` = classe de seção (ex: 'preco') aplica SÓ nela.
+    '' se o estilo não existir (degrada pro tema do motor)."""
+    c = (ESTILOS.get((estilo or "").strip().lower()) or {}).get("css", "") or ""
+    if not c or not escopo:
+        return c
+    # prefixa cada seletor com section.<escopo> — o morfismo passa a valer só ali
+    esc = f"section.{escopo.strip().lstrip('.')}"
+    fora = []
+    for regra in c.split("}"):
+        if "{" not in regra:
+            continue
+        sel, _, corpo = regra.partition("{")
+        sel = sel.strip()
+        if not sel or sel.startswith("@") or sel == "body":
+            continue  # @media/body não fazem sentido escopados a uma seção
+        novos = []
+        for s in sel.split(","):
+            s = s.strip()
+            if not s:
+                continue
+            novos.append(esc if s in ("section", esc) else f"{esc} {s}")
+        fora.append(f"{esc}{corpo}}}" if sel == "section" else f"{', '.join(novos)}{{{corpo}}}")
+    return "\n".join(fora)
+
+
+def bloco(estilo: str, acento: dict | None = None) -> str:
+    """<style> pronto pra injetar. `acento` = {classe_da_secao: morfismo} aplica um
+    morfismo DIFERENTE só naquela seção (o acento vem depois, então vence na cascata).
+    '' quando não há nada a aplicar."""
+    partes = []
+    if c := css(estilo):
+        partes.append(f"/* principal: {estilo} */\n{c}")
+    for secao, est in (acento or {}).items():
+        if ca := css(est, escopo=secao):
+            partes.append(f"/* acento: {est} em .{secao} */\n{ca}")
+    if not partes:
+        return ""
+    marca = estilo + ("+" + "+".join(f"{k}:{v}" for k, v in (acento or {}).items()) if acento else "")
+    return f'\n<style data-jpos-estilo="{marca}">\n' + "\n".join(partes) + "\n</style>"
 
 
 def listar() -> list[dict]:
@@ -232,6 +311,28 @@ if __name__ == "__main__":  # self-check
         assert c and "{" in c, nome
         assert bloco(nome).startswith("\n<style") and nome in bloco(nome), nome
     assert css("GLASSMORPHISM") == css("glassmorphism")  # case-insensitive
+    # ESCOLHA AUTOMÁTICA (sem dropdown)
+    a = escolher("academia", "T2")
+    assert a["principal"] == "spatial" and a["acento"], a
+    assert escolher("clinica odontológica", "T3")["principal"] == "neumorphism"
+    # acento no nicho não pode furar o match (clínica/salão/imobiliária vêm acentuados)
+    assert escolher("clínica odontológica")["principal"] == "neumorphism"
+    assert escolher("salão de beleza")["principal"] == "claymorphism"
+    assert escolher("imobiliária")["principal"] == "minimal"
+    assert escolher("academia", "T1")["principal"] == "minimal", "T1 é isca: leve e direto"
+    assert escolher("loja de parafuso")["principal"] == "", "segmento fora do mapa = tema do motor"
+    # acento alterna com a semente, principal fica estável (variedade sem virar loteria)
+    assert escolher("academia", "T2", 0)["principal"] == escolher("academia", "T2", 5)["principal"]
+    # ESCOPO POR SEÇÃO: o CSS do acento só vale dentro da seção
+    esc = css("brutalism", escopo="preco")
+    assert "section.preco" in esc and "\nbody{" not in esc
+    assert all(l.startswith(("section.preco", "/*")) or "section.preco" in l
+               for l in esc.splitlines() if "{" in l), esc[:300]
+    # bloco com acento traz os dois, e o acento vem DEPOIS (vence na cascata)
+    b = bloco("minimal", {"preco": "brutalism"})
+    assert "principal: minimal" in b and "acento: brutalism em .preco" in b
+    assert b.index("acento:") > b.index("principal:")
+    assert bloco("", {}) == "" and bloco("", {"preco": "brutalism"}) != ""
     ls = listar()
     assert len(ls) == len(ESTILOS) and ls[0]["valor"] == ""  # padrão primeiro
     assert any("PRs" in x for x in conceitos("academia"))

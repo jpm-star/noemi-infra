@@ -508,7 +508,7 @@ async def criacao_gerar(nome: str = Form(...), nicho: str = Form(...), whatsapp:
                         video: UploadFile | None = File(None),
                         fotos: list[UploadFile] = File([]),
                         estilo: str = Form(""), autofill: str = Form(""),
-                        lead_id: int = Form(0)) -> JSONResponse:
+                        lead_id: int = Form(0), tier: str = Form("")) -> JSONResponse:
     import asyncio
 
     import criacao
@@ -525,7 +525,7 @@ async def criacao_gerar(nome: str = Form(...), nicho: str = Form(...), whatsapp:
     except ValueError:
         af = {}
     res = await asyncio.to_thread(criacao.gerar, nome, nicho, whatsapp, diferenciais,
-                                  publico, cor, 0, f, v, copy_livre, fs, estilo, af, lead_id)
+                                  publico, cor, 0, f, v, copy_livre, fs, estilo, af, lead_id, tier)
     return JSONResponse(res, status_code=200 if res.get("ok") else 422)
 
 
