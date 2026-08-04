@@ -180,7 +180,7 @@ def _ext(nome_arq: str, permitidos: set[str], padrao: str) -> str:
 def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | str = "",
           publico: str = "", cor: str = "", preset: int = 0,
           foto: tuple | None = None, video: tuple | None = None, copy_livre: str = "",
-          fotos: list[tuple] | None = None) -> dict:
+          fotos: list[tuple] | None = None, estilo: str = "") -> dict:
     """Dispara o motor REAL com o briefing. `foto`/`video` = (bytes, nome_arquivo) opcionais
     (PROMPT 2): salvos em <slug>/{img,vid} e embutidos no hero via contrato estendido do motor.
     `fotos` = lista (bytes, nome) do acervo do cliente (C3): passam por OCR (contexto pra copy)
@@ -240,6 +240,9 @@ def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | s
         return {"ok": False, "erro": f"site gerado mas falhou salvar asset: {e}"}
     if rels:
         _injetar(site_dir / "index.html", _galeria_html(rels, f"{nome} por dentro"))
+    if estilo:  # camada de acabamento (morfismo) por cima do tema do motor
+        import estilos as _est
+        _injetar(site_dir / "index.html", _est.bloco(estilo))
     try:
         with _db_noemi() as c:
             c.execute("INSERT INTO sites_gerados (cliente,segmento,slug,url,criado_em) VALUES (?,?,?,?,?)",
@@ -248,7 +251,7 @@ def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | s
             c.commit()
     except Exception:  # noqa: BLE001 — registro é secundário; o site já está no disco
         pass
-    return {"ok": True, "url": url, "slug": slug, "fotos": len(rels),
+    return {"ok": True, "url": url, "slug": slug, "fotos": len(rels), "estilo": estilo,
             "ocr": (ocr_txt[:180] + "…") if len(ocr_txt) > 180 else ocr_txt}
 
 

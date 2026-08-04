@@ -68,6 +68,9 @@ button.orf:hover{color:var(--txt);border-color:var(--cy)}
     <div><label>WhatsApp</label><input id="whatsapp" placeholder="14 99999-9999"></div>
     <div><label>Público-alvo</label><input id="publico" placeholder="ex: famílias da região"></div>
     <div><label>Cor primária (opcional)</label><input id="cor" placeholder="#00e6a2 ou vazio = tema"></div>
+    <div><label>🎨 Estilo visual <span class="hint">(acabamento por cima do tema)</span></label>
+      <select id="estilo" onchange="descEstilo()"></select>
+      <div class="hint" id="desest"></div></div>
   </div>
   <label>Diferenciais / conteúdo pesquisado <span class="hint">(uma linha cada — é isto que a IA usa pra escrever a copy)</span></label>
   <textarea id="diferenciais" placeholder="atendimento no mesmo dia&#10;aceita convênio&#10;20 anos de experiência"></textarea>
@@ -168,6 +171,7 @@ async function gerar(){
     fd.append("nome",nome);fd.append("nicho",nicho);
     fd.append("whatsapp",$("whatsapp").value);fd.append("publico",$("publico").value);
     fd.append("cor",$("cor").value);fd.append("diferenciais",$("diferenciais").value);
+    fd.append("estilo",$("estilo").value);
     fd.append("copy_livre",$("copy_livre").value);
     if($("foto").files[0])fd.append("foto",$("foto").files[0]);
     if($("video").files[0])fd.append("video",$("video").files[0]);
@@ -179,5 +183,18 @@ async function gerar(){
   }catch(e){$("res").innerHTML=`<div class="err">Erro de rede: ${esc(e.message)}</div>`;}
   $("btn").disabled=false;$("btn").textContent="🚀 Gerar site";
 }
-carregarLeads();carregarSites();
+// Estilos (morfismos): camada de acabamento trocável enquanto o JP ajusta a demo.
+let ESTILOS=[];
+async function carregarEstilos(){
+  try{const d=await(await fetch("/api/criacao/estilos")).json();
+    ESTILOS=d.estilos||[];
+    $("estilo").innerHTML=ESTILOS.map(e=>`<option value="${esc(e.valor)}">${esc(e.rotulo)}</option>`).join("");
+    descEstilo();
+  }catch(e){}
+}
+function descEstilo(){
+  const e=ESTILOS.find(x=>x.valor===$("estilo").value);
+  $("desest").textContent=e?e.desc:"";
+}
+carregarLeads();carregarSites();carregarEstilos();
 </script></body></html>

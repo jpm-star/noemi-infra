@@ -426,6 +426,13 @@ def criacao_lead(nome: str = "") -> JSONResponse:
     return JSONResponse(criacao.dados_lead(nome))
 
 
+@app.get("/api/criacao/estilos")
+def criacao_estilos(segmento: str = "") -> JSONResponse:
+    """Morfismos aplicáveis (camada de acabamento) + conceitos estruturais do segmento."""
+    import estilos
+    return JSONResponse({"estilos": estilos.listar(), "conceitos": estilos.conceitos(segmento)})
+
+
 @app.post("/api/criacao/apagar")
 def criacao_apagar(slug: str = Form(...)) -> JSONResponse:
     """C2 — apaga site (pasta + registro). Irreversível; confirmação é na UI."""
@@ -446,7 +453,8 @@ async def criacao_gerar(nome: str = Form(...), nicho: str = Form(...), whatsapp:
                         diferenciais: str = Form(""), publico: str = Form(""), cor: str = Form(""),
                         copy_livre: str = Form(""), foto: UploadFile | None = File(None),
                         video: UploadFile | None = File(None),
-                        fotos: list[UploadFile] = File([])) -> JSONResponse:
+                        fotos: list[UploadFile] = File([]),
+                        estilo: str = Form("")) -> JSONResponse:
     import asyncio
 
     import criacao
@@ -457,7 +465,7 @@ async def criacao_gerar(nome: str = Form(...), nicho: str = Form(...), whatsapp:
     fs = [(await u.read(), u.filename) for u in (fotos or []) if u and u.filename]
     # geração é pesada (LLM + template + deploy) — fora do event loop
     res = await asyncio.to_thread(criacao.gerar, nome, nicho, whatsapp, diferenciais,
-                                  publico, cor, 0, f, v, copy_livre, fs)
+                                  publico, cor, 0, f, v, copy_livre, fs, estilo)
     return JSONResponse(res, status_code=200 if res.get("ok") else 422)
 
 
