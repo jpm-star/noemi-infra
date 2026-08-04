@@ -414,6 +414,13 @@ def _bloco_balanceado(texto: str, i: int) -> str | None:
 
 def _extrair_json(texto: str) -> dict | None:
     texto = texto or ""
+    # Modelos de RACIOCÍNIO (qwen3.x, deepseek-r1...) emitem <think>…</think> antes da
+    # resposta. Esse bloco tem chaves e aspas, então o extrator guloso engolia o
+    # raciocínio no lugar do JSON e devolvia None — a análise virava "extrativo,
+    # score 0". Some com o raciocínio ANTES de procurar o objeto.
+    if "<think>" in texto:
+        texto = re.sub(r"<think>.*?</think>", "", texto, flags=re.S)
+        texto = re.sub(r"<think>.*$", "", texto, flags=re.S)  # truncado por max_tokens
     i = texto.find("{")
     if i < 0:
         return None

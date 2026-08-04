@@ -21,13 +21,17 @@ model_list:
   # POR MODELO: quando o llama-3.3-70b estoura, qwen3.6-27b e gpt-oss-120b ainda têm
   # cota inteira na mesma key. Sem isto, estourar o 70b matava a análise do dia toda
   # (era o bug dos 45 "score 0" do Radar: LLM fora, não vídeo ruim). Não custa nada.
+  # ORDEM IMPORTA: gpt-oss devolve JSON LIMPO. O qwen3.6 é modelo de RACIOCÍNIO —
+  # gasta os 2200 tokens inteiros dentro de <think> e nunca emite o JSON (medido:
+  # 7990 chars de raciocínio, think sem fechar, zero JSON). Serve pra visão/texto
+  # livre, NÃO pra saída estruturada. Por isso fica de fora desta cascata.
   - model_name: groq-modelo-b
     litellm_params:
-      model: groq/qwen/qwen3.6-27b
+      model: groq/openai/gpt-oss-120b
       api_key: os.environ/GROQ_API_KEY
   - model_name: groq-modelo-c
     litellm_params:
-      model: groq/openai/gpt-oss-120b
+      model: groq/openai/gpt-oss-20b
       api_key: os.environ/GROQ_API_KEY
   # fallback CROSS-PROVIDER: Claude (Anthropic) quando o Groq estoura o TPD DIÁRIO
   # (100k/dia por org, as 2 chaves Groq dividem o mesmo teto). O insight denso
