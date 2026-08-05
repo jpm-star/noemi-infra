@@ -914,7 +914,7 @@ def criar_pagina() -> str:
     return (_AQUI / "static" / "criar.html").read_text(encoding="utf-8")
 
 
-@app.get("/static/criar.js")
+@app.get("/obs/criar.js")
 def criar_js() -> Response:
     return Response((_AQUI / "static" / "criar.js").read_text(encoding="utf-8"),
                     media_type="application/javascript")
