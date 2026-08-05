@@ -33,6 +33,20 @@ model_list:
     litellm_params:
       model: groq/openai/gpt-oss-20b
       api_key: os.environ/GROQ_API_KEY
+  # HEALTH-CHECK dedicado: a pre-checagem de cota NAO pode gastar a cota de producao
+  # (checar se ha cota consumindo cota e o gato mordendo o rabo). Modelo minusculo,
+  # chamada de 5 tokens. Key propria quando o JP dedicar uma; ate la usa a principal,
+  # mas com modelo separado — o TPD e POR MODELO, entao ja isola o teto.
+  - model_name: health-check
+    litellm_params:
+      model: groq/llama-3.1-8b-instant
+      api_key: os.environ/GROQ_KEY_HEALTH
+  # MOTOR B (video imobiliario): reservado pra quando crescer. Fica com slot proprio
+  # desde ja pra o "depois" nao competir com o "agora" no dia em que ligar.
+  - model_name: motor-b-video
+    litellm_params:
+      model: groq/llama-3.3-70b-versatile
+      api_key: os.environ/GROQ_KEY_MOTOR_B
   # fallback CROSS-PROVIDER: Claude (Anthropic) quando o Groq estoura o TPD DIÁRIO
   # (100k/dia por org, as 2 chaves Groq dividem o mesmo teto). O insight denso
   # (10 campos) merece o modelo forte — não o 8b da Groq. O código do llm_proxy já

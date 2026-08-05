@@ -1,0 +1,7 @@
+[Unit]
+Description=Reprocessamento noturno do Radar (2h-6h, de hora em hora)
+[Timer]
+OnCalendar=*-*-* 02,03,04,05:17:00
+Persistent=true
+[Install]
+WantedBy=timers.target
