@@ -509,6 +509,23 @@ async def criacao_referencia_apagar(req: Request) -> JSONResponse:
     return JSONResponse(receitas.referencia_apagar(int((await req.json()).get("id") or 0)))
 
 
+@app.post("/api/criacao/validar-tier")
+async def criacao_validar_tier(req: Request) -> JSONResponse:
+    """Diagnóstico ANTES de gerar: o material sustenta o tier escolhido?"""
+    import tier_contrato
+    c = await req.json()
+    material = {k: c.get(k) for k in ("nome", "nicho", "whatsapp", "telefone", "cidade",
+                                      "diferenciais", "servicos", "email", "midia")}
+    return JSONResponse(tier_contrato.validar(c.get("tier", "T1"), material))
+
+
+@app.get("/api/criacao/escopo")
+def criacao_escopo(tier: str = "T1") -> JSONResponse:
+    """O que o motor executa naquele tier (cumulativo)."""
+    import tier_contrato
+    return JSONResponse({"tier": tier.upper(), "escopo": tier_contrato.escopo_de(tier)})
+
+
 @app.get("/api/criacao/estilos")
 def criacao_estilos(segmento: str = "") -> JSONResponse:
     """Morfismos aplicáveis (camada de acabamento) + conceitos estruturais do segmento."""

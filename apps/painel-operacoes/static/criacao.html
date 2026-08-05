@@ -16,6 +16,12 @@ h1{font-size:1.3rem}h2{font-size:1rem;margin:22px 0 10px;color:var(--mut)}
 .gap b{color:var(--ri)}
 .gap.ok{background:rgba(47,230,160,.08);border-color:rgba(47,230,160,.4);color:#a9f0cf}
 .gap.ok b,.gap.ok code{color:var(--op)}
+.falta{background:rgba(255,176,32,.10);border:1px solid rgba(255,176,32,.4);border-radius:11px;
+  padding:11px 14px;margin-top:12px;font-size:.82rem;color:#ffd28a;line-height:1.55}
+.falta b{color:var(--ri)}
+.falta li{margin:4px 0 0 4px;list-style:none}
+.contratoOk{background:rgba(47,230,160,.10);border:1px solid rgba(47,230,160,.4);border-radius:11px;
+  padding:10px 14px;margin-top:12px;font-size:.82rem;color:#a9f0cf}
 input[type=file]{padding:7px 9px;font-size:.82rem}
 input[type=file]::file-selector-button{background:#12233a;color:var(--cy);border:1px solid var(--line);border-radius:7px;padding:5px 10px;margin-right:9px;cursor:pointer}
 .card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:14px;padding:16px}
@@ -68,6 +74,14 @@ button.orf:hover{color:var(--txt);border-color:var(--cy)}
     <div><label>WhatsApp</label><input id="whatsapp" placeholder="14 99999-9999"></div>
     <div><label>Público-alvo</label><input id="publico" placeholder="ex: famílias da região"></div>
     <div><label>Cor primária (opcional)</label><input id="cor" placeholder="#00e6a2 ou vazio = tema"></div>
+    <div><label>🎯 Tier <span class="hint">(define o que o motor executa)</span></label>
+      <select id="tier" onchange="verEscopo()">
+        <option value="T1">T1 — landing + IA monitorando</option>
+        <option value="T2">T2 — + multi-página, SEO, AEO, GEO</option>
+        <option value="T3">T3 — + IA nativa, Calendar, e-mail</option>
+        <option value="T4">T4 — + painel do cliente</option>
+      </select>
+      <div class="hint" id="escopo"></div></div>
     <div><label>🎨 Estilo visual <span class="hint">(acabamento por cima do tema)</span></label>
       <select id="estilo" onchange="descEstilo()"></select>
       <div class="hint" id="desest"></div></div>
@@ -83,6 +97,7 @@ button.orf:hover{color:var(--txt);border-color:var(--cy)}
   <div class="hint" id="cfotos"></div>
   <label>✍️ Copy pronta do cliente <span class="hint">(opcional — sobrescreve a copy da IA; um parágrafo por linha)</span></label>
   <textarea id="copy_livre" placeholder="cole aqui o texto que o cliente já mandou pronto — vai literal no site"></textarea>
+  <div id="contrato"></div>
   <button class="gerar" id="btn" onclick="gerar()">🚀 Gerar site</button>
   <div id="res"></div>
 </div>
@@ -182,6 +197,7 @@ function contarFotos(){
 async function gerar(){
   const nome=$("nome").value.trim(), nicho=$("nicho").value.trim();
   if(!nome||!nicho){$("res").innerHTML='<div class="err">Empresa e nicho são obrigatórios.</div>';return;}
+  if(!CONTRATO.ok && !confirm(`${CONTRATO.mensagem}\n\nGerar assim mesmo?`)) return;
   $("btn").disabled=true;$("btn").textContent="⏳ gerando (IA + assets)…";
   $("res").innerHTML="";
   try{
@@ -191,7 +207,7 @@ async function gerar(){
     fd.append("cor",$("cor").value);fd.append("diferenciais",$("diferenciais").value);
     fd.append("estilo",$("estilo").value);
     fd.append("autofill",JSON.stringify(AUTOFILL));
-    fd.append("tier",TIER||"");  // ficha: autofill acertou ou foi corrigido?
+    fd.append("tier",$("tier").value||TIER||"");  // ficha: autofill acertou ou foi corrigido?
     fd.append("copy_livre",$("copy_livre").value);
     if($("foto").files[0])fd.append("foto",$("foto").files[0]);
     if($("video").files[0])fd.append("video",$("video").files[0]);
@@ -262,5 +278,31 @@ window.apagarRef=async id=>{
   if(!confirm("Apagar esta referência?"))return;
   await fetch("/api/criacao/referencia/apagar",{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({id:id})});carregarRefs();};
-carregarLeads();carregarSites();carregarEstilos();carregarRefs();
+async function verEscopo(){
+  const t=$("tier").value;
+  try{const d=await(await fetch("/api/criacao/escopo?tier="+t)).json();
+    $("escopo").innerHTML=`executa: ${d.escopo.map(esc).join(" · ")}`;}catch(e){}
+  validarTier();
+}
+// TIER COMO CONTRATO: valida ANTES de gerar. Entregar um "T2" que e um T1 com
+// etiqueta e pior que recusar — quem descobre depois e o cliente.
+let CONTRATO={ok:true};
+async function validarTier(){
+  const corpo={tier:$("tier").value,nome:$("nome").value,nicho:$("nicho").value,
+    whatsapp:$("whatsapp").value,cidade:(AUTOFILL.cidade||""),
+    diferenciais:$("diferenciais").value,servicos:$("diferenciais").value,
+    email:(AUTOFILL.email||""),midia:($("fotos").files||[]).length?["f"]:[]};
+  try{
+    const d=await(await fetch("/api/criacao/validar-tier",{method:"POST",
+      headers:{"Content-Type":"application/json"},body:JSON.stringify(corpo)})).json();
+    CONTRATO=d;
+    $("contrato").innerHTML = d.ok
+      ? `<div class="contratoOk">✅ ${esc(d.mensagem)}</div>`
+      : `<div class="falta"><b>⚠️ o material não sustenta ${esc(d.tier)}</b><br>${esc(d.mensagem)}
+         <ul>${d.faltas.map(f=>`<li>• <b>${esc(f.campo)}</b> — ${esc(f.porque)}</li>`).join("")}</ul></div>`;
+  }catch(e){}
+}
+["nome","nicho","whatsapp","diferenciais"].forEach(id=>{
+  const el=$(id); if(el) el.addEventListener("blur",validarTier);});
+carregarLeads();carregarSites();carregarEstilos();carregarRefs();verEscopo();
 </script></body></html>
