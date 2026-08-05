@@ -80,7 +80,13 @@ def escopo_de(tier: str) -> list[str]:
     return fora
 
 
-def validar(tier: str, material: dict) -> dict:
+# Requisitos que só existem DEPOIS da venda. Em modo demo eles não podem barrar:
+# o e-mail do cliente não existe antes de ele ser cliente, e exigir isso pra gerar uma
+# demo é pedir o que ninguém tem — o aviso vira parede em vez de ajuda.
+SO_NA_ENTREGA = {"email"}
+
+
+def validar(tier: str, material: dict, modo: str = "entrega") -> dict:
     """Diagnóstico ANTES de gerar.
 
     {ok, tier, escopo, faltas[], tier_sustentado, mensagem}
@@ -90,11 +96,15 @@ def validar(tier: str, material: dict) -> dict:
     t = (tier or "T1").strip().upper()
     if t not in ORDEM:
         t = "T1"
+    demo = (modo or "").strip().lower() == "demo"
     faltas: list[dict] = []
     for x in ORDEM:
         for campo, porque in REQUISITOS.get(x, []):
+            nome_campo = campo.split(":")[0]
+            if demo and nome_campo in SO_NA_ENTREGA:
+                continue          # demo não precisa do que só existe após a venda
             if not _tem(material, campo):
-                faltas.append({"tier": x, "campo": campo.split(":")[0], "porque": porque})
+                faltas.append({"tier": x, "campo": nome_campo, "porque": porque})
         if x == t:
             break
     # até onde o material aguenta

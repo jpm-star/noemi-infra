@@ -61,6 +61,22 @@ def _db_leads() -> sqlite3.Connection:
     return c
 
 
+# Linhas do CRM que são DADO DE CADASTRO, não diferencial do negócio. Sem este filtro,
+# "Reside em Araçatuba" ia parar na copy do site como qualidade da empresa (aconteceu
+# em 2026-08-05). É a regra de procedência aplicada na prática: o que foi INFERIDO do
+# garimpo não vira afirmação em primeira pessoa sobre o cliente.
+_CADASTRO_RX = re.compile(
+    r"^\s*(reside|mora|domicili|endere[çc]o|cep|cnpj|cpf|raz[ãa]o social|abertura|"
+    r"situa[çc][ãa]o cadastral|capital social|porte|natureza jur|s[óo]cio|"
+    r"telefone|whatsapp|e-?mail|site|instagram|fonte|origem|score|tier|cnae)\b",
+    re.I)
+
+
+def _e_dado_de_cadastro(linha: str) -> bool:
+    """True se a linha é ficha cadastral em vez de diferencial vendável."""
+    return bool(_CADASTRO_RX.match((linha or "").strip()))
+
+
 def dados_lead(nome: str) -> dict:
     """C1 — autofill: tudo que a pesquisa já sabe do lead vira briefing preenchido.
 
@@ -92,7 +108,7 @@ def dados_lead(nome: str) -> dict:
     for a in achados:
         for ln in a.splitlines():
             ln = " ".join(ln.split())
-            if len(ln) > 2 and ln.lower() not in vistos:
+            if len(ln) > 2 and ln.lower() not in vistos and not _e_dado_de_cadastro(ln):
                 vistos.add(ln.lower())
                 linhas.append(ln)
     return {
@@ -103,6 +119,10 @@ def dados_lead(nome: str) -> dict:
         "publico": f"clientes de {cidade}" if cidade else "",
         "diferenciais": "\n".join(linhas),
         "cidade": cidade,
+        # e-mail do CRM: existe em leads_alvo (garimpo). Vem vazio quando não foi
+        # capturado — a tela mostra vazio em vez de o validador pedir um campo
+        # que não existia em lugar nenhum (era uma parede intransponível).
+        "email": (la.get("email") or "").strip(),
         "tier": (tp.get("tier") or la.get("tier_sugerido") or "").strip(),
         "fonte": "tracker" if tp else "leads-alvo",
     }
@@ -316,7 +336,7 @@ def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | s
           foto: tuple | None = None, video: tuple | None = None, copy_livre: str = "",
           fotos: list[tuple] | None = None, estilo: str = "",
           autofill: dict | None = None, lead_id: int = 0, tier: str = "",
-          receita_nome: str = "") -> dict:
+          receita_nome: str = "", cidade: str = "", email: str = "") -> dict:
     """Dispara o motor REAL com o briefing. `foto`/`video` = (bytes, nome_arquivo) opcionais
     (PROMPT 2): salvos em <slug>/{img,vid} e embutidos no hero via contrato estendido do motor.
     `fotos` = lista (bytes, nome) do acervo do cliente (C3): passam por OCR (contexto pra copy)
@@ -351,6 +371,7 @@ def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | s
     briefing = {"nome_empresa": nome, "nicho": nicho.strip(), "whatsapp": (whatsapp or "").strip(),
                 "diferenciais": diferenciais, "publico": (publico or "").strip(),
                 "cor_primaria": (cor or "").strip() or None,
+                "cidade": (cidade or "").strip(), "email": (email or "").strip(),
                 # ESTRUTURA: ordem das seções + tipo de hero (vazio = default do motor)
                 "receita_ordem": receita.get("ordem") or [],
                 "receita_hero": receita.get("hero") or ""}

@@ -72,6 +72,9 @@ button.orf:hover{color:var(--txt);border-color:var(--cy)}
   </div>
   <div class="row">
     <div><label>WhatsApp</label><input id="whatsapp" placeholder="14 99999-9999"></div>
+    <div><label>Cidade</label><input id="cidade" placeholder="Araçatuba - SP"></div>
+    <div><label>E-mail do cliente <span class="hint">(só entrega; demo não precisa)</span></label>
+      <input id="email" placeholder="contato@cliente.com.br"></div>
     <div><label>Público-alvo</label><input id="publico" placeholder="ex: famílias da região"></div>
     <div><label>Cor primária (opcional)</label><input id="cor" placeholder="#00e6a2 ou vazio = tema"></div>
     <div><label>🎯 Tier <span class="hint">(define o que o motor executa)</span></label>
@@ -144,16 +147,38 @@ async function autofill(){
   try{
     const d=await(await fetch("/api/criacao/lead?nome="+encodeURIComponent(nome))).json();
     if(!d||!d.achou){$("af").textContent="";return;}
-    const posto=[];
+    const posto=[], divergentes=[];
     for(const [id,val] of [["nicho",d.nicho],["whatsapp",d.whatsapp],["publico",d.publico],
+                           ["cidade",d.cidade],["email",d.email],
                            ["diferenciais",d.diferenciais]]){
-      if(val&&!$(id).value.trim()){$(id).value=val;posto.push(id);AUTOFILL[id]=val;}
+      if(!val) continue;
+      const atual=$(id).value.trim();
+      if(!atual){ $(id).value=val; posto.push(id); AUTOFILL[id]=val; }
+      else if(atual!==val.trim()){ divergentes.push([id,val]); }   // CRM diverge do que está na tela
     }
+    // O dado velho NÃO vence calado: quando o CRM diverge, oferece a troca campo a
+    // campo. Antes só aparecia "campos já estavam preenchidos" e o melhor dado sumia.
+    window.__DIVERG=divergentes;
     TIER=d.tier||"";
     $("af").innerHTML=posto.length
       ? `✅ autopreenchido de <b>${esc(d.fonte)}</b>${d.tier?" · "+esc(d.tier):""}: ${posto.join(", ")} <span class="hint">(edite por cima se quiser)</span>`
-      : `ℹ️ lead achado em ${esc(d.fonte)}, mas os campos já estavam preenchidos`;
+      : `ℹ️ lead achado em ${esc(d.fonte)}`;
+    if(divergentes.length){
+      $("af").innerHTML += `<div class="hint" style="margin-top:6px">
+        ⚠️ o CRM tem valor DIFERENTE em ${divergentes.length} campo(s):
+        ${divergentes.map(([id,v])=>
+          `<button type="button" class="bt cp" style="margin:3px 4px 0 0;font-size:.76rem"
+             onclick="usarDoCRM('${esc(id)}')">${esc(id)} → ${esc(String(v).slice(0,34))}</button>`).join("")}
+        <span style="opacity:.7">(clique pra usar o do CRM; ignorar mantém o seu)</span></div>`;
+    }
   }catch(e){}
+}
+function usarDoCRM(id){
+  const par=(window.__DIVERG||[]).find(([k])=>k===id);
+  if(!par) return;
+  $(id).value=par[1]; AUTOFILL[id]=par[1];
+  window.__DIVERG=(window.__DIVERG||[]).filter(([k])=>k!==id);
+  autofill();
 }
 $("nome").addEventListener("change",autofill);
 $("nome").addEventListener("blur",autofill);
@@ -207,6 +232,8 @@ async function gerar(){
     fd.append("cor",$("cor").value);fd.append("diferenciais",$("diferenciais").value);
     fd.append("estilo",$("estilo").value);
     fd.append("autofill",JSON.stringify(AUTOFILL));
+    fd.append("cidade",$("cidade").value.trim());
+    fd.append("email",$("email").value.trim());
     fd.append("tier",$("tier").value||TIER||"");  // ficha: autofill acertou ou foi corrigido?
     fd.append("copy_livre",$("copy_livre").value);
     if($("foto").files[0])fd.append("foto",$("foto").files[0]);
@@ -230,7 +257,9 @@ async function gerar(){
         }catch(e){ $("res").innerHTML += `<div class="err" style="margin-top:8px">falhou devolver o link: ${esc(e.message)}</div>`; }
       }
     }
-    else $("res").innerHTML=`<div class="err">Falhou: ${esc(d.erro||"erro")}</div>`;
+    else $("res").innerHTML=`<div class="err">Falhou: ${esc(d.erro||"erro")}
+      <div class="hint" style="margin-top:6px;opacity:.85">Seu formulário e os arquivos
+      subidos foram PRESERVADOS — é só clicar em gerar de novo. Não recarregue a página.</div></div>`;
   }catch(e){$("res").innerHTML=`<div class="err">Erro de rede: ${esc(e.message)}</div>`;}
   $("btn").disabled=false;$("btn").textContent="🚀 Gerar site";
 }
