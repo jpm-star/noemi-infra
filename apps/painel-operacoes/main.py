@@ -535,6 +535,14 @@ async def criacao_validar_tier(req: Request) -> JSONResponse:
     return JSONResponse(tier_contrato.validar(c.get("tier", "T1"), material))
 
 
+@app.get("/api/studio/galeria")
+def studio_galeria() -> JSONResponse:
+    """STUDIO #2 — galeria: sites com o que o preview não mostra (seções, cores) e
+    quantos OUTROS sites saíram do mesmo esqueleto."""
+    import galeria
+    return JSONResponse(galeria.listar())
+
+
 @app.get("/api/criacao/escopo")
 def criacao_escopo(tier: str = "T1") -> JSONResponse:
     """O que o motor executa naquele tier (cumulativo)."""
@@ -802,6 +810,13 @@ def leads_pagina() -> str:
 @app.get("/obs/criacao", response_class=HTMLResponse)
 def criacao_pagina() -> str:
     return (_AQUI / "static" / "criacao.html").read_text(encoding="utf-8")
+
+
+@app.get("/obs/studio", response_class=HTMLResponse)
+def studio_pagina() -> str:
+    """Studio: briefing (ingestão + tier como contrato) e galeria com preview.
+    Sobe POR CIMA da Criação de site, que segue no ar intacta em /obs/criacao."""
+    return (_AQUI / "static" / "studio.html").read_text(encoding="utf-8")
 
 
 @app.get("/obs/prospeccao", response_class=HTMLResponse)
