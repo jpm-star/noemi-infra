@@ -85,6 +85,59 @@ def _marcar_visto(url: str, fonte: str, resultado: str, blocos: int, segmento: s
 
 # Texto que denuncia o ramo do site. Só title+h1: é onde o negócio se nomeia; corpo
 # inteiro traria menu e rodapé e casaria segmento errado.
+# Termos por segmento, EN + PT. `receitas._ALIAS` é só português — por isso galeria
+# internacional caía em "generico": site em inglês nunca casa "dentista", e escanear
+# mais texto sozinho não resolveria. Aqui o vocabulário é bilíngue.
+_TERMOS_SEG: dict[str, tuple[str, ...]] = {
+    "clinica": ("dental", "dentist", "orthodont", "clinic", "medical", "health", "doctor",
+                "therapy", "physio", "psycholog", "aesthetic", "veterinar", "wellness",
+                "odonto", "dentista", "clinica", "cl\u00ednica", "saude", "sa\u00fade", "fisio",
+                "estetica", "est\u00e9tica", "veterin", "psicolog"),
+    "salao": ("salon", "barber", "hair", "beauty", "nails", "manicure", "spa", "makeup",
+              "salao", "sal\u00e3o", "beleza", "cabelei", "barbear"),
+    "academia": ("gym", "fitness", "crossfit", "workout", "training", "pilates", "yoga",
+                 "academia", "musculacao", "muscula\u00e7\u00e3o", "personal trainer"),
+    "imobiliaria": ("real estate", "realty", "property", "properties", "apartment",
+                    "housing", "broker", "imobili", "im\u00f3ve", "imove", "corretor", "aluguel"),
+    "advocacia": ("law firm", "lawyer", "attorney", "legal", "accounting", "accountant",
+                  "advoc", "advogad", "juridic", "jur\u00eddic", "contabil", "contador"),
+    "petshop": ("pet shop", "petshop", "grooming", "pet care", "banho e tosa", "agropet"),
+    "restaurante": ("restaurant", "menu", "cuisine", "dining", "cafe", "coffee", "bakery",
+                    "pizzeria", "restaurante", "card\u00e1pio", "cardapio", "lanchonete",
+                    "padaria", "pizzaria"),
+    "servicos": ("agency", "consulting", "studio", "services", "solutions", "software",
+                 "marketing", "design", "agencia", "ag\u00eancia", "consultoria", "servicos",
+                 "servi\u00e7os"),
+}
+_MIN_PONTOS = 3   # 1 menção solta (rodapé, menu) não define ramo; 3 já é o assunto
+
+
+def _texto_visivel(html: str) -> str:
+    """Texto do corpo sem tag/script/style. Base do keyword-match — custo zero, nenhuma
+    chamada de LLM (mesma restrição do detector de title/h1)."""
+    corpo = html[html.lower().find("<body"):] if "<body" in html.lower() else (html or "")
+    corpo = re.sub(r"<(script|style|svg|noscript)\b.*?</\1>", " ", corpo, flags=re.S | re.I)
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", corpo)).lower()[:60000]
+
+
+def _segmento_por_conteudo(html: str) -> str:
+    """Segmento pelo CONTEÚDO da página, por frequência de termos.
+
+    Pontua por CONTAGEM, não por primeira ocorrência: página que diz "dental" 12 vezes
+    é clínica; a que diz uma vez no rodapé não é. Abaixo do mínimo => '' (o chamador
+    cai em 'generico')."""
+    texto = _texto_visivel(html)
+    if not texto:
+        return ""
+    pontos = {seg: sum(texto.count(t) for t in termos)
+              for seg, termos in _TERMOS_SEG.items()}
+    pontos = {k: v for k, v in pontos.items() if v}
+    if not pontos:
+        return ""
+    melhor, n = max(pontos.items(), key=lambda kv: kv[1])
+    return melhor if n >= _MIN_PONTOS else ""
+
+
 def _segmento_do_html(html: str) -> str:
     import receitas
     pedacos = []
@@ -142,7 +195,13 @@ def de_url(url: str, segmento: str = "", tag: str = "", aprovada: bool = False,
     ordem = _blocos_do_html(html or "")
     # segmento vazio = DETECTA do HTML já baixado (sem 2ª requisição, sem LLM).
     # Também melhora o botão manual, que hoje obriga escolher o segmento na mão.
-    seg = (segmento or "").strip() or _segmento_do_html(html or "") or "generico"
+    # CADEIA DE INFERÊNCIA (custo zero, sem LLM): title/h1 é o sinal mais confiável;
+    # depois o conteúdo do corpo (bilíngue); só então 'generico'. Antes o conteúdo nem
+    # era consultado e 25 de 57 referências caíam em generico.
+    seg = ((segmento or "").strip()
+           or _segmento_do_html(html or "")
+           or _segmento_por_conteudo(html or "")
+           or "generico")
     if len(ordem) < 3:
         _marcar_visto(url, fonte, "rasa", len(ordem), seg)
         return {"ok": False, "url": url, "ordem": ordem, "segmento": seg,
@@ -204,6 +263,56 @@ def de_galeria(galeria: str, segmento: str = "", limite: int = 12,
 
 
 
+# ── FONTES DO CRM ────────────────────────────────────────────────────────────────
+# Sugestão do próprio job: as referências que mais valeram vieram daqui, não das
+# galerias internacionais — é o mercado REAL que o JP vende, e o segmento sai certo
+# sem depender de inferência. Mesma `de_url`, mesma tabela de dedup.
+FONTES_CRM = ("leads_t3t4", "leads_clinicas")
+
+
+def _urls_do_crm(tabela: str, limite: int) -> list[tuple[str, str]]:
+    """[(url, segmento)] do CRM. O segmento vem da CATEGORIA cadastrada — dado curado,
+    melhor que qualquer inferência de HTML."""
+    import receitas
+    from criacao import _db_leads
+    fora: list[tuple[str, str]] = []
+    try:
+        with _db_leads() as c:
+            cols = {r[1] for r in c.execute(f"PRAGMA table_info({tabela})")}
+            if "website" not in cols:
+                return []
+            cat = "categoria" if "categoria" in cols else "nome"
+            for site, categoria, nome in c.execute(
+                    f"SELECT website, {cat}, nome FROM {tabela} "
+                    f"WHERE website LIKE 'http%' ORDER BY rowid DESC LIMIT ?",
+                    (max(1, limite * 6),)):
+                seg = receitas.segmento_de(f"{categoria or ''} {nome or ''}")
+                fora.append((site.strip(), seg))
+    except Exception:  # noqa: BLE001 — tabela ausente não derruba a rodada
+        return []
+    return fora
+
+
+def de_crm(tabela: str, limite: int = 10, aprovada: bool = True) -> dict:
+    """Sites REAIS do CRM viram referência. Mesmo pipeline das galerias."""
+    pares = _urls_do_crm(tabela, limite)
+    if not pares:
+        return {"ok": True, "galeria": tabela, "tentadas": 0, "salvas": 0,
+                "referencias": [], "descartadas": [], "sem_novidade": True}
+    ja = _vistas()
+    novos = [(u, seg) for u, seg in pares if u not in ja][:max(1, limite)]
+    if not novos:
+        return {"ok": True, "galeria": tabela, "tentadas": 0, "salvas": 0,
+                "referencias": [], "descartadas": [], "sem_novidade": True,
+                "ja_vistos": len(pares)}
+    fora = [de_url(u, seg, aprovada=aprovada, fonte=tabela) for u, seg in novos]
+    bons = [r for r in fora if r.get("ok")]
+    return {"ok": True, "galeria": tabela, "tentadas": len(fora), "salvas": len(bons),
+            "sem_novidade": False, "referencias": bons,
+            "descartadas": [{"url": r["url"], "motivo": r["motivo"]}
+                            for r in fora if not r.get("ok")][:8]}
+
+
 # ── RODADA SEMANAL (cron) ────────────────────────────────────────────────────────
 LOG = Path(os.environ.get("NOEMI_DATA_DIR", str(_AQUI.parents[1] / "data"))) / "pool.log"
 
@@ -218,9 +327,12 @@ def rodada_semanal(limite_por_fonte: int = 10) -> dict:
     from datetime import datetime, timezone
     inicio = datetime.now(timezone.utc)
     por_fonte, por_segmento, erros = {}, Counter(), []
-    for fonte in GALERIAS:
+    # CRM primeiro: fonte de melhor qualidade (segmento curado) e do mercado real do
+    # JP. Galeria internacional entra depois, como complemento de estrutura.
+    for fonte in (*FONTES_CRM, *GALERIAS):
         try:
-            r = de_galeria(fonte, segmento="", limite=limite_por_fonte, aprovada=True)
+            r = (de_crm(fonte, limite_por_fonte) if fonte in FONTES_CRM
+                 else de_galeria(fonte, segmento="", limite=limite_por_fonte, aprovada=True))
         except Exception as e:  # noqa: BLE001 — uma fonte fora não derruba a rodada
             erros.append(f"{fonte}: {type(e).__name__}")
             por_fonte[fonte] = {"salvas": 0, "erro": type(e).__name__}
