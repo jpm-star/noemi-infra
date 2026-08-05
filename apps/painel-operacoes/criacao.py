@@ -10,6 +10,7 @@ CONTRATO REAL DO MOTOR (lido de builder_web.py + app/pipeline.py, não assumido)
 """
 from __future__ import annotations
 
+import hashlib
 import html as html_mod
 import os
 import re
@@ -177,11 +178,52 @@ def _ext(nome_arq: str, permitidos: set[str], padrao: str) -> str:
     return e if e in permitidos else padrao
 
 
+def _semente(nome: str, lead_id: int = 0) -> int:
+    """Semente ESTÁVEL da escolha automática (estrutura + acento de morfismo).
+
+    hash() do Python é randomizado por processo — usar ele faria a estrutura mudar a
+    cada regeração do MESMO site (péssimo pra iterar numa demo). md5 do nome é estável
+    entre processos, então o preview do Studio mostra o que a geração vai fazer de
+    verdade. É por isso que isto é uma função e não duas linhas repetidas: preview e
+    geração TÊM que usar a mesma conta, senão o preview mente."""
+    return lead_id or (int(hashlib.md5((nome or "").encode()).hexdigest()[:8], 16) % 997)
+
+
+def modelos(nicho: str = "", tier: str = "", nome: str = "", lead_id: int = 0) -> dict:
+    """STUDIO #2 — galeria SELECIONÁVEL: 9 morfismos + estruturas do segmento, com o
+    que o motor escolheria sozinho já marcado como `auto`.
+
+    Preview honesto: o CSS de cada morfismo vem de `estilos.css()` — o MESMO que seria
+    injetado no site. E as estruturas vêm de `receitas.pool()`, o mesmo pool do sorteio.
+    Preview que renderiza de outra fonte mente no dia em que o motor muda."""
+    import estilos as _est
+    import receitas as _rec
+    sem = _semente(nome, lead_id)
+    auto_e = _est.escolher(nicho, tier=str(tier or ""), semente=sem)
+    auto_r = _rec.escolher(nicho, semente=sem)
+    # `css` = o que iria pro site. `css_preview` = o mesmo, ESCOPADO numa seção, pra
+    # renderizar o cartão de amostra sem o morfismo vazar e repintar o painel inteiro.
+    estilos_ = [{**e, "css": _est.css(e["valor"]),
+                 "css_preview": _est.css(e["valor"], escopo=f"pv-{e['valor']}"),
+                 "auto": e["valor"] == auto_e["principal"]}
+                for e in _est.listar()]
+    acento = auto_e.get("acento") or {}
+    receitas_ = [{"nome": r["nome"], "ordem": r.get("ordem") or [], "hero": r.get("hero", ""),
+                  "porque": r.get("porque", ""), "origem": r.get("origem", ""),
+                  "auto": r["nome"] == auto_r["nome"]}
+                 for r in _rec.pool(nicho)]
+    return {"segmento": _rec.segmento_de(nicho), "estilos": estilos_, "receitas": receitas_,
+            "auto": {"estilo": auto_e["principal"], "porque": auto_e["porque"],
+                     "acento": acento, "receita": auto_r["nome"]},
+            "conceitos": _est.conceitos(nicho)}
+
+
 def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | str = "",
           publico: str = "", cor: str = "", preset: int = 0,
           foto: tuple | None = None, video: tuple | None = None, copy_livre: str = "",
           fotos: list[tuple] | None = None, estilo: str = "",
-          autofill: dict | None = None, lead_id: int = 0, tier: str = "") -> dict:
+          autofill: dict | None = None, lead_id: int = 0, tier: str = "",
+          receita_nome: str = "") -> dict:
     """Dispara o motor REAL com o briefing. `foto`/`video` = (bytes, nome_arquivo) opcionais
     (PROMPT 2): salvos em <slug>/{img,vid} e embutidos no hero via contrato estendido do motor.
     `fotos` = lista (bytes, nome) do acervo do cliente (C3): passam por OCR (contexto pra copy)
@@ -204,8 +246,15 @@ def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | s
     import receitas as _rec
     # semente ESTÁVEL: hash() do Python é randomizado por processo — usar ele faria a
     # estrutura mudar a cada regeração do MESMO site (péssimo pra iterar numa demo).
-    _sem = lead_id or (int(__import__("hashlib").md5(nome.encode()).hexdigest()[:8], 16) % 997)
-    receita = _rec.escolher(nicho, semente=_sem)
+    _sem = _semente(nome, lead_id)
+    # STUDIO #2: o JP pode ESCOLHER a estrutura na galeria; vazio segue automático.
+    # Nome que não existe no pool cai no automático em vez de gerar site sem ordem.
+    receita = next((r for r in _rec.pool(nicho) if r["nome"] == receita_nome.strip()),
+                   None) if receita_nome.strip() else None
+    if receita:  # pool() devolve ordem CRUA; escolher() normaliza — a mão precisa também
+        receita = {**receita,
+                   "ordem": _rec._norm_ordem(receita.get("ordem")) or _rec.ORDEM_DEFAULT}
+    receita = receita or _rec.escolher(nicho, semente=_sem)
     briefing = {"nome_empresa": nome, "nicho": nicho.strip(), "whatsapp": (whatsapp or "").strip(),
                 "diferenciais": diferenciais, "publico": (publico or "").strip(),
                 "cor_primaria": (cor or "").strip() or None,
@@ -466,6 +515,28 @@ if __name__ == "__main__":  # self-check offline (sem gerar site real, sem rede)
     assert slugs["bom-site"]["status"] == "no ar" and slugs["ruim-site"]["status"] == "stub"
     # gerar valida obrigatórios sem chamar o motor
     assert gerar("", "x")["ok"] is False
+    # STUDIO #2 — galeria selecionável: preview usa a MESMA fonte da geração
+    assert _semente("Clínica X") == _semente("Clínica X")          # estável entre chamadas
+    assert _semente("Clínica X", 42) == 42                          # lead_id manda
+    m = modelos("clínica odontológica", "T1", "Clínica X")
+    assert len(m["estilos"]) >= 9 and all(e.get("css") is not None for e in m["estilos"])
+    # o CSS do preview é ESCOPADO: nenhuma regra solta que repinte o painel
+    for e in m["estilos"]:
+        if e["css_preview"]:
+            assert f"pv-{e['valor']}" in e["css_preview"], e["valor"]
+            assert not re.search(r"(^|\})\s*body\s*\{", e["css_preview"]), e["valor"]
+    autos = [e for e in m["estilos"] if e["auto"]]
+    assert len(autos) == 1 and autos[0]["valor"] == m["auto"]["estilo"], autos
+    assert autos[0]["valor"] == "minimal", autos  # T1 força minimal (isca leve)
+    ra = [r for r in m["receitas"] if r["auto"]]
+    assert len(ra) == 1 and ra[0]["nome"] == m["auto"]["receita"], ra
+    assert all(r["ordem"] for r in m["receitas"]), m["receitas"]
+    # o auto do preview é EXATAMENTE o que a geração escolheria (mesma semente)
+    import receitas as _rc
+    assert _rc.escolher("clínica odontológica",
+                        semente=_semente("Clínica X"))["nome"] == m["auto"]["receita"]
+    # nicho desconhecido não explode nem inventa estrutura
+    assert modelos("xyzsegmento")["receitas"], "pool sempre devolve ao menos a default"
     # C2 — trava de segurança do apagar: traversal/absoluto/vazio NUNCA viram path
     globals()["SITES_DIR"] = d
     for mau in ("../etc", "..", "", "/", "a/../../b", "/etc/passwd", "."):

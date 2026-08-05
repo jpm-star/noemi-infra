@@ -535,6 +535,15 @@ async def criacao_validar_tier(req: Request) -> JSONResponse:
     return JSONResponse(tier_contrato.validar(c.get("tier", "T1"), material))
 
 
+@app.get("/api/studio/modelos")
+def studio_modelos(nicho: str = "", tier: str = "", nome: str = "",
+                   lead_id: int = 0) -> JSONResponse:
+    """STUDIO #2 — galeria selecionável (9 morfismos + estruturas do segmento) com o
+    que o motor escolheria sozinho marcado. O CSS vem da mesma fonte da geração."""
+    import criacao
+    return JSONResponse(criacao.modelos(nicho, tier, nome, lead_id))
+
+
 @app.get("/api/studio/galeria")
 def studio_galeria() -> JSONResponse:
     """STUDIO #2 — galeria: sites com o que o preview não mostra (seções, cores) e
@@ -579,7 +588,8 @@ async def criacao_gerar(nome: str = Form(...), nicho: str = Form(...), whatsapp:
                         video: UploadFile | None = File(None),
                         fotos: list[UploadFile] = File([]),
                         estilo: str = Form(""), autofill: str = Form(""),
-                        lead_id: int = Form(0), tier: str = Form("")) -> JSONResponse:
+                        lead_id: int = Form(0), tier: str = Form(""),
+                        receita_nome: str = Form("")) -> JSONResponse:
     import asyncio
 
     import criacao
@@ -596,7 +606,8 @@ async def criacao_gerar(nome: str = Form(...), nicho: str = Form(...), whatsapp:
     except ValueError:
         af = {}
     res = await asyncio.to_thread(criacao.gerar, nome, nicho, whatsapp, diferenciais,
-                                  publico, cor, 0, f, v, copy_livre, fs, estilo, af, lead_id, tier)
+                                  publico, cor, 0, f, v, copy_livre, fs, estilo, af, lead_id, tier,
+                                  receita_nome)
     return JSONResponse(res, status_code=200 if res.get("ok") else 422)
 
 

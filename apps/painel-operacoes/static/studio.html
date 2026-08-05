@@ -98,6 +98,33 @@ textarea{min-height:110px;resize:vertical}
 .p.inferido{background:rgba(180,83,9,.15);color:var(--warn)}
 .p.gerado{background:rgba(124,58,237,.14);color:#6d28d9}
 .vazio2{color:var(--mut);font-size:.9rem;padding:26px 0;text-align:center}
+
+/* ---- STUDIO #2: galeria de modelos selecionável ---- */
+.passo{font-size:.72rem;font-weight:800;letter-spacing:.1em;color:var(--esmeralda-esc);
+  margin:20px 0 8px;display:flex;align-items:center;gap:8px}
+.passo::after{content:"";flex:1;height:1px;background:var(--line)}
+.modelos{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:11px}
+.mod{cursor:pointer;border:2px solid transparent;border-radius:15px;padding:4px;
+  background:rgba(255,255,255,.5);transition:.15s;position:relative}
+.mod:hover{background:rgba(255,255,255,.8)}
+.mod.on{border-color:var(--esmeralda);background:rgba(5,150,105,.09)}
+.mod .rot{font-size:.79rem;font-weight:700;padding:5px 7px 2px;line-height:1.2}
+.mod .dsc{font-size:.68rem;color:var(--mut);padding:0 7px 6px;line-height:1.3;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.mod .flag{position:absolute;top:7px;right:7px;font-size:.6rem;font-weight:800;
+  background:var(--esmeralda);color:#fff;padding:2px 7px;border-radius:9px;letter-spacing:.05em}
+/* caixa de amostra: o morfismo é aplicado AQUI dentro (CSS escopado pelo backend) */
+.amostra{height:86px;border-radius:11px;overflow:hidden;background:#f4f7f5;
+  display:flex;align-items:center;justify-content:center;padding:11px}
+.amostra .peca{font-size:.72rem;font-weight:700;padding:9px 15px;border-radius:10px;
+  background:#fff;color:#0f2f24;border:1px solid rgba(6,95,70,.14)}
+/* wireframe da estrutura: a ORDEM das seções desenhada */
+.wf{display:flex;flex-direction:column;gap:3px;height:86px;padding:9px;justify-content:center}
+.wf i{display:block;background:rgba(5,150,105,.26);border-radius:3px;height:7px}
+.wf i.hero{height:15px;background:rgba(5,150,105,.5)}
+.wf i.meio{width:72%}.wf i.curto{width:46%}
+.ordem{font-size:.66rem;color:var(--mut);padding:0 7px 6px;line-height:1.3;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 </style></head><body>
 
 <div class="top">
@@ -110,7 +137,7 @@ textarea{min-height:110px;resize:vertical}
 
 <div class="abas">
   <div class="aba on" data-p="galeria" onclick="aba('galeria')">Galeria</div>
-  <div class="aba" data-p="briefing" onclick="aba('briefing')">Briefing</div>
+  <div class="aba" data-p="briefing" onclick="aba('briefing')">Criar</div>
 </div>
 
 <!-- ===================== GALERIA ===================== -->
@@ -122,11 +149,18 @@ textarea{min-height:110px;resize:vertical}
 <!-- ===================== BRIEFING ==================== -->
 <div class="painel" id="p-briefing">
   <div class="form">
+    <div class="passo">1 · CLIENTE E TIER</div>
     <div class="linha">
-      <div><label>Nome do negócio</label><input id="b-nome" placeholder="Clínica Aurea"></div>
-      <div><label>Site atual (opcional)</label><input id="b-site" placeholder="https://…"></div>
-      <div><label>Tier vendido</label><select id="b-tier">
+      <div><label>Nome do negócio</label><input id="b-nome" placeholder="Clínica Aurea"
+        oninput="modelosDebounce()"></div>
+      <div><label>Nicho</label><input id="b-nicho" placeholder="clínica odontológica"
+        oninput="modelosDebounce()"></div>
+      <div><label>Tier vendido</label><select id="b-tier" onchange="carregarModelos()">
         <option>T1</option><option>T2</option><option>T3</option><option>T4</option></select></div>
+    </div>
+    <div class="linha">
+      <div><label>WhatsApp</label><input id="b-wa" placeholder="5514999999999"></div>
+      <div><label>Site atual (opcional)</label><input id="b-site" placeholder="https://…"></div>
     </div>
     <div class="linha">
       <div><label>Fotos recebidas</label><input id="b-fotos" type="number" min="0" value="0"></div>
@@ -139,6 +173,20 @@ textarea{min-height:110px;resize:vertical}
       <button class="btn sec" onclick="verEscopo()">Ver escopo do tier</button>
     </div>
     <div class="diag" id="b-res"></div>
+  </div>
+
+  <div class="form">
+    <div class="passo">2 · MODELO VISUAL <span id="m-auto" style="font-weight:600;
+      letter-spacing:0;text-transform:none;color:var(--mut);font-size:.75rem"></span></div>
+    <div class="modelos" id="m-estilos"><div class="vazio2">diz o nicho pra ver os modelos</div></div>
+    <div class="passo">ESTRUTURA DA PÁGINA</div>
+    <div class="modelos" id="m-receitas"></div>
+    <div class="passo">3 · GERAR</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button class="btn" onclick="gerarSite()">Gerar site com esse modelo</button>
+      <span id="g-sel" style="font-size:.78rem;color:var(--mut)"></span>
+    </div>
+    <div class="diag" id="g-res"></div>
   </div>
 </div>
 
@@ -234,6 +282,72 @@ async function verEscopo(){
   const d=await(await fetch("/api/criacao/escopo?tier="+encodeURIComponent(t))).json();
   $("b-res").innerHTML=`<div class="ok"><b>${esc(d.tier)} executa ${
     (d.escopo||[]).length} entregas:</b><br>${(d.escopo||[]).map(esc).join(" · ")}</div>`;
+}
+
+/* ---------- STUDIO #2 — modelo visual escolhível, preview ANTES de gerar ----------
+   O que torna o preview honesto: o CSS de cada morfismo e a ordem de cada estrutura
+   vêm do backend, das MESMAS funções que a geração usa (estilos.css / receitas.pool).
+   Amostra desenhada à mão no front seria bonita e mentirosa no dia que o motor mudar. */
+let MOD=null, selEstilo=null, selReceita=null, tmr=0;
+function modelosDebounce(){ clearTimeout(tmr); tmr=setTimeout(carregarModelos,450); }
+async function carregarModelos(){
+  const nicho=$("b-nicho").value.trim();
+  if(!nicho){ $("m-estilos").innerHTML='<div class="vazio2">diz o nicho pra ver os modelos</div>';
+    $("m-receitas").innerHTML=""; return; }
+  const q=new URLSearchParams({nicho,tier:$("b-tier").value,nome:$("b-nome").value.trim()});
+  try{ MOD=await(await fetch("/api/studio/modelos?"+q)).json(); }
+  catch(e){ $("m-estilos").innerHTML=`<div class="vazio2">falhou: ${esc(e.message)}</div>`; return; }
+  // CSS de amostra de TODOS os morfismos numa tag só, já escopado pelo backend
+  let tag=document.getElementById("css-modelos");
+  if(!tag){ tag=document.createElement("style"); tag.id="css-modelos"; document.head.appendChild(tag); }
+  tag.textContent=MOD.estilos.map(e=>e.css_preview||"").join("\n");
+  const a=MOD.auto, ac=Object.entries(a.acento||{})[0];
+  $("m-auto").textContent=`— automático: ${a.estilo||"tema do motor"}`
+    +(ac?` com ${ac[1]} em ${ac[0]}`:"")+` · estrutura "${a.receita}" · segmento ${MOD.segmento||"genérico"}`;
+  $("m-estilos").innerHTML=MOD.estilos.map(e=>`
+    <div class="mod${(selEstilo===e.valor)?" on":""}" data-e="${esc(e.valor)}"
+         onclick="pickEstilo('${esc(e.valor)}')">
+      ${e.auto?'<span class="flag">AUTO</span>':""}
+      <section class="amostra pv-${esc(e.valor)}"><div class="peca">${esc(e.rotulo)}</div></section>
+      <div class="rot">${esc(e.rotulo)}</div><div class="dsc">${esc(e.desc||"")}</div>
+    </div>`).join("");
+  $("m-receitas").innerHTML=MOD.receitas.map(r=>`
+    <div class="mod${(selReceita===r.nome)?" on":""}" onclick="pickReceita('${esc(r.nome)}')">
+      ${r.auto?'<span class="flag">AUTO</span>':""}
+      <div class="wf">${r.ordem.map((s,i)=>
+        `<i class="${i===0?"hero":(i%3===1?"meio":(i%3===2?"curto":""))}" title="${esc(s)}"></i>`).join("")}</div>
+      <div class="rot">${esc(r.nome)}</div>
+      <div class="ordem">${esc(r.ordem.join(" › "))}</div>
+    </div>`).join("");
+  mostrarSel();
+}
+function pickEstilo(v){ selEstilo=(selEstilo===v)?null:v; carregarModelos(); }
+function pickReceita(v){ selReceita=(selReceita===v)?null:v; carregarModelos(); }
+function mostrarSel(){
+  const e=selEstilo===null?"automático":(selEstilo||"tema do motor");
+  const r=selReceita===null?"automática":selReceita;
+  $("g-sel").textContent=`pele: ${e} · estrutura: ${r}`
+    +((selEstilo!==null||selReceita!==null)?" (escolha manual)":"");
+}
+async function gerarSite(){
+  const nome=$("b-nome").value.trim(), nicho=$("b-nicho").value.trim();
+  if(!nome||!nicho){ $("g-res").innerHTML='<div class="err">Nome e nicho são obrigatórios.</div>'; return; }
+  $("g-res").innerHTML='<div class="ok">gerando… (motor real: copy por LLM + template + deploy)</div>';
+  const fd=new FormData();
+  fd.append("nome",nome); fd.append("nicho",nicho);
+  fd.append("whatsapp",$("b-wa").value.trim()); fd.append("tier",$("b-tier").value);
+  fd.append("copy_livre",""); fd.append("diferenciais","");
+  if(selEstilo!==null) fd.append("estilo",selEstilo);
+  if(selReceita!==null) fd.append("receita_nome",selReceita);
+  let d;
+  try{ d=await(await fetch("/api/criacao/gerar",{method:"POST",body:fd})).json(); }
+  catch(e){ $("g-res").innerHTML=`<div class="err">erro de rede: ${esc(e.message)}</div>`; return; }
+  if(!d.ok){ $("g-res").innerHTML=`<div class="err">${esc(d.erro||"falhou")}</div>`; return; }
+  $("g-res").innerHTML=`<div class="ok"><b>Pronto:</b>
+    <a href="${esc(d.url)}" target="_blank" rel="noopener">${esc(d.url)}</a><br>
+    pele: ${esc(d.estilo||"—")} · estrutura: ${esc(d.estrutura||"—")}
+    (${esc(d.estrutura_origem||"—")}) · ${d.fotos||0} foto(s)</div>`;
+  carregarGaleria();  // a galeria já mostra o novo com preview
 }
 
 carregarGaleria();
