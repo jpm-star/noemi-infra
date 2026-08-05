@@ -535,6 +535,15 @@ async def criacao_validar_tier(req: Request) -> JSONResponse:
     return JSONResponse(tier_contrato.validar(c.get("tier", "T1"), material))
 
 
+@app.get("/api/studio/operacao")
+def studio_operacao() -> JSONResponse:
+    """STUDIO #4 — o que acontece DEPOIS do site: conversão real, meta por tier,
+    canal por cliente e custo (só do que está instrumentado). Lê o mesmo CRM de
+    /obs/prospeccao, não duplica dado."""
+    import operacao
+    return JSONResponse({**operacao.resumo(), "lista": operacao.sites_com_lead()})
+
+
 @app.get("/api/studio/modelos")
 def studio_modelos(nicho: str = "", tier: str = "", nome: str = "",
                    lead_id: int = 0) -> JSONResponse:
