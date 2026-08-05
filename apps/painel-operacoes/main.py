@@ -509,6 +509,22 @@ async def criacao_referencia_apagar(req: Request) -> JSONResponse:
     return JSONResponse(receitas.referencia_apagar(int((await req.json()).get("id") or 0)))
 
 
+@app.post("/api/criacao/ingerir")
+async def criacao_ingerir(req: Request) -> JSONResponse:
+    """INGESTÃO TOTAL: site atual + formulário + CRM num briefing só, com procedência.
+    Não gera nada — devolve o material consolidado pro JP conferir antes."""
+    import asyncio
+
+    import ingestao
+    c = await req.json()
+    res = await asyncio.to_thread(  # buscar site é I/O de rede
+        ingestao.consolidar, nome=str(c.get("nome") or ""),
+        site_url=str(c.get("site_url") or ""), formulario=str(c.get("formulario") or ""),
+        fotos=int(c.get("fotos") or 0), videos=int(c.get("videos") or 0),
+        usar_crm=bool(c.get("usar_crm", True)))
+    return JSONResponse(res)
+
+
 @app.post("/api/criacao/validar-tier")
 async def criacao_validar_tier(req: Request) -> JSONResponse:
     """Diagnóstico ANTES de gerar: o material sustenta o tier escolhido?"""
