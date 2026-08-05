@@ -216,7 +216,20 @@ async function gerar(){
     const d=await r.json();
     if(d.ok){$("res").innerHTML=`<div class="ok">✅ Publicado: <a href="${esc(d.url)}" target="_blank" rel="noopener">${esc(d.url)}</a>`+
       `<div class="hint" style="margin-top:6px;color:#a9f0cf">estrutura: <b>${esc(d.estrutura||"default")}</b> (${esc(d.estrutura_origem||"default")})`+
-      ` · ${d.fotos||0} fotos · ${d.segundos||"?"}s · ficha: <code>${esc(d.ficha||"—")}</code></div></div>`;carregarSites();}
+      ` · ${d.fotos||0} fotos · ${d.segundos||"?"}s · ficha: <code>${esc(d.ficha||"—")}</code></div></div>`;
+      carregarSites();
+      // CICLO FECHADO: veio de um card => o link volta pro lead sozinho, sem copiar e colar
+      if(LEAD_PROSPECT && LEAD_PROSPECT.prospect_id){
+        try{
+          const rr=await(await fetch(`/api/studio/lead/${LEAD_PROSPECT.prospect_id}/demo`,
+            {method:"POST",headers:{"content-type":"application/json"},
+             body:JSON.stringify({url:d.url})})).json();
+          $("res").innerHTML += rr.ok
+            ? `<div class="ok" style="margin-top:8px">🔗 link já está no card do lead #${LEAD_PROSPECT.prospect_id} na Prospecção</div>`
+            : `<div class="err" style="margin-top:8px">não consegui devolver o link pro card: ${esc(rr.erro||"erro")}</div>`;
+        }catch(e){ $("res").innerHTML += `<div class="err" style="margin-top:8px">falhou devolver o link: ${esc(e.message)}</div>`; }
+      }
+    }
     else $("res").innerHTML=`<div class="err">Falhou: ${esc(d.erro||"erro")}</div>`;
   }catch(e){$("res").innerHTML=`<div class="err">Erro de rede: ${esc(e.message)}</div>`;}
   $("btn").disabled=false;$("btn").textContent="🚀 Gerar site";
@@ -305,4 +318,40 @@ async function validarTier(){
 ["nome","nicho","whatsapp","diferenciais"].forEach(id=>{
   const el=$(id); if(el) el.addEventListener("blur",validarTier);});
 carregarLeads();carregarSites();carregarEstilos();carregarRefs();verEscopo();
+
+/* ENTRADA PELO CARD DA PROSPECÇÃO (?lead=<prospect_id>) — JP trabalha AQUI.
+   Studio e Criação são duas telas vivas (a Criação não foi demolida, por decisão do
+   dono), então o botão do card aponta pra cá. Mesma fonte de dados do Studio:
+   /api/studio/lead/<id>, com procedência INFERIDO no que veio do CRM. */
+let LEAD_PROSPECT = null;
+async function carregarLeadDoCard(){
+  const id = new URLSearchParams(location.search).get("lead");
+  if(!id) return;
+  let d;
+  try{ d = await (await fetch(`/api/studio/lead/${encodeURIComponent(id)}`)).json(); }
+  catch(e){ return; }
+  if(!d || !d.achou){ $("af").textContent = "lead não encontrado no CRM"; return; }
+  LEAD_PROSPECT = d;
+  const c = d.campos || {};
+  // só preenche campo VAZIO — mesma regra do autofill: o que o operador digitou vence
+  for(const [id_, val] of [["nome",c.nome],["nicho",c.nicho],["whatsapp",c.whatsapp],
+                           ["publico",c.publico],["diferenciais",c.diferenciais]]){
+    if(val && $(id_) && !$(id_).value.trim()) $(id_).value = val;
+  }
+  if(d.tier && $("tier")){ $("tier").value = d.tier; TIER = d.tier; verEscopo(); }
+  const extra = [];
+  if(d.decisor) extra.push(`Decisor (QSA): ${d.decisor}`);
+  if(d.razao_social) extra.push(`Razão social: ${d.razao_social}`);
+  if(d.cnpj) extra.push(`CNPJ: ${d.cnpj}`);
+  if(d.achado) extra.push(`Achado da prospecção: ${d.achado}`);
+  if(extra.length && $("copy_livre") && !$("copy_livre").value.trim())
+    $("copy_livre").value = extra.join("\n");
+  $("af").innerHTML = `✅ <b>lead #${d.prospect_id}</b> carregado do CRM `
+    + `(campos marcados como <b>inferido</b> — o que você subir vence)`
+    + (d.decisor ? ` · decisor <b>${esc(d.decisor)}</b>` : " · sem decisor no QSA")
+    + (d.ingerir_site && d.site_atual ? ` · site atual: <code>${esc(d.site_atual)}</code>` : "")
+    + (d.fala ? `<div class="hint" style="margin-top:6px"><b>FALE ISTO:</b> ${esc(d.fala)}</div>` : "");
+}
+carregarLeadDoCard();
+
 </script></body></html>
