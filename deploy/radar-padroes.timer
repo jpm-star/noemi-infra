@@ -1,0 +1,7 @@
+[Unit]
+Description=Checa padrao 3x (2x por dia)
+[Timer]
+OnCalendar=*-*-* 09,18:30:00
+Persistent=true
+[Install]
+WantedBy=timers.target

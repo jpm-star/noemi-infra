@@ -1,0 +1,458 @@
+<!doctype html><html lang="pt-BR"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Studio — JPOS</title>
+<style>
+:root{
+  --bg:#eef4f1;--bg2:#dbeae3;
+  --glass:rgba(255,255,255,.62);--glass-borda:rgba(255,255,255,.85);
+  --esmeralda:#059669;--esmeralda-esc:#065f46;--esmeralda-cl:#10b981;
+  --ink:#0f2f24;--mut:#40695c;
+  --line:rgba(6,95,70,.16);--warn:#b45309;--bad:#b91c1c}
+*{box-sizing:border-box;margin:0}
+body{
+  background:
+    radial-gradient(820px 420px at 88% -8%,rgba(16,185,129,.30),transparent 62%),
+    radial-gradient(680px 400px at 5% 8%,rgba(5,150,105,.16),transparent 60%),
+    linear-gradient(170deg,var(--bg),var(--bg2));
+  background-attachment:fixed;
+  color:var(--ink);font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  padding:18px 14px 60px;max-width:1180px;margin:0 auto}
+a{color:var(--esmeralda-esc);text-decoration:none;font-weight:600}
+.top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+h1{font-size:1.45rem;letter-spacing:-.02em}
+.sub{color:var(--mut);font-size:.85rem;margin:2px 0 16px}
+.abas{display:flex;gap:7px;margin-bottom:16px;flex-wrap:wrap}
+.aba{cursor:pointer;font-size:.85rem;padding:7px 16px;border-radius:20px;
+  background:rgba(255,255,255,.66);border:1px solid var(--glass-borda);color:var(--mut);
+  font-weight:600;transition:.15s;backdrop-filter:blur(8px)}
+.aba:hover{border-color:var(--esmeralda);color:var(--esmeralda-esc)}
+.aba.on{background:var(--esmeralda);color:#fff;border-color:var(--esmeralda)}
+.painel{display:none}.painel.on{display:block}
+
+/* placar */
+.placar{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:18px}
+.meta{background:var(--glass);backdrop-filter:blur(16px) saturate(150%);
+  -webkit-backdrop-filter:blur(16px) saturate(150%);border:1px solid var(--glass-borda);
+  border-radius:16px;padding:12px 15px;position:relative;overflow:hidden;
+  box-shadow:0 4px 18px rgba(6,95,70,.09)}
+.meta .t{font-size:.72rem;color:var(--mut);font-weight:700;letter-spacing:.06em}
+.meta .n{font-size:1.6rem;font-weight:800;letter-spacing:-.03em;margin-top:2px}
+.meta .d{font-size:.72rem;color:var(--mut)}
+
+/* grade da galeria */
+.grade{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px}
+.card{background:var(--glass);backdrop-filter:blur(18px) saturate(150%);
+  -webkit-backdrop-filter:blur(18px) saturate(150%);
+  border:1px solid var(--glass-borda);border-radius:18px;overflow:hidden;
+  box-shadow:0 6px 24px rgba(6,95,70,.10);
+  transition:transform .2s cubic-bezier(.16,1,.3,1),box-shadow .2s;display:flex;flex-direction:column}
+.card:hover{transform:translateY(-3px);box-shadow:0 16px 40px rgba(6,95,70,.20)}
+/* PREVIEW: o site de verdade, escalado. Sem screenshot => nunca fica velho. */
+.shot{position:relative;height:232px;overflow:hidden;background:#fff;
+  border-bottom:1px solid var(--line);flex:none}
+.shot iframe{position:absolute;top:0;left:0;width:1280px;height:892px;border:0;
+  transform:scale(.26);transform-origin:top left;pointer-events:none}
+.shot .vazio{display:flex;height:100%;align-items:center;justify-content:center;
+  color:var(--mut);font-size:.82rem;background:repeating-linear-gradient(45deg,
+    rgba(6,95,70,.04) 0 10px,transparent 10px 20px)}
+.shot .selo{position:absolute;top:8px;right:8px;font-size:.68rem;font-weight:800;
+  padding:3px 9px;border-radius:12px;background:rgba(5,150,105,.92);color:#fff;
+  letter-spacing:.04em;box-shadow:0 2px 8px rgba(0,0,0,.18)}
+.shot .selo.stub{background:rgba(185,28,28,.92)}
+.shot .selo.orfao{background:rgba(180,83,9,.92)}
+.corpo{padding:13px 15px 15px;display:flex;flex-direction:column;gap:7px;flex:1}
+.nome{font-weight:700;font-size:1.02rem;letter-spacing:-.01em;line-height:1.25}
+.chamada{color:var(--mut);font-size:.82rem;line-height:1.4;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.secs{display:flex;flex-wrap:wrap;gap:4px;margin-top:1px}
+.sec{font-size:.68rem;padding:2px 8px;border-radius:10px;background:rgba(5,150,105,.12);
+  color:var(--esmeralda-esc);font-weight:600;border:1px solid rgba(6,95,70,.14)}
+.cores{display:flex;gap:4px;align-items:center}
+.cores i{width:14px;height:14px;border-radius:4px;border:1px solid rgba(0,0,0,.12);display:inline-block}
+.rodape{display:flex;justify-content:space-between;align-items:center;gap:8px;
+  margin-top:auto;padding-top:8px;border-top:1px solid var(--line);font-size:.76rem;color:var(--mut)}
+.aviso{font-size:.74rem;color:var(--warn);font-weight:700}
+.btn{cursor:pointer;font:inherit;font-size:.78rem;font-weight:700;padding:5px 12px;border-radius:14px;
+  border:1px solid var(--esmeralda);background:var(--esmeralda);color:#fff}
+.btn.sec{background:transparent;color:var(--esmeralda-esc)}
+.btn:hover{filter:brightness(1.06)}
+
+/* briefing */
+.form{background:var(--glass);backdrop-filter:blur(16px);border:1px solid var(--glass-borda);
+  border-radius:18px;padding:16px 18px;box-shadow:0 6px 24px rgba(6,95,70,.10);margin-bottom:14px}
+label{display:block;font-size:.76rem;font-weight:700;color:var(--mut);letter-spacing:.04em;margin:10px 0 3px}
+input,textarea,select{width:100%;background:rgba(255,255,255,.78);border:1px solid var(--glass-borda);
+  color:var(--ink);border-radius:12px;padding:9px 13px;font:inherit;font-size:.88rem}
+textarea{min-height:110px;resize:vertical}
+.linha{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+.diag{margin-top:14px}
+.ok{background:rgba(5,150,105,.12);border-left:4px solid var(--esmeralda);
+  padding:11px 14px;border-radius:12px;font-size:.87rem}
+.err{background:rgba(180,83,9,.13);border-left:4px solid var(--warn);
+  padding:11px 14px;border-radius:12px;font-size:.87rem}
+.falta{font-size:.8rem;color:var(--ink);margin:5px 0 0 2px}
+.falta b{color:var(--warn)}
+.proc{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.p{font-size:.7rem;padding:2px 9px;border-radius:10px;font-weight:700}
+.p.real{background:rgba(5,150,105,.16);color:var(--esmeralda-esc)}
+.p.inferido{background:rgba(180,83,9,.15);color:var(--warn)}
+.p.gerado{background:rgba(124,58,237,.14);color:#6d28d9}
+.vazio2{color:var(--mut);font-size:.9rem;padding:26px 0;text-align:center}
+
+/* ---- STUDIO #2: galeria de modelos selecionável ---- */
+.passo{font-size:.72rem;font-weight:800;letter-spacing:.1em;color:var(--esmeralda-esc);
+  margin:20px 0 8px;display:flex;align-items:center;gap:8px}
+.passo::after{content:"";flex:1;height:1px;background:var(--line)}
+.modelos{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:11px}
+.mod{cursor:pointer;border:2px solid transparent;border-radius:15px;padding:4px;
+  background:rgba(255,255,255,.5);transition:.15s;position:relative}
+.mod:hover{background:rgba(255,255,255,.8)}
+.mod.on{border-color:var(--esmeralda);background:rgba(5,150,105,.09)}
+.mod .rot{font-size:.79rem;font-weight:700;padding:5px 7px 2px;line-height:1.2}
+.mod .dsc{font-size:.68rem;color:var(--mut);padding:0 7px 6px;line-height:1.3;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.mod .flag{position:absolute;top:7px;right:7px;font-size:.6rem;font-weight:800;
+  background:var(--esmeralda);color:#fff;padding:2px 7px;border-radius:9px;letter-spacing:.05em}
+/* caixa de amostra: o morfismo é aplicado AQUI dentro (CSS escopado pelo backend) */
+.amostra{height:86px;border-radius:11px;overflow:hidden;background:#f4f7f5;
+  display:flex;align-items:center;justify-content:center;padding:11px}
+.amostra .peca{font-size:.72rem;font-weight:700;padding:9px 15px;border-radius:10px;
+  background:#fff;color:#0f2f24;border:1px solid rgba(6,95,70,.14)}
+/* wireframe da estrutura: a ORDEM das seções desenhada */
+.wf{display:flex;flex-direction:column;gap:3px;height:86px;padding:9px;justify-content:center}
+.wf i{display:block;background:rgba(5,150,105,.26);border-radius:3px;height:7px}
+.wf i.hero{height:15px;background:rgba(5,150,105,.5)}
+.wf i.meio{width:72%}.wf i.curto{width:46%}
+.ordem{font-size:.66rem;color:var(--mut);padding:0 7px 6px;line-height:1.3;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+</style></head><body>
+
+<div class="top">
+  <div>
+    <h1>Studio</h1>
+    <div class="sub">Briefing com procedência e tier como contrato · galeria com preview ao vivo.
+      A <a href="/obs/criacao">Criação de site</a> atual segue no ar, intacta.</div>
+  </div>
+</div>
+
+<div class="abas">
+  <div class="aba on" data-p="galeria" onclick="aba('galeria')">Galeria</div>
+  <div class="aba" data-p="briefing" onclick="aba('briefing')">Criar</div>
+  <div class="aba" data-p="operacao" onclick="aba('operacao');carregarOperacao()">Operação</div>
+</div>
+
+<!-- ===================== GALERIA ===================== -->
+<div class="painel on" id="p-galeria">
+  <div class="placar" id="placar"></div>
+  <div class="grade" id="grade"><div class="vazio2">carregando…</div></div>
+</div>
+
+<!-- ===================== BRIEFING ==================== -->
+<div class="painel" id="p-briefing">
+  <div class="form">
+    <div class="passo">1 · CLIENTE E TIER</div>
+    <div class="linha">
+      <div><label>Nome do negócio</label><input id="b-nome" placeholder="Clínica Aurea"
+        oninput="modelosDebounce()"></div>
+      <div><label>Nicho</label><input id="b-nicho" placeholder="clínica odontológica"
+        oninput="modelosDebounce()"></div>
+      <div><label>Tier vendido</label><select id="b-tier" onchange="carregarModelos()">
+        <option>T1</option><option>T2</option><option>T3</option><option>T4</option></select></div>
+    </div>
+    <div class="linha">
+      <div><label>WhatsApp</label><input id="b-wa" placeholder="5514999999999"></div>
+      <div><label>Site atual (opcional)</label><input id="b-site" placeholder="https://…"></div>
+    </div>
+    <div class="linha">
+      <div><label>Fotos recebidas</label><input id="b-fotos" type="number" min="0" value="0"></div>
+      <div><label>Vídeos recebidos</label><input id="b-videos" type="number" min="0" value="0"></div>
+    </div>
+    <label>Formulário do cliente (cola a resposta crua)</label>
+    <textarea id="b-form" placeholder="Nome da empresa: …&#10;Segmento: …&#10;Cidade: …&#10;WhatsApp: …"></textarea>
+    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" onclick="ingerir()">Consolidar briefing</button>
+      <button class="btn sec" onclick="verEscopo()">Ver escopo do tier</button>
+    </div>
+    <div class="diag" id="b-res"></div>
+  </div>
+
+  <div class="form">
+    <div class="passo">2 · MODELO VISUAL <span id="m-auto" style="font-weight:600;
+      letter-spacing:0;text-transform:none;color:var(--mut);font-size:.75rem"></span></div>
+    <div class="modelos" id="m-estilos"><div class="vazio2">diz o nicho pra ver os modelos</div></div>
+    <div class="passo">ESTRUTURA DA PÁGINA</div>
+    <div class="modelos" id="m-receitas"></div>
+    <div class="passo">3 · GERAR</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button class="btn" onclick="gerarSite()">Gerar site com esse modelo</button>
+      <span id="g-sel" style="font-size:.78rem;color:var(--mut)"></span>
+    </div>
+    <div class="diag" id="g-res"></div>
+  </div>
+</div>
+
+<!-- ===================== OPERAÇÃO (#4) ==================== -->
+<div class="painel" id="p-operacao">
+  <div class="placar" id="o-placar"></div>
+  <div class="passo">META DO MÊS · 10 POR TIER</div>
+  <div id="o-tiers" class="modelos"></div>
+  <div class="passo">SITE → LEAD → CANAL</div>
+  <div style="overflow-x:auto"><table id="o-tab" style="width:100%;border-collapse:collapse;
+    font-size:.83rem"></table></div>
+  <div class="passo">CUSTO POR INSUMO</div>
+  <div id="o-custos"></div>
+</div>
+
+<script>
+const $=i=>document.getElementById(i);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function aba(n){
+  document.querySelectorAll(".aba").forEach(a=>a.classList.toggle("on",a.dataset.p===n));
+  document.querySelectorAll(".painel").forEach(p=>p.classList.toggle("on",p.id==="p-"+n));
+}
+
+/* ---------- GALERIA ---------- */
+function selo(s){
+  if(s.status==="stub")return '<span class="selo stub">STUB</span>';
+  if(String(s.status).startsWith("órfão"))return '<span class="selo orfao">SEM ARQUIVO</span>';
+  return '<span class="selo">NO AR</span>';
+}
+function shot(s){
+  // preview = o site de verdade, na mesma origem, escalado. loading=lazy: só carrega
+  // o que entra na tela, senão 40 sites = 40 páginas baixadas de uma vez.
+  if(String(s.status).startsWith("órfão"))
+    return '<div class="vazio">registro sem arquivo em disco</div>';
+  return `<iframe src="${esc(s.url)}" loading="lazy" sandbox="allow-scripts"
+            title="preview de ${esc(s.slug)}" tabindex="-1" aria-hidden="true"></iframe>`;
+}
+async function carregarGaleria(){
+  let d;
+  try{ d=await(await fetch("/api/studio/galeria")).json(); }
+  catch(e){ $("grade").innerHTML=`<div class="vazio2">falhou carregar: ${esc(e.message)}</div>`; return; }
+  const S=d.sites||[];
+  $("placar").innerHTML=`
+    <div class="meta"><div class="t">SITES</div><div class="n">${d.total}</div>
+      <div class="d">${S.filter(x=>x.status==="no ar").length} no ar</div></div>
+    <div class="meta"><div class="t">ESTRUTURAS</div><div class="n">${d.estruturas_distintas}</div>
+      <div class="d">esqueletos diferentes</div></div>
+    <div class="meta"><div class="t">DIVERSIDADE</div><div class="n">${d.diversidade}%</div>
+      <div class="d">${d.repetidos} repetindo esqueleto</div></div>`;
+  if(!S.length){ $("grade").innerHTML='<div class="vazio2">nenhum site gerado ainda</div>'; return; }
+  $("grade").innerHTML=S.map(s=>`<div class="card">
+    <div class="shot">${shot(s)}${selo(s)}</div>
+    <div class="corpo">
+      <div class="nome">${esc(s.titulo||s.cliente||s.slug)}</div>
+      ${s.chamada?`<div class="chamada">${esc(s.chamada)}</div>`:""}
+      <div class="secs">${(s.secoes||[]).map(x=>`<span class="sec">${esc(x)}</span>`).join("")||
+        '<span class="sec">sem seções detectadas</span>'}</div>
+      ${(s.cores||[]).length?`<div class="cores">${s.cores.map(c=>
+        `<i style="background:${esc(c)}" title="${esc(c)}"></i>`).join("")}</div>`:""}
+      <div class="rodape">
+        <span>${esc(s.segmento||"—")} · ${s.kb||0}kb${
+          s.iguais>0?` · <span class="aviso">mesmo esqueleto de ${s.iguais}</span>`:""}</span>
+        <a class="btn sec" href="${esc(s.url)}" target="_blank" rel="noopener">abrir ↗</a>
+      </div>
+    </div></div>`).join("");
+}
+
+/* ---------- BRIEFING (ingestão + tier como contrato) ---------- */
+function proc(p){
+  const r=[];for(const [k,v] of Object.entries(p||{})) if(v) r.push(
+    `<span class="p ${esc(v)}">${esc(k)}: ${esc(v)}</span>`);
+  return r.length?`<div class="proc">${r.join("")}</div>`:"";
+}
+async function ingerir(){
+  const nome=$("b-nome").value.trim();
+  if(!nome){ $("b-res").innerHTML='<div class="err">Diz o nome do negócio primeiro.</div>'; return; }
+  $("b-res").innerHTML='<div class="ok">consolidando… (buscando site atual, se houver)</div>';
+  const corpo={nome,site_url:$("b-site").value.trim(),formulario:$("b-form").value,
+               fotos:+$("b-fotos").value||0,videos:+$("b-videos").value||0,usar_crm:true};
+  let d;
+  try{ d=await(await fetch("/api/criacao/ingerir",{method:"POST",
+        headers:{"content-type":"application/json"},body:JSON.stringify(corpo)})).json(); }
+  catch(e){ $("b-res").innerHTML=`<div class="err">erro de rede: ${esc(e.message)}</div>`; return; }
+  const m=d.material||{};
+  // o mesmo material vai pro contrato de tier: sustenta o que o JP vendeu?
+  let v={};
+  try{ v=await(await fetch("/api/criacao/validar-tier",{method:"POST",
+        headers:{"content-type":"application/json"},
+        body:JSON.stringify({...m,tier:$("b-tier").value})})).json(); }
+  catch(e){ v={mensagem:"não deu pra validar o tier: "+e.message,faltas:[]}; }
+  const fontes=(d.fontes||[]).map(f=>
+    `${f.ok?"✓":"✗"} ${esc(f.tipo)}${f.erro?" — "+esc(f.erro):""}`).join(" · ");
+  $("b-res").innerHTML=`
+    <div class="${v.ok?"ok":"err"}"><b>${esc(v.mensagem||"")}</b></div>
+    ${(v.faltas||[]).map(f=>
+      `<div class="falta">• <b>${esc(f.campo)}</b> (${esc(f.tier)}) — ${esc(f.porque)}</div>`).join("")}
+    <div class="falta" style="margin-top:10px">
+      ${d.campos_reais}/${d.campos_total} campos vindos do cliente · ${esc(fontes)}</div>
+    ${proc(d.proveniencia)}
+    ${(v.escopo||[]).length?`<div class="falta" style="margin-top:8px">
+      <b>${esc(v.tier)} executa:</b> ${v.escopo.map(esc).join(" · ")}</div>`:""}`;
+}
+async function verEscopo(){
+  const t=$("b-tier").value;
+  const d=await(await fetch("/api/criacao/escopo?tier="+encodeURIComponent(t))).json();
+  $("b-res").innerHTML=`<div class="ok"><b>${esc(d.tier)} executa ${
+    (d.escopo||[]).length} entregas:</b><br>${(d.escopo||[]).map(esc).join(" · ")}</div>`;
+}
+
+/* ---------- STUDIO #2 — modelo visual escolhível, preview ANTES de gerar ----------
+   O que torna o preview honesto: o CSS de cada morfismo e a ordem de cada estrutura
+   vêm do backend, das MESMAS funções que a geração usa (estilos.css / receitas.pool).
+   Amostra desenhada à mão no front seria bonita e mentirosa no dia que o motor mudar. */
+let MOD=null, selEstilo=null, selReceita=null, tmr=0;
+function modelosDebounce(){ clearTimeout(tmr); tmr=setTimeout(carregarModelos,450); }
+async function carregarModelos(){
+  const nicho=$("b-nicho").value.trim();
+  if(!nicho){ $("m-estilos").innerHTML='<div class="vazio2">diz o nicho pra ver os modelos</div>';
+    $("m-receitas").innerHTML=""; return; }
+  const q=new URLSearchParams({nicho,tier:$("b-tier").value,nome:$("b-nome").value.trim()});
+  try{ MOD=await(await fetch("/api/studio/modelos?"+q)).json(); }
+  catch(e){ $("m-estilos").innerHTML=`<div class="vazio2">falhou: ${esc(e.message)}</div>`; return; }
+  // CSS de amostra de TODOS os morfismos numa tag só, já escopado pelo backend
+  let tag=document.getElementById("css-modelos");
+  if(!tag){ tag=document.createElement("style"); tag.id="css-modelos"; document.head.appendChild(tag); }
+  tag.textContent=MOD.estilos.map(e=>e.css_preview||"").join("\n");
+  const a=MOD.auto, ac=Object.entries(a.acento||{})[0];
+  $("m-auto").textContent=`— automático: ${a.estilo||"tema do motor"}`
+    +(ac?` com ${ac[1]} em ${ac[0]}`:"")+` · estrutura "${a.receita}" · segmento ${MOD.segmento||"genérico"}`;
+  $("m-estilos").innerHTML=MOD.estilos.map(e=>`
+    <div class="mod${(selEstilo===e.valor)?" on":""}" data-e="${esc(e.valor)}"
+         onclick="pickEstilo('${esc(e.valor)}')">
+      ${e.auto?'<span class="flag">AUTO</span>':""}
+      <section class="amostra pv-${esc(e.valor)}"><div class="peca">${esc(e.rotulo)}</div></section>
+      <div class="rot">${esc(e.rotulo)}</div><div class="dsc">${esc(e.desc||"")}</div>
+    </div>`).join("");
+  $("m-receitas").innerHTML=MOD.receitas.map(r=>`
+    <div class="mod${(selReceita===r.nome)?" on":""}" onclick="pickReceita('${esc(r.nome)}')">
+      ${r.auto?'<span class="flag">AUTO</span>':""}
+      <div class="wf">${r.ordem.map((s,i)=>
+        `<i class="${i===0?"hero":(i%3===1?"meio":(i%3===2?"curto":""))}" title="${esc(s)}"></i>`).join("")}</div>
+      <div class="rot">${esc(r.nome)}</div>
+      <div class="ordem">${esc(r.ordem.join(" › "))}</div>
+    </div>`).join("");
+  mostrarSel();
+}
+function pickEstilo(v){ selEstilo=(selEstilo===v)?null:v; carregarModelos(); }
+function pickReceita(v){ selReceita=(selReceita===v)?null:v; carregarModelos(); }
+function mostrarSel(){
+  const e=selEstilo===null?"automático":(selEstilo||"tema do motor");
+  const r=selReceita===null?"automática":selReceita;
+  $("g-sel").textContent=`pele: ${e} · estrutura: ${r}`
+    +((selEstilo!==null||selReceita!==null)?" (escolha manual)":"");
+}
+async function gerarSite(){
+  const nome=$("b-nome").value.trim(), nicho=$("b-nicho").value.trim();
+  if(!nome||!nicho){ $("g-res").innerHTML='<div class="err">Nome e nicho são obrigatórios.</div>'; return; }
+  $("g-res").innerHTML='<div class="ok">gerando… (motor real: copy por LLM + template + deploy)</div>';
+  const fd=new FormData();
+  fd.append("nome",nome); fd.append("nicho",nicho);
+  fd.append("whatsapp",$("b-wa").value.trim()); fd.append("tier",$("b-tier").value);
+  fd.append("copy_livre",""); fd.append("diferenciais","");
+  if(selEstilo!==null) fd.append("estilo",selEstilo);
+  if(selReceita!==null) fd.append("receita_nome",selReceita);
+  let d;
+  try{ d=await(await fetch("/api/criacao/gerar",{method:"POST",body:fd})).json(); }
+  catch(e){ $("g-res").innerHTML=`<div class="err">erro de rede: ${esc(e.message)}</div>`; return; }
+  if(!d.ok){ $("g-res").innerHTML=`<div class="err">${esc(d.erro||"falhou")}</div>`; return; }
+  // CICLO FECHADO: se veio de um card, o link volta pro lead sozinho.
+  let volta = "";
+  if(LEAD && LEAD.prospect_id){
+    try{
+      const r = await(await fetch(`/api/studio/lead/${LEAD.prospect_id}/demo`,{method:"POST",
+        headers:{"content-type":"application/json"},body:JSON.stringify({url:d.url})})).json();
+      volta = r.ok
+        ? `<br>✅ link já está no card do lead #${LEAD.prospect_id} na Prospecção.`
+        : `<br>⚠️ não consegui devolver o link pro card: ${esc(r.erro||"erro")}`;
+    }catch(e){ volta = `<br>⚠️ falhou devolver o link pro card: ${esc(e.message)}`; }
+  }
+  $("g-res").innerHTML=`<div class="ok"><b>Pronto:</b>
+    <a href="${esc(d.url)}" target="_blank" rel="noopener">${esc(d.url)}</a><br>
+    pele: ${esc(d.estilo||"—")} · estrutura: ${esc(d.estrutura||"—")}
+    (${esc(d.estrutura_origem||"—")}) · ${d.fotos||0} foto(s)${volta}</div>`;
+  carregarGaleria();  // a galeria já mostra o novo com preview
+}
+
+/* ---------- OPERAÇÃO (#4): o que acontece DEPOIS do site existir ---------- */
+const CANAIS=[["email","✉️","e-mail enviado"],["email_fila","📥","e-mail na fila"],
+              ["whatsapp","💬","WhatsApp (SDR)"],["demo","🖥️","demo no ar"],
+              ["handoff","🙋","handoff pro JP"],["fechado","💰","fechado"]];
+async function carregarOperacao(){
+  let d;
+  try{ d=await(await fetch("/api/studio/operacao")).json(); }
+  catch(e){ $("o-placar").innerHTML=`<div class="vazio2">falhou: ${esc(e.message)}</div>`; return; }
+  $("o-placar").innerHTML=`
+    <div class="meta"><div class="t">CONVERSÃO REAL</div><div class="n">${d.conversao}%</div>
+      <div class="d">${d.clientes_pagantes} pagante(s) de ${d.sites} sites</div></div>
+    <div class="meta"><div class="t">LIGADOS A LEAD</div><div class="n">${d.com_lead}</div>
+      <div class="d">${d.sem_lead} sem dono no CRM</div></div>
+    <div class="meta"><div class="t">CUSTO / VENDA</div>
+      <div class="n">${d.custo_por_venda===null?"—":"R$ "+d.custo_por_venda}</div>
+      <div class="d">${d.nao_instrumentado.length?d.nao_instrumentado.length+" insumo(s) sem preço":"tudo medido"}</div></div>
+    <div class="meta"><div class="t">FUNIL</div><div class="n">${Object.values(d.funil||{}).reduce((a,b)=>a+b,0)}</div>
+      <div class="d">${Object.entries(d.funil||{}).map(([k,v])=>k+" "+v).join(" · ")||"—"}</div></div>`;
+  $("o-tiers").innerHTML=Object.entries(d.por_tier).map(([t,v])=>`
+    <div class="mod" style="cursor:default;padding:11px 13px">
+      <div class="rot" style="padding:0">${t} — ${v.vendidos_mes}/${v.meta}</div>
+      <div style="height:6px;background:rgba(6,95,70,.12);border-radius:4px;margin:7px 0 5px">
+        <div style="height:100%;width:${Math.min(100,v.pct)}%;background:var(--esmeralda);
+          border-radius:4px"></div></div>
+      <div class="dsc" style="padding:0">${v.sites} site(s) gerado(s) nesse tier</div>
+    </div>`).join("");
+  const L=d.lista||[];
+  $("o-tab").innerHTML=`<tr style="text-align:left;color:var(--mut);font-size:.72rem">
+      <th style="padding:6px 8px">SITE</th><th>CLIENTE</th><th>TIER</th><th>FUNIL</th>
+      <th>CANAIS</th></tr>`+
+    L.map(x=>`<tr style="border-top:1px solid var(--line)">
+      <td style="padding:7px 8px"><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.slug)}</a></td>
+      <td>${esc(x.empresa)}${x.prospect_id?"":' <span class="aviso">sem lead</span>'}</td>
+      <td>${esc(x.tier||"—")}</td><td>${esc(x.coluna||"—")}</td>
+      <td>${CANAIS.filter(([k])=>x.canais[k]).map(([,i,t])=>
+        `<span title="${t}">${i}</span>`).join(" ")||"—"}</td></tr>`).join("");
+  $("o-custos").innerHTML=d.custos.map(c=>`<div class="falta">
+      • <b>${esc(c.rotulo)}</b>: ${c.volume} un · ${
+      c.custo===null?`<span class="aviso">não instrumentado</span>`:"R$ "+c.custo}
+      <span style="color:var(--mut)">— ${esc(c.nota)}</span></div>`).join("");
+}
+
+/* ---------- ENTRADA PELO CARD DA PROSPECÇÃO (?lead=<prospect_id>) ----------
+   O JP clica "gerar demo" no card e cai aqui já preenchido. Nada de digitar de novo
+   o que o CRM já sabe — e o que veio do CRM entra marcado como INFERIDO, porque
+   hipótese de garimpo não pode virar afirmação em primeira pessoa no site do cliente. */
+let LEAD = null;
+async function carregarLead(){
+  const id = new URLSearchParams(location.search).get("lead");
+  if(!id) return;
+  let d;
+  try{ d = await(await fetch(`/api/studio/lead/${encodeURIComponent(id)}`)).json(); }
+  catch(e){ return; }
+  if(!d.achou) return;
+  LEAD = d;
+  aba("briefing");
+  const c = d.campos || {};
+  $("b-nome").value = c.nome || "";
+  $("b-nicho").value = c.nicho || "";
+  $("b-wa").value = c.whatsapp || "";
+  if(d.tier) $("b-tier").value = d.tier;        // vem do card, editável — nunca em branco
+  if(d.ingerir_site) $("b-site").value = d.site_atual || "";
+  // o que o motor precisa saber, em texto que o JP pode editar antes de gerar
+  const linhas = [];
+  if(d.decisor) linhas.push(`Decisor (QSA): ${d.decisor}`);
+  if(d.razao_social) linhas.push(`Razão social: ${d.razao_social}`);
+  if(d.cnpj) linhas.push(`CNPJ: ${d.cnpj}`);
+  if(c.cidade) linhas.push(`Cidade: ${c.cidade}`);
+  if(d.achado) linhas.push(`Achado da prospecção: ${d.achado}`);
+  $("b-form").value = linhas.join("\n");
+  const proc = Object.keys(d.proveniencia||{}).length;
+  $("b-res").innerHTML = `<div class="ok"><b>Lead #${d.prospect_id} carregado do CRM.</b>
+    ${proc} campo(s) marcados como <b>inferido</b> — o que você subir vence.
+    ${d.decisor?`Decisor: <b>${esc(d.decisor)}</b>.`:"Sem decisor no QSA."}
+    ${d.ingerir_site?"Site atual entra como fonte de ingestão.":""}</div>
+    <div class="falta" style="margin-top:8px"><b>FALE ISTO:</b> ${esc(d.fala||"")}</div>`;
+  carregarModelos();
+}
+
+carregarLead();
+carregarGaleria();
+</script></body></html>

@@ -1,0 +1,8 @@
+[Unit]
+Description=Radar noturno — lote grande de reprocessamento (cota ociosa 2h-6h)
+[Service]
+Type=oneshot
+WorkingDirectory=/root/noemi-infra/apps/painel-operacoes
+EnvironmentFile=-/root/noemi-infra/infra/.env
+Environment=PYTHONPATH=/root/noemi-infra/packages
+ExecStart=/root/noemi-infra/.venv/bin/python radar_ops.py --noturno --lote 20

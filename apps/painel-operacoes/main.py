@@ -317,6 +317,36 @@ async def wa_verificar(req: Request) -> JSONResponse:
 
 
 # -- Radar de Vídeo: análise (yt-dlp→Whisper→insight) com memória persistente ---
+@app.post("/api/radar/pdf")
+async def radar_pdf(arquivo: UploadFile = File(...), instrucao: str = Form(""),
+                    origem: str = Form("pdf")) -> JSONResponse:
+    """Sobe um PDF e roda a MESMA pipeline de insight do vídeo/imagem."""
+    import asyncio
+    import os as _os
+    import tempfile as _tmp
+
+    import radar
+    if not arquivo.filename:
+        return JSONResponse({"ok": False, "erro": "envie um arquivo"}, status_code=422)
+    dados = await arquivo.read()
+    if not dados:
+        return JSONResponse({"ok": False, "erro": "arquivo vazio"}, status_code=422)
+    if len(dados) > 40 * 1024 * 1024:
+        return JSONResponse({"ok": False, "erro": "PDF acima de 40MB"}, status_code=422)
+    tmp = _tmp.mkdtemp(prefix="pdf_")
+    caminho = _os.path.join(tmp, _os.path.basename(arquivo.filename)[:80] or "doc.pdf")
+    with open(caminho, "wb") as f:
+        f.write(dados)
+    try:  # extração + visão + LLM: pesado, fora do event loop
+        res = await asyncio.to_thread(radar.analisar_pdf, caminho, origem, instrucao)
+        return JSONResponse({"ok": True, **res})
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"ok": False, "erro": str(e)[:250]}, status_code=422)
+    finally:
+        import shutil
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 @app.post("/api/radar/analisar")
 async def radar_analisar(req: Request) -> JSONResponse:
     import asyncio
@@ -419,20 +449,192 @@ def criacao_sites() -> JSONResponse:
     return JSONResponse({"sites": criacao.listar_sites()})
 
 
+@app.get("/api/criacao/lead")
+def criacao_lead(nome: str = "") -> JSONResponse:
+    """C1 — autofill: devolve o que a pesquisa já sabe do lead (tracker + leads-alvo)."""
+    import criacao
+    return JSONResponse(criacao.dados_lead(nome))
+
+
+@app.get("/api/criacao/referencias")
+def criacao_referencias(segmento: str = "") -> JSONResponse:
+    """Repositório de aprendizado: referências de ESTRUTURA que o JP subiu."""
+    import receitas
+    return JSONResponse({"referencias": receitas.referencias_listar(segmento),
+                         "segmentos": sorted(receitas.RECEITAS),
+                         "receitas": {s: [r["nome"] for r in v] for s, v in receitas.RECEITAS.items()}})
+
+
+@app.post("/api/criacao/referencia")
+async def criacao_referencia_subir(tag: str = Form(""), segmento: str = Form(""),
+                                   tipo: str = Form("estrutura"),
+                                   imagem: UploadFile | None = File(None)) -> JSONResponse:
+    """Input de aprendizado: print de site bom + tag + segmento. A visão (Groq, grátis)
+    lê e PROPÕE a receita de estrutura; o JP aprova pra ela entrar no pool do segmento."""
+    import asyncio
+    import os as _os
+    from pathlib import Path as _P
+
+    import receitas
+    if not imagem or not imagem.filename:
+        return JSONResponse({"ok": False, "erro": "envie uma imagem de referência"}, status_code=422)
+    dados = await imagem.read()
+    if not dados:
+        return JSONResponse({"ok": False, "erro": "imagem vazia"}, status_code=422)
+    destino = _P(_os.environ.get("NOEMI_DATA_DIR", str(_AQUI.parents[1] / "data"))) / "referencias"
+    destino.mkdir(parents=True, exist_ok=True)
+    ext = (imagem.filename.rsplit(".", 1)[-1] or "jpg").lower()[:5]
+    nome_arq = f"ref-{int(time.time())}.{ext if ext.isalnum() else 'jpg'}"
+    (destino / nome_arq).write_bytes(dados)
+    # visão é I/O de rede: fora do event loop
+    proposta = await asyncio.to_thread(receitas.ler_referencia, dados, tag)
+    r = receitas.referencia_salvar(tag, segmento, nome_arq, proposta, tipo=tipo,
+                                   aprovada=bool(proposta.get("ordem")))
+    return JSONResponse({"ok": True, "referencia": r,
+                         "leu": bool(proposta.get("ordem")),
+                         "aviso": "" if proposta.get("ordem") else
+                                  "a visão não conseguiu ler a estrutura — guardada, aprove/edite à mão"})
+
+
+@app.post("/api/criacao/referencia/aprovar")
+async def criacao_referencia_aprovar(req: Request) -> JSONResponse:
+    import receitas
+    c = await req.json()
+    return JSONResponse(receitas.referencia_aprovar(int(c.get("id") or 0), bool(c.get("aprovada", True))))
+
+
+@app.post("/api/criacao/referencia/apagar")
+async def criacao_referencia_apagar(req: Request) -> JSONResponse:
+    import receitas
+    return JSONResponse(receitas.referencia_apagar(int((await req.json()).get("id") or 0)))
+
+
+@app.post("/api/criacao/ingerir")
+async def criacao_ingerir(req: Request) -> JSONResponse:
+    """INGESTÃO TOTAL: site atual + formulário + CRM num briefing só, com procedência.
+    Não gera nada — devolve o material consolidado pro JP conferir antes."""
+    import asyncio
+
+    import ingestao
+    c = await req.json()
+    res = await asyncio.to_thread(  # buscar site é I/O de rede
+        ingestao.consolidar, nome=str(c.get("nome") or ""),
+        site_url=str(c.get("site_url") or ""), formulario=str(c.get("formulario") or ""),
+        fotos=int(c.get("fotos") or 0), videos=int(c.get("videos") or 0),
+        usar_crm=bool(c.get("usar_crm", True)))
+    return JSONResponse(res)
+
+
+@app.post("/api/criacao/validar-tier")
+async def criacao_validar_tier(req: Request) -> JSONResponse:
+    """Diagnóstico ANTES de gerar: o material sustenta o tier escolhido?"""
+    import tier_contrato
+    c = await req.json()
+    material = {k: c.get(k) for k in ("nome", "nicho", "whatsapp", "telefone", "cidade",
+                                      "diferenciais", "servicos", "email", "midia")}
+    return JSONResponse(tier_contrato.validar(c.get("tier", "T1"), material))
+
+
+@app.get("/api/studio/lead/{prospect_id}")
+def studio_lead(prospect_id: int) -> JSONResponse:
+    """Prefill do Studio a partir do card da Prospecção: CRM + QSA + achado, tudo
+    marcado como INFERIDO. T3/T4 com site traz o site atual como fonte de ingestão."""
+    import criacao
+    return JSONResponse(criacao.briefing_do_lead(prospect_id))
+
+
+@app.post("/api/studio/lead/{prospect_id}/demo")
+async def studio_registrar_demo(prospect_id: int, req: Request) -> JSONResponse:
+    """Fecha o ciclo: o link da demo volta pro card do lead (sem copiar e colar)."""
+    import criacao
+    d = await req.json()
+    r = criacao.registrar_demo(prospect_id, str(d.get("url") or ""))
+    return JSONResponse(r, status_code=200 if r.get("ok") else 422)
+
+
+@app.get("/api/studio/operacao")
+def studio_operacao() -> JSONResponse:
+    """STUDIO #4 — o que acontece DEPOIS do site: conversão real, meta por tier,
+    canal por cliente e custo (só do que está instrumentado). Lê o mesmo CRM de
+    /obs/prospeccao, não duplica dado."""
+    import operacao
+    return JSONResponse({**operacao.resumo(), "lista": operacao.sites_com_lead()})
+
+
+@app.get("/api/studio/modelos")
+def studio_modelos(nicho: str = "", tier: str = "", nome: str = "",
+                   lead_id: int = 0) -> JSONResponse:
+    """STUDIO #2 — galeria selecionável (9 morfismos + estruturas do segmento) com o
+    que o motor escolheria sozinho marcado. O CSS vem da mesma fonte da geração."""
+    import criacao
+    return JSONResponse(criacao.modelos(nicho, tier, nome, lead_id))
+
+
+@app.get("/api/studio/galeria")
+def studio_galeria() -> JSONResponse:
+    """STUDIO #2 — galeria: sites com o que o preview não mostra (seções, cores) e
+    quantos OUTROS sites saíram do mesmo esqueleto."""
+    import galeria
+    return JSONResponse(galeria.listar())
+
+
+@app.get("/api/criacao/escopo")
+def criacao_escopo(tier: str = "T1") -> JSONResponse:
+    """O que o motor executa naquele tier (cumulativo)."""
+    import tier_contrato
+    return JSONResponse({"tier": tier.upper(), "escopo": tier_contrato.escopo_de(tier)})
+
+
+@app.get("/api/criacao/estilos")
+def criacao_estilos(segmento: str = "") -> JSONResponse:
+    """Morfismos aplicáveis (camada de acabamento) + conceitos estruturais do segmento."""
+    import estilos
+    return JSONResponse({"estilos": estilos.listar(), "conceitos": estilos.conceitos(segmento)})
+
+
+@app.post("/api/criacao/apagar")
+def criacao_apagar(slug: str = Form(...)) -> JSONResponse:
+    """C2 — apaga site (pasta + registro). Irreversível; confirmação é na UI."""
+    import criacao
+    r = criacao.apagar(slug)
+    return JSONResponse(r, status_code=200 if r.get("ok") else 422)
+
+
+@app.post("/api/criacao/limpar-orfaos")
+def criacao_limpar_orfaos() -> JSONResponse:
+    """C2 — varre o registro e remove linhas cujo site não existe mais em disco."""
+    import criacao
+    return JSONResponse(criacao.limpar_orfaos())
+
+
 @app.post("/api/criacao/gerar")
 async def criacao_gerar(nome: str = Form(...), nicho: str = Form(...), whatsapp: str = Form(""),
                         diferenciais: str = Form(""), publico: str = Form(""), cor: str = Form(""),
                         copy_livre: str = Form(""), foto: UploadFile | None = File(None),
-                        video: UploadFile | None = File(None)) -> JSONResponse:
+                        video: UploadFile | None = File(None),
+                        fotos: list[UploadFile] = File([]),
+                        estilo: str = Form(""), autofill: str = Form(""),
+                        lead_id: int = Form(0), tier: str = Form(""),
+                        receita_nome: str = Form(""), cidade: str = Form(""),
+                        email: str = Form("")) -> JSONResponse:
     import asyncio
 
     import criacao
     # PROMPT 2: foto/vídeo/copy opcionais (multipart). Sem eles = geração por briefing (fallback).
     f = (await foto.read(), foto.filename) if (foto and foto.filename) else None
     v = (await video.read(), video.filename) if (video and video.filename) else None
+    # C3: acervo do cliente (20+ fotos) — OCR vira contexto da copy + galeria no site
+    fs = [(await u.read(), u.filename) for u in (fotos or []) if u and u.filename]
     # geração é pesada (LLM + template + deploy) — fora do event loop
+    # snapshot do que o autofill preencheu — a ficha compara com o valor final pra
+    # saber o que o motor acertou sozinho vs o que o JP teve que corrigir.
+    try:
+        af = __import__("json").loads(autofill) if autofill else {}
+    except ValueError:
+        af = {}
     res = await asyncio.to_thread(criacao.gerar, nome, nicho, whatsapp, diferenciais,
-                                  publico, cor, 0, f, v, copy_livre)
+                                  publico, cor, 0, f, v, copy_livre, fs, estilo, af, lead_id, tier,
+                                  receita_nome, cidade, email)
     return JSONResponse(res, status_code=200 if res.get("ok") else 422)
 
 
@@ -489,6 +691,16 @@ def ideias_dados() -> JSONResponse:
     """Caixa de ideias: templates replicáveis colhidos de todas as análises do radar."""
     import radar
     return JSONResponse(radar.harvest_ideias())
+
+
+@app.get("/api/ideias.csv")
+def ideias_csv():
+    """Export CSV da caixa de ideias (UTF-8 BOM p/ Excel PT-BR). Herda o basic_auth do
+    Caddy como toda rota /api do painel — não é rota pública."""
+    from fastapi.responses import Response as _R
+    import radar
+    return _R(content=radar.harvest_ideias_csv(), media_type="text/csv; charset=utf-8",
+              headers={"Content-Disposition": "attachment; filename=caixa_de_ideias.csv"})
 
 
 @app.get("/api/auto-analise")
@@ -636,6 +848,55 @@ def leads_pagina() -> str:
 @app.get("/obs/criacao", response_class=HTMLResponse)
 def criacao_pagina() -> str:
     return (_AQUI / "static" / "criacao.html").read_text(encoding="utf-8")
+
+
+@app.get("/obs/studio", response_class=HTMLResponse)
+def studio_pagina() -> str:
+    """Studio: briefing (ingestão + tier como contrato) e galeria com preview.
+    Sobe POR CIMA da Criação de site, que segue no ar intacta em /obs/criacao."""
+    return (_AQUI / "static" / "studio.html").read_text(encoding="utf-8")
+
+
+@app.get("/obs/prospeccao", response_class=HTMLResponse)
+def prospeccao_pagina() -> str:
+    """Fila do dia pronta pra ligar: quem, em que ordem, falando o quê."""
+    return (_AQUI / "static" / "prospeccao.html").read_text(encoding="utf-8")
+
+
+@app.get("/api/prospeccao/dia")
+def prospeccao_dia_listar(tier: str = "", limite: int = 200) -> JSONResponse:
+    """Leads ainda sem contato (T1 primeiro), com gancho honesto pronto por tier."""
+    import prospeccao_dia
+    return JSONResponse(prospeccao_dia.lista_do_dia(tier, limite))
+
+
+@app.post("/api/prospeccao/nota")
+async def prospeccao_nota(req: Request) -> JSONResponse:
+    """Anotação do JP por lead: como foi a ligação e a reação à demo."""
+    import prospeccao_dia
+    c = await req.json()
+    return JSONResponse(prospeccao_dia.nota_salvar(
+        int(c.get("prospect_id") or 0), c.get("ligacao", ""), c.get("reacao_demo", "")))
+
+
+@app.post("/api/prospeccao/status")
+async def prospeccao_status(req: Request) -> JSONResponse:
+    """Move o lead no funil pela AÇÃO do botão/kanban (status que já existem)."""
+    import prospeccao_dia
+    c = await req.json()
+    r = prospeccao_dia.status_salvar(int(c.get("prospect_id") or 0), c.get("acao", ""))
+    return JSONResponse(r, status_code=200 if r.get("ok") else 422)
+
+
+@app.get("/api/prospeccao/dia.csv")
+def prospeccao_dia_csv(tiers: str = "T3,T4", limite: int = 500):
+    """CSV pra ligar offline. Default T3/T4 — os que o JP liga pessoalmente."""
+    from fastapi.responses import Response as _R
+    import prospeccao_dia
+    nome = tiers.replace(",", "-").lower() or "fila"
+    return _R(content=prospeccao_dia.csv_lista(tiers, limite),
+              media_type="text/csv; charset=utf-8",
+              headers={"Content-Disposition": f'attachment; filename="ligar_{nome}.csv"'})
 
 
 # Radar Grátis — página PÚBLICA (liberada no Caddy sem basic-auth). Self-serve.

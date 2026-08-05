@@ -47,11 +47,25 @@ def _origem_da_url(url: str) -> str:
     """Deriva a origem (conta/domínio) pra agrupar o radar. Instagram → @handle."""
     try:
         u = urlparse(url)
-        if "instagram.com" in u.netloc:
-            partes = [p for p in u.path.split("/") if p and p not in ("reel", "p", "reels", "tv")]
+        net = u.netloc.lower()
+        partes = [p for p in u.path.split("/") if p]
+        if "instagram.com" in net:
+            partes = [p for p in partes if p not in ("reel", "p", "reels", "tv")]
             if partes and partes[0] not in ("", "explore"):
                 return "@" + partes[0]
-        return u.netloc or "desconhecida"
+        # #10 TikTok: /@handle/video/123 — o handle já vem com @ no path
+        if "tiktok.com" in net:
+            for p in partes:
+                if p.startswith("@"):
+                    return p
+            return "tiktok"
+        # #10 YouTube Shorts/watch: /@canal/... ou /shorts/<id> (sem canal na URL)
+        if "youtube.com" in net or "youtu.be" in net:
+            for p in partes:
+                if p.startswith("@"):
+                    return p
+            return "youtube"
+        return net or "desconhecida"
     except ValueError:
         return "desconhecida"
 
@@ -91,6 +105,38 @@ def _baixar_audio(link: str, destino: Path) -> Path:
     if not mp3s:
         raise RuntimeError("yt-dlp não gerou mp3")
     return mp3s[0]
+
+
+def _baixar_video(link: str, destino: Path) -> Path:
+    """Baixa o VÍDEO (não só o áudio) pra dar OLHOS ao caminho de URL.
+
+    O `_baixar_audio` usa `-x` (extrai áudio e joga o vídeo fora), por isso todo link
+    analisado perdia a visão — só áudio+legenda. Aqui pega o arquivo de vídeo, de onde
+    saem TANTO os frames quanto o áudio (1 download, 2 usos). Prefere um formato leve
+    (<=480p): frames pra OCR/visão não precisam de 1080p e o download fica rápido."""
+    saida = destino / "video.%(ext)s"
+    cmd = ["yt-dlp", "-f", "best[height<=480]/best", "--no-playlist",
+           "--write-info-json", "-o", str(saida)] + _yt_extra()
+    try:
+        subprocess.run([*cmd, link], check=True, capture_output=True, text=True, timeout=300)
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"yt-dlp (vídeo) falhou: {(e.stderr or '')[-200:]}")
+    vids = [p for p in destino.iterdir() if p.suffix.lower() in (".mp4", ".mkv", ".webm", ".mov")]
+    if not vids:
+        raise RuntimeError("yt-dlp não gerou arquivo de vídeo")
+    return vids[0]
+
+
+def _audio_do_video(video: Path, destino: Path) -> Path | None:
+    """Extrai o mp3 do vídeo já baixado (mesmo caminho do analisar_arquivo)."""
+    audio = destino / "audio.mp3"
+    try:
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(video),
+                        "-vn", "-acodec", "libmp3lame", "-q:a", "4", str(audio)],
+                       check=True, capture_output=True, timeout=180)
+        return audio if audio.exists() else None
+    except Exception:  # noqa: BLE001 — vídeo mudo: a visão carrega sozinha
+        return None
 
 
 def _metadados(link: str) -> tuple[str, str]:
@@ -307,11 +353,24 @@ def _insight(transcricao: str, contexto: list[dict], instrucao: str = "") -> dic
     extrativo se o proxy estiver fora — nunca crasha a análise."""
     from shared_core.ai import llm_proxy
 
-    def _call(prompt: str, mt: int, temp: float):  # Groq → Claude direto (TPD diário do Groq é comum)
-        t = llm_proxy.completar(prompt, model="analise", max_tokens=mt, temperature=temp)
-        if not t:
-            t = llm_proxy.completar(prompt, model="fallback-anthropic", max_tokens=mt, temperature=temp)
-        return t
+    def _call(prompt: str, mt: int, temp: float):
+        """Groq → outro modelo → Claude, e ESPERANDO o minuto virar entre tentativas.
+
+        O two-pass gasta ~3.600 tokens por vídeo e o teto é 12.000/MINUTO. Quando
+        chegam 3-4 vídeos em rajada (o JP manda em lote), o 1º passa e os outros
+        estouram o TPM. Antes disso, `_insight` desistia na 1ª falha e degradava pra
+        extrativo — o vídeo virava "score 0" com a cota 99% livre no minuto seguinte.
+        Esperar 35s custa 35s; degradar custa a análise inteira."""
+        import time as _t
+        for tentativa in range(3):
+            if t := llm_proxy.completar(prompt, model="analise", max_tokens=mt, temperature=temp):
+                return t
+            if t := llm_proxy.completar(prompt, model="fallback-anthropic",
+                                        max_tokens=mt, temperature=temp):
+                return t
+            if tentativa < 2:  # provável TPM: o teto reseta por minuto
+                _t.sleep(int(os.environ.get("RADAR_ESPERA_TPM_S", "35")))
+        return None
 
     # TWO-PASS: pass 1 = raciocínio profundo (prosa densa, temp maior p/ ângulos não-óbvios);
     # pass 2 = estrutura nos 10 campos (temp baixa, fiel). Eleva a profundidade vs 1-pass.
@@ -375,7 +434,14 @@ def _insight(transcricao: str, contexto: list[dict], instrucao: str = "") -> dic
             "categoria": cat if cat in CATEGORIAS else "outro",
             "score": score,
             "tags": (persuasao[:6] or assinatura.lower().replace(",", " ").split()[:6]),
-            "fonte": "llm",
+            "fonte": "llm_parcial" if bruto.get("_parcial") else "llm",
+            # score ausente num JSON truncado é DESCONHECIDO, não zero
+            **({"score_incerto": True} if bruto.get("_parcial")
+                and "score_replicabilidade" not in bruto else {}),
+            # #7: tier JPOS onde o insight é acionável (vazio = não crava)
+            **{"tier_jpos": tier_do_insight({
+                "insight": resumo, "resumo": resumo, "assinatura_tema": assinatura,
+                "aplicar_em": aplicar, "tags": persuasao})["tier"]},
             # schema NOVO de 10 campos
             "resumo": resumo, "estrutura_narrativa": estrut, "tecnicas_persuasao": persuasao,
             "objecoes_tratadas": _lista(bruto.get("objecoes_tratadas")), "promessa_vs_entrega": pve,
@@ -385,6 +451,52 @@ def _insight(transcricao: str, contexto: list[dict], instrucao: str = "") -> dic
             # cam.1/3/4 restauradas — a Caixa de Ideias (harvest_ideias) volta a receber estes:
             "vertical": vert, "vertical_nova": vertical_nova, "marketing": marketing,
             "ferramentas": ferramentas, "modelos": modelos}
+
+
+def _reparar_json(texto: str) -> dict | None:
+    """Salva JSON TRUNCADO fechando o que ficou aberto.
+
+    Causa real (2026-08-05): o schema tem 10+ campos e a saída às vezes corta no meio
+    ("promessa_vs_entrega": {" e acabou). O extrator descartava TUDO e a análise virava
+    "score 0" — com 8 dos 10 campos já prontos na mão. Um insight parcial vale
+    infinitamente mais que nenhum: fecha as estruturas abertas e devolve o que veio.
+
+    Descarta o último par chave/valor incompleto (senão o json.loads morre nele)."""
+    t = texto[texto.find("{"):] if "{" in texto else ""
+    if not t:
+        return None
+    t = re.sub(r"```$", "", t.rstrip()).rstrip()
+    # corta um "campo": incompleto no fim — o valor nunca chegou
+    t = re.sub(r',\s*"[^"]*"\s*:\s*(\{|\[)?\s*"?[^",}\]]*$', "", t)
+    t = re.sub(r',\s*"[^"]*"?$', "", t)
+    t = t.rstrip().rstrip(",")
+    # fecha o que ficou aberto, na ordem inversa da abertura
+    pilha = []
+    dentro_str = escapou = False
+    for ch in t:
+        if escapou:
+            escapou = False
+            continue
+        if ch == "\\":
+            escapou = True
+            continue
+        if ch == '"':
+            dentro_str = not dentro_str
+            continue
+        if dentro_str:
+            continue
+        if ch in "{[":
+            pilha.append(ch)
+        elif ch in "}]" and pilha:
+            pilha.pop()
+    if dentro_str:  # string aberta: fecha a aspa
+        t += '"'
+    t += "".join("}" if c == "{" else "]" for c in reversed(pilha))
+    try:
+        d = json.loads(t)
+        return d if isinstance(d, dict) else None
+    except ValueError:
+        return None
 
 
 def _bloco_balanceado(texto: str, i: int) -> str | None:
@@ -414,6 +526,13 @@ def _bloco_balanceado(texto: str, i: int) -> str | None:
 
 def _extrair_json(texto: str) -> dict | None:
     texto = texto or ""
+    # Modelos de RACIOCÍNIO (qwen3.x, deepseek-r1...) emitem <think>…</think> antes da
+    # resposta. Esse bloco tem chaves e aspas, então o extrator guloso engolia o
+    # raciocínio no lugar do JSON e devolvia None — a análise virava "extrativo,
+    # score 0". Some com o raciocínio ANTES de procurar o objeto.
+    if "<think>" in texto:
+        texto = re.sub(r"<think>.*?</think>", "", texto, flags=re.S)
+        texto = re.sub(r"<think>.*$", "", texto, flags=re.S)  # truncado por max_tokens
     i = texto.find("{")
     if i < 0:
         return None
@@ -429,6 +548,13 @@ def _extrair_json(texto: str) -> dict | None:
                 return d
         except (ValueError, TypeError):
             continue
+    # ÚLTIMO RECURSO: JSON truncado (schema de 10+ campos corta no meio). Fecha o que
+    # ficou aberto e devolve o parcial — 8 campos valem infinitamente mais que score 0.
+    if reparado := _reparar_json(texto):
+        # marca a origem: score ausente aqui é CAMPO CORTADO, não avaliação baixa.
+        # Sem isso, "score 0 parcial" volta a ser indistinguível de "vídeo ruim".
+        reparado["_parcial"] = True
+        return reparado
     return None
 
 
@@ -446,6 +572,63 @@ def _limpar_url(url: str) -> str:
     return urlunparse(p._replace(query=urlencode(q), fragment=""))
 
 
+def _assinatura(texto: str) -> str:
+    """Impressão digital do CONTEÚDO (não da URL). Normaliza (minúsculo, sem acento,
+    sem pontuação) e guarda as palavras distintivas ordenadas — assim o mesmo vídeo
+    reforwardado por outro perfil, com legenda levemente diferente, gera assinaturas
+    parecidas. Curto e determinístico: dá pra comparar 400 análises sem custo."""
+    import unicodedata
+    t = unicodedata.normalize("NFKD", (texto or "").lower()).encode("ascii", "ignore").decode()
+    palavras = [w for w in re.findall(r"[a-z0-9]{4,}", t)]
+    # stop-words de legenda que aparecem em quase todo reel e não distinguem nada
+    ruido = {"video", "reel", "instagram", "legenda", "transcricao", "audio", "titulo",
+             "comment", "link", "https", "www", "para", "como", "isso", "mais", "voce",
+             "seu", "sua", "que", "com", "por", "uma", "the", "and", "you", "your", "this"}
+    uteis = [w for w in palavras if w not in ruido]
+    if len(uteis) < 8:
+        return ""  # texto curto demais pra ter assinatura confiável
+    from collections import Counter
+    # as 24 palavras mais frequentes, ordenadas: estável a pequenas variações de corte
+    top = sorted(w for w, _ in Counter(uteis).most_common(24))
+    return " ".join(top)
+
+
+def _semelhanca(a: str, b: str) -> float:
+    """Jaccard entre duas assinaturas. 1.0 = idênticas."""
+    A, B = set((a or "").split()), set((b or "").split())
+    if not A or not B:
+        return 0.0
+    return len(A & B) / len(A | B)
+
+
+_CORTE_SEMANTICO = float(os.environ.get("RADAR_DEDUP_CORTE", "0.72"))
+
+
+def ja_analisada_por_conteudo(texto: str, limite: int = 400) -> dict | None:
+    """DEDUP SEMÂNTICO (#6): o mesmo conteúdo repostado por outro perfil tem URL
+    diferente e passava batido — reanalisava do zero e poluía a caixa com duplicata.
+    Compara a assinatura do conteúdo com as últimas análises. None se é novo.
+
+    Corte alto (0.72) de propósito: dois vídeos do MESMO tema não são o mesmo vídeo;
+    marcar como duplicata o que é só parecido perderia análise legítima."""
+    assin = _assinatura(texto)
+    if not assin:
+        return None
+    from shared_core.storage import db
+    try:
+        with db.conn() as c:
+            rows = c.execute("SELECT id, transcricao FROM video_analises "
+                             "WHERE transcricao IS NOT NULL ORDER BY id DESC LIMIT ?",
+                             (limite,)).fetchall()
+    except Exception:  # noqa: BLE001
+        return None
+    for r in rows:
+        d = dict(r)
+        if _semelhanca(assin, _assinatura(d.get("transcricao") or "")) >= _CORTE_SEMANTICO:
+            return obter(d["id"])
+    return None
+
+
 def _ja_analisada(url: str) -> dict | None:
     """(2) Dedup: se essa URL já foi analisada, devolve a análise existente (evita
     gastar LLM/Whisper de novo). None se é nova."""
@@ -459,12 +642,27 @@ def _ja_analisada(url: str) -> dict | None:
     return obter(r["id"]) if r else None
 
 
+def quota_ok() -> tuple[bool, str]:
+    """#4 — o LLM responde AGORA? Checagem barata (1 chamada minúscula) ANTES de
+    gastar download + transcrição numa análise que já nasceria degradada.
+
+    Mede o que importa: não é "a chave existe", é "o provider aceita trabalho".
+    True em qualquer dúvida — pré-checagem NUNCA pode ser o motivo de não analisar."""
+    try:
+        from shared_core.ai import llm_proxy
+        t = llm_proxy.completar("ok", model="analise", max_tokens=5, temperature=0)
+        return (True, "ok") if t else (False, "LLM sem resposta (cota/provider fora)")
+    except Exception as e:  # noqa: BLE001
+        return True, f"pré-checagem falhou ({type(e).__name__}) — segue mesmo assim"
+
+
 def analisar(url: str, origem: str | None = None, instrucao: str = "",
              forcar: bool = False) -> dict:
     """Pipeline por URL: baixa → transcreve → contexto → insight → GRAVA.
     `instrucao` = pedido do JP na legenda (replicar/adaptar/comparar). `forcar`=True
     reanalisa mesmo se a URL já existe (senão devolve a análise anterior — economia)."""
     from shared_core.ai import transcricao as trans
+    from shared_core.ai import visao
     url = _limpar_url((url or "").strip())  # (1) higiene
     if not url.startswith("http"):
         raise ValueError("url inválida")
@@ -474,27 +672,40 @@ def analisar(url: str, origem: str | None = None, instrucao: str = "",
             return {**ja, "reaproveitada": True}
     origem_dada = (origem or "").strip()
     legenda, handle = _metadados(url)  # caption/título — funciona mesmo quando a mídia não baixa
-    texto_audio = ""
+    texto_audio, visao_txt = "", ""
     with tempfile.TemporaryDirectory(prefix="radar_") as td:
         try:
-            audio = _baixar_audio(url, Path(td))
-            # a conta/autor REAL vem do metadado do download (yt-dlp), não da URL.
+            # VISÃO NO CAMINHO DE URL: baixa o VÍDEO (1 download) e tira dele os frames
+            # E o áudio. Antes vinha só o áudio (-x), então todo link perdia o que está
+            # na TELA — e a tela é a fonte do nome do produto/preço (áudio pode ser música).
+            video = _baixar_video(url, Path(td))
             origem = origem_dada or _conta_do_dir(Path(td)) or handle or _origem_da_url(url)
-            texto_audio = trans.transcrever(str(audio))
-        except RuntimeError as e:
-            # IG/YT bloqueou a mídia → NÃO morre: segue com a legenda (análise sempre).
-            origem = origem_dada or handle or _origem_da_url(url)
-            if not legenda:
-                registrar_job(False, origem=origem, url=url, motivo=f"sem mídia nem legenda: {e}")
-                raise RuntimeError(f"não deu pra baixar o vídeo nem ler a legenda: {e}")
+            visao_txt, _fv = visao.analisar_frames(_frames(str(video), Path(td)))
+            if a := _audio_do_video(video, Path(td)):
+                texto_audio = trans.transcrever(str(a)) or ""
+        except RuntimeError:
+            # vídeo bloqueado → tenta o caminho antigo (só áudio); depois só legenda.
+            try:
+                audio = _baixar_audio(url, Path(td))
+                origem = origem_dada or _conta_do_dir(Path(td)) or handle or _origem_da_url(url)
+                texto_audio = trans.transcrever(str(audio))
+            except RuntimeError as e:
+                # IG/YT bloqueou a mídia → NÃO morre: segue com a legenda (análise sempre).
+                origem = origem_dada or handle or _origem_da_url(url)
+                if not legenda:
+                    registrar_job(False, origem=origem, url=url, motivo=f"sem mídia nem legenda: {e}")
+                    raise RuntimeError(f"não deu pra baixar o vídeo nem ler a legenda: {e}")
     # legenda (nome do produto/oferta) + transcrição (narração) → análise fiel, sem
     # confundir música de fundo com o produto (a legenda é a âncora do "o quê").
-    texto = "\n".join(filter(None, [
-        ("LEGENDA/TÍTULO: " + legenda) if legenda else "",
-        ("TRANSCRIÇÃO DO ÁUDIO: " + texto_audio) if texto_audio else ""]))
+    # mesma combinação rotulada do caminho de arquivo: visão + legenda + áudio
+    texto = _combinar(visao_txt, legenda, texto_audio)
     if not texto.strip():
         registrar_job(False, origem=origem, url=url, motivo="sem transcrição e sem legenda")
         raise RuntimeError("sem transcrição e sem legenda — link privado/inacessível")
+    if not forcar:  # (2b) dedup SEMÂNTICO: mesmo conteúdo, outra URL (repost)
+        if igual := ja_analisada_por_conteudo(texto):
+            registrar_job(True, origem=origem, url=url, motivo="duplicata de conteúdo")
+            return {**igual, "reaproveitada": True, "motivo_dedup": "conteúdo idêntico"}
     res = _processar(texto, origem, url, instrucao)
     registrar_job(bool(res.get("id")), origem=origem, url=url,
                   motivo="" if res.get("fonte") == "llm" else f"degradado ({res.get('fonte')})")
@@ -536,6 +747,121 @@ def analisar_imagem(caminho: str, origem: str = "telegram", instrucao: str = "")
     if not texto.strip():
         raise RuntimeError("imagem sem texto legível e sem legenda — manda com uma legenda de contexto")
     return _processar(texto, origem, "(imagem enviada)", instrucao)
+
+
+def analisar_pdf(caminho: str, origem: str = "pdf", instrucao: str = "") -> dict:
+    """PDF → MESMA pipeline de insight do vídeo/imagem (reusa _processar/_insight).
+
+    Dois tipos de PDF, dois caminhos — e o segundo é o que costuma faltar:
+      1. PDF de TEXTO (relatório, apostila, proposta): pdftotext extrai direto.
+      2. PDF ESCANEADO/slides como imagem: pdftotext devolve nada. Aí renderiza as
+         páginas (pdftoppm) e manda pra MESMA visão do carrossel — um deck exportado
+         em PDF é exatamente um carrossel, então a leitura é a mesma.
+    Sem dependência nova: poppler (pdftotext/pdftoppm) já está no host.
+    """
+    from shared_core.ai import visao
+    p = Path(caminho)
+    if not p.exists():
+        raise RuntimeError("arquivo não encontrado")
+    texto = ""
+    with tempfile.TemporaryDirectory(prefix="radar_pdf_") as td:
+        saida = Path(td) / "t.txt"
+        try:  # -layout preserva colunas/tabela, que sem isso viram sopa de palavras
+            subprocess.run(["pdftotext", "-layout", "-q", str(p), str(saida)],
+                           check=True, capture_output=True, timeout=120)
+            texto = saida.read_text(encoding="utf-8", errors="ignore").strip()
+        except Exception:  # noqa: BLE001
+            texto = ""
+        if len(texto) < 200:  # PDF escaneado / deck de imagem → visão nas páginas
+            try:
+                subprocess.run(["pdftoppm", "-jpeg", "-r", "110", "-l", "8",
+                                str(p), str(Path(td) / "pg")],
+                               check=True, capture_output=True, timeout=180)
+                frames = [x.read_bytes() for x in sorted(Path(td).glob("pg*.jpg"))[:8]]
+            except Exception:  # noqa: BLE001
+                frames = []
+            if frames:
+                prompt = (f"{len(frames)} paginas de um PDF, EM ORDEM. Leia todas e conte a "
+                          "ideia completa (tese, argumento, numeros, conclusao). Cite os "
+                          "textos como aparecem. NAO invente o que nao esta visivel.")
+                lido, _ = visao.analisar_frames(frames, prompt=prompt)
+                texto = (texto + "\n" + (lido or "")).strip()
+    if not texto.strip():
+        raise RuntimeError("PDF sem texto legível — nem extração nem visão conseguiram ler")
+    # trunca: o insight não melhora com 300 páginas e o prompt tem teto
+    return _processar(f"DOCUMENTO PDF ({p.name})\n{texto[:12000]}", origem,
+                      f"(pdf: {p.name})", instrucao)
+
+
+def analisar_imagens(caminhos: list[str], origem: str = "telegram", instrucao: str = "") -> dict:
+    """CARROSSEL: N imagens => UMA análise. Os slides de um carrossel contam UMA ideia
+    (gancho no 1, desenvolvimento no meio, CTA no último) — analisar slide a slide perde
+    o argumento inteiro e polui a caixa com 8 fragmentos.
+
+    Manda todos os frames de uma vez pra visão (mesma cascata Groq→Gemini→OCR) e ordena
+    a leitura por slide, pra o LLM ver a sequência."""
+    from shared_core.ai import visao
+    if not caminhos:
+        raise RuntimeError("nenhuma imagem recebida")
+    if len(caminhos) == 1:
+        return analisar_imagem(caminhos[0], origem, instrucao)
+    frames = []
+    for c in caminhos[:10]:  # teto: visão custa token por imagem
+        try:
+            with open(c, "rb") as f:
+                frames.append(f.read())
+        except OSError:
+            continue
+    prompt = (f"Estas sao {len(frames)} imagens de UM carrossel, EM ORDEM. Leia TODAS e "
+              "conte a ideia COMPLETA: gancho (slide 1), desenvolvimento e CTA (ultimo). "
+              "Cite os textos como aparecem. NAO invente o que nao esta visivel.")
+    visao_txt, _ = visao.analisar_frames(frames, prompt=prompt)
+    texto = _combinar(visao_txt, (instrucao or "").strip(), "")
+    if not texto.strip():
+        raise RuntimeError("carrossel sem texto legível e sem legenda — manda com uma legenda")
+    return _processar(f"CARROSSEL ({len(frames)} slides)\n{texto}", origem,
+                      f"(carrossel {len(frames)} imagens)", instrucao)
+
+
+# ── #7: CROSS-REFERÊNCIA com a operação JPOS ─────────────────────────────────
+# Todo insight sai marcado com o TIER/produto onde ele é acionável, pra não virar
+# leitura manual depois. A fonte da verdade é `prospeccao_dia.TIERS` (oferta e
+# abordagem por tier) — o doc OPERACAO_JPOS.md citado no pedido NÃO EXISTE no repo,
+# então cruzar com ele seria inventar. Quando existir, é só trocar a fonte aqui.
+_TIER_SINAIS = {
+    "T1": ("sem site", "landing", "primeiro cliente", "isca", "gancho", "cold",
+           "prospec", "lead frio", "captacao", "captação", "outbound"),
+    "T2": ("institucional", "autoridade", "prova social", "seo", "aeo", "google",
+           "busca", "encontrado", "reputacao", "reputação", "review"),
+    "T3": ("ecommerce", "e-commerce", "loja", "checkout", "conversao", "conversão",
+           "catalogo", "catálogo", "produto", "venda online", "carrinho", "preco", "preço"),
+    "T4": ("atendimento", "whatsapp", "agendamento", "agenda", "chatbot", "ia ",
+           "automacao", "automação", "24h", "secretaria", "recepcao", "recepção",
+           "follow", "retencao", "retenção"),
+}
+
+
+def tier_do_insight(d: dict) -> dict:
+    """Marca o insight com o tier JPOS onde ele é acionável. Devolve
+    {tier, confianca, motivo}. tier='' quando nada bate — melhor vazio que chute:
+    um insight marcado no tier errado empurra o JP pra oferta errada."""
+    texto = " ".join(str(d.get(k) or "") for k in
+                     ("insight", "resumo", "assinatura_tema", "axioma")).lower()
+    texto += " " + " ".join(str(x).lower() for x in (d.get("aplicar_em") or []))
+    texto += " " + " ".join(str(x).lower() for x in (d.get("tags") or []))
+    if not texto.strip():
+        return {"tier": "", "confianca": 0.0, "motivo": "sem texto"}
+    pontos = {t: sum(1 for s in sinais if s in texto) for t, sinais in _TIER_SINAIS.items()}
+    melhor = max(pontos, key=lambda k: pontos[k])
+    total = sum(pontos.values())
+    if pontos[melhor] == 0:
+        return {"tier": "", "confianca": 0.0, "motivo": "nenhum sinal de tier"}
+    # empate real => não crava: dois tiers com o mesmo peso é ambiguidade, não escolha
+    segundo = sorted(pontos.values(), reverse=True)[1] if len(pontos) > 1 else 0
+    if pontos[melhor] == segundo:
+        return {"tier": "", "confianca": 0.0, "motivo": "ambíguo entre tiers"}
+    return {"tier": melhor, "confianca": round(pontos[melhor] / max(1, total), 2),
+            "motivo": f"{pontos[melhor]} sinal(is) de {melhor}"}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -632,6 +958,10 @@ def _expandir(d: dict) -> dict:
             d.update({k: det.get(k) for k in
                       ("onde_usar", "verticais", "axioma", "assimilacao", "comparacao",
                        "modelos", "motores", "pedido", "fonte_tipo",
+                       # `fonte`: llm = analisado de verdade | extrativo = o LLM estava
+                       # FORA e isto é só um resumo. Sem expor isto, score 0 por falha de
+                       # LLM ficava idêntico a "vídeo ruim" — foi o que enganou o JP.
+                       "fonte",
                        "vertical", "vertical_nova", "marketing", "ferramentas")})
     except (ValueError, TypeError):
         pass
@@ -695,6 +1025,29 @@ def harvest_ideias(limite: int = 300) -> dict:
                 ferramentas[chave] = {"nome": str(f).strip()[:60], "mencoes": 1, **fonte}
     cand = sorted(ferramentas.values(), key=lambda x: x["mencoes"], reverse=True)
     return {"grupos": grupos, "por_motor": por_motor, "ferramentas": cand, "total": total}
+
+
+def harvest_ideias_csv(limite: int = 300) -> str:
+    """CSV da Caixa de Ideias com UTF-8 BOM (abre certo no Excel PT-BR, sem quebrar
+    acento). Achata `grupos` (ideias por domínio, a fonte canônica) + `ferramentas`
+    (produtos candidatos). Reusa harvest_ideias — zero query extra. `por_motor` fica de
+    fora de propósito: é o MESMO dado roteado, duplicaria linha."""
+    import csv
+    import io
+    dados = harvest_ideias(limite)
+    buf = io.StringIO()
+    buf.write("﻿")  # BOM: Excel PT-BR abre com acento certo
+    w = csv.writer(buf)
+    w.writerow(["tipo", "grupo", "ideia", "mencoes", "origem", "url", "data", "score", "analise_id"])
+    for dom, itens in (dados.get("grupos") or {}).items():
+        for i in itens:
+            w.writerow(["ideia", dom, i.get("ideia", ""), "", i.get("origem", ""),
+                        i.get("url", ""), (i.get("data") or "")[:10], i.get("score", ""), i.get("aid", "")])
+    for f in (dados.get("ferramentas") or []):
+        w.writerow(["ferramenta", "produto_candidato", f.get("nome", ""), f.get("mencoes", ""),
+                    f.get("origem", ""), f.get("url", ""), (f.get("data") or "")[:10],
+                    f.get("score", ""), f.get("aid", "")])
+    return buf.getvalue()
 
 
 def obter(aid: int) -> dict | None:

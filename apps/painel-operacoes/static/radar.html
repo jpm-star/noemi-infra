@@ -19,6 +19,11 @@ input{width:100%}button{cursor:pointer;font-weight:600;border:0}
 .an.open .trans{display:block}.empty{color:var(--mut);text-align:center;padding:20px}
 #status{color:var(--warn);font-size:.85rem;margin-top:8px;min-height:1em}
 .score{color:var(--warn);font-weight:700}
+.parcial{background:rgba(251,191,36,.16);color:#b45309;border:1px solid rgba(251,191,36,.45);font-size:.7rem;font-weight:700;padding:2px 9px;border-radius:20px;white-space:nowrap;cursor:help}
+.btn-pdf{cursor:pointer;background:#12233a;color:var(--cy,#38bdf8);border:1px solid #1e2a3a;
+  border-radius:9px;padding:9px 15px;font-weight:700;font-size:.88rem;white-space:nowrap}
+.btn-pdf:hover{border-color:var(--cy,#38bdf8)}
+.naoanalisado{background:rgba(255,120,120,.14);color:#ff9a9a;border:1px solid rgba(255,120,120,.4);font-size:.7rem;font-weight:700;padding:2px 9px;border-radius:20px;white-space:nowrap;cursor:help}
 </style></head><body>
 <a class="voltar" href="/obs" title="Voltar" onclick="if(history.length>1){history.back();return false}">‹ Voltar</a>
 <h1>📡 Radar de Vídeo</h1>
@@ -29,6 +34,8 @@ input{width:100%}button{cursor:pointer;font-weight:600;border:0}
     <input id="url" placeholder="https://www.instagram.com/reel/…  (ou link do Drive/YouTube)">
     <input id="origem" placeholder="origem (opcional: @conta / concorrente)" style="max-width:260px">
     <button id="go" class="btn-go">Analisar</button>
+    <label class="btn-pdf" title="Sobe um PDF (relatório, apostila, proposta, deck) e roda a MESMA análise">
+      📄 PDF<input id="pdf" type="file" accept="application/pdf" hidden onchange="subirPdf()"></label>
   </div>
   <div id="status"></div>
   <div id="result"></div>
@@ -61,7 +68,7 @@ function card(a){
     ${linha('🔗 vs histórico',a.comparacao)}
     ${modHtml}`;
   return `<div class="card an" data-id="${a.id}">
-    <h3><span onclick="event.stopPropagation();filtrarOrigem('${esc(a.origem||'')}')" style="cursor:pointer;text-decoration:underline dotted" title="ver só desta origem">${esc(a.origem||'—')}</span> <span class="score">★${a.score||'?'}</span> <span class="pill">${esc(a.categoria||'?')}</span></h3>
+    <h3><span onclick="event.stopPropagation();filtrarOrigem('${esc(a.origem||'')}')" style="cursor:pointer;text-decoration:underline dotted" title="ver só desta origem">${esc(a.origem||'—')}</span> ${a.fonte==='extrativo'?'<span class="naoanalisado" title="O LLM estava fora quando isto entrou. NÃO é vídeo ruim — é análise que não rodou.">⚠ não analisado</span>':(a.fonte==='llm_parcial'?`<span class="parcial" title="A análise rodou mas a saída do modelo veio truncada; o que sobrou foi salvo. Nota pode estar faltando.">◐ parcial${a.score?' ★'+a.score:''}</span>`:`<span class="score">★${a.score||'?'}</span>`)} <span class="pill">${esc(a.categoria||'?')}</span></h3>
     <div class="meta">${(a.data||'').slice(0,10)} · <a href="${esc(a.url)}" target="_blank" rel="noopener">abrir vídeo ↗</a> ${tags}</div>
     <div class="insight">${esc(a.insight||'')}</div>
     ${rico}
@@ -124,4 +131,18 @@ $('#go').onclick=async()=>{
   $('#go').disabled=false;
 };
 hist();
+
+window.subirPdf=async()=>{
+  const f=document.getElementById('pdf').files[0]; if(!f)return;
+  const st=document.getElementById('status')||document.getElementById('res');
+  if(st) st.textContent=`📄 lendo ${f.name}… (texto ou visão nas páginas)`;
+  try{
+    const fd=new FormData(); fd.append('arquivo',f);
+    const el=document.getElementById('origem'); if(el&&el.value) fd.append('origem',el.value);
+    const d=await(await fetch('/api/radar/pdf',{method:'POST',body:fd})).json();
+    if(st) st.textContent = d.ok ? `✅ ${f.name}: ${(d.insight||'').slice(0,150)}` : `✗ ${d.erro||'falhou'}`;
+    if(d.ok && typeof carregar==='function') carregar();
+  }catch(e){ if(st) st.textContent='✗ erro de rede'; }
+  document.getElementById('pdf').value='';
+};
 </script></body></html>

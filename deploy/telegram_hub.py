@@ -156,15 +156,24 @@ def _processar_msg(m: dict, chat_alvo: str) -> str | None:
     # 1b) FOTO (imagem enviada) → visão/OCR → radar. Cada msg = 1 foto (manda as 30 seguidas).
     foto = m.get("photo")
     if isinstance(foto, list) and foto and (foto[-1] or {}).get("file_id"):
-        _responder(chat, "🖼️ recebi a imagem, analisando…")
+        album = m.get("_album") or [foto]          # carrossel = N fotos, 1 análise
+        n_fotos = len(album)
+        _responder(chat, f"🖼️ recebi {n_fotos} imagens do carrossel, analisando…"
+                   if n_fotos > 1 else "🖼️ recebi a imagem, analisando…")
         with tempfile.TemporaryDirectory(prefix="tg_img_") as td:
-            arq, erro = _baixar_arquivo(foto[-1]["file_id"], Path(td))  # maior resolução
-            if not arq:
+            caminhos = []
+            for i, f_ in enumerate(album):
+                arq, erro = _baixar_arquivo(f_[-1]["file_id"], Path(td) / f"s{i}")  # maior resolução
+                if arq:
+                    caminhos.append(str(arq))
+            if not caminhos:
                 _responder(chat, "✗ não consegui baixar a imagem — tenta reenviar.")
-                radar.registrar_job(False, origem=conta or "telegram", motivo=f"download img {erro}")
-                return f"img_download_falhou_{erro}"
+                radar.registrar_job(False, origem=conta or "telegram", motivo="download img")
+                return "img_download_falhou"
             try:
-                a = radar.analisar_imagem(str(arq), origem=conta or "telegram", instrucao=instr)
+                a = (radar.analisar_imagens(caminhos, origem=conta or "telegram", instrucao=instr)
+                     if n_fotos > 1 and hasattr(radar, "analisar_imagens")
+                     else radar.analisar_imagem(caminhos[0], origem=conta or "telegram", instrucao=instr))
                 _responder(chat, _fmt_insight(a))
                 radar.registrar_job(True, origem=a.get("origem") or conta or "telegram", url="(imagem)")
                 return f"imagem ok id={a['id']}"
@@ -172,29 +181,107 @@ def _processar_msg(m: dict, chat_alvo: str) -> str | None:
                 _responder(chat, f"✗ falhou: {str(e)[:200]}")
                 radar.registrar_job(False, origem=conta or "telegram", motivo=str(e)[:150])
                 return "img_analise_falhou"
+    # 1c) NOTA DE VOZ (#8) — ideia falada, sem mídia nem link. Cai na MESMA
+    # transcrever() do áudio de vídeo; a transcrição vira o conteúdo analisado.
+    voz = m.get("voice") or m.get("audio")
+    if isinstance(voz, dict) and voz.get("file_id"):
+        _responder(chat, "🎙️ recebi seu áudio, transcrevendo…")
+        with tempfile.TemporaryDirectory(prefix="tg_voz_") as td:
+            arq, erro = _baixar_arquivo(voz["file_id"], Path(td))
+            if not arq:
+                _responder(chat, "✗ não consegui baixar o áudio — tenta reenviar.")
+                return f"voz_download_falhou_{erro}"
+            try:
+                from shared_core.ai import transcricao as _trans
+                texto_voz = _trans.transcrever(str(arq)) or ""
+            except Exception as e:  # noqa: BLE001
+                _responder(chat, f"✗ não consegui transcrever: {str(e)[:150]}")
+                return "voz_transcricao_falhou"
+            if not texto_voz.strip():
+                _responder(chat, "✗ áudio sem fala reconhecível.")
+                return "voz_vazia"
+            try:
+                a = radar._processar("IDEIA FALADA (nota de voz do JP): " + texto_voz,
+                                     conta or "telegram", "(nota de voz)", instr)
+                _responder(chat, _fmt_insight(a))
+                radar.registrar_job(True, origem=conta or "telegram", url="(nota de voz)")
+                return f"voz ok id={a['id']}"
+            except Exception as e:  # noqa: BLE001
+                _responder(chat, f"✗ falhou: {str(e)[:200]}")
+                radar.registrar_job(False, origem=conta or "telegram", motivo=str(e)[:150])
+                return "voz_analise_falhou"
+
     # 2) link no texto
     txt = m.get("text") or m.get("caption") or ""
     links = _URL_RE.findall(txt)
     if links:
-        url = links[0].rstrip(").,")
-        _responder(chat, "🔗 analisando o link…")
-        try:
-            a = radar.analisar(url, origem=conta or None, instrucao=instr)  # legenda > metadado > url
-            _responder(chat, _fmt_insight(a))
-            radar.registrar_job(True, origem=a.get("origem") or "", url=url)
-            return f"link ok id={a['id']}"
-        except Exception as e:  # noqa: BLE001
-            # IG/YT bloqueiam IP de datacenter (ou a sessão venceu) → guia pro caminho
-            # garantido: o vídeo enviado direto NÃO usa yt-dlp (ffmpeg local, 100%).
-            dica = ("\n\n💡 O Instagram costuma bloquear meu IP (ou a sessão venceu). "
-                    "Caminho garantido: baixa o reel no teu celular e me manda o VÍDEO "
-                    "aqui — analiso 100%, sem depender do link."
-                    if "instagram" in url.lower()
-                    else "\n\n💡 Se o link não abrir, me manda o vídeo direto que eu analiso.")
-            _responder(chat, f"✗ {str(e)[:160]}{dica}")
-            radar.registrar_job(False, origem=conta or "", url=url, motivo=str(e)[:150])
-            return "link_falhou"
+        # #2: TODOS os links da mensagem (antes só o primeiro — os outros sumiam calados).
+        # dedup preservando a ordem; #9: confirma o recebimento ANTES de processar.
+        urls, vistos = [], set()
+        for l in links:
+            u = l.rstrip(").,")
+            if u not in vistos:
+                vistos.add(u)
+                urls.append(u)
+        _responder(chat, f"🔗 recebi {len(urls)} link(s), na fila — analisando…"
+                   if len(urls) > 1 else "🔗 recebi, analisando o link…")
+        oks = 0
+        for i, url in enumerate(urls, 1):
+            pref = f"[{i}/{len(urls)}] " if len(urls) > 1 else ""
+            try:
+                a = radar.analisar(url, origem=conta or None, instrucao=instr)  # legenda > metadado > url
+                _responder(chat, pref + _fmt_insight(a))
+                radar.registrar_job(True, origem=a.get("origem") or "", url=url)
+                oks += 1
+                continue
+            except Exception as e:  # noqa: BLE001
+                # IG/YT bloqueiam IP de datacenter (ou a sessão venceu) → guia pro caminho
+                # garantido: o vídeo enviado direto NÃO usa yt-dlp (ffmpeg local, 100%).
+                # post de FOTO/carrossel (/p/) é caso diferente de reel: o yt-dlp só faz
+                # vídeo e o IG serve login-wall pra imagem. A dica tem que dizer o que
+                # RESOLVE (mandar os prints), não repetir "manda o vídeo".
+                if "instagram.com/p/" in url.lower():
+                    dica = ("\n\n💡 Esse link é um POST DE FOTOS/carrossel — o Instagram não "
+                            "libera as imagens pro meu IP. Tira print dos slides e me manda "
+                            "as fotos aqui (pode mandar todas juntas): eu leio o carrossel "
+                            "inteiro numa análise só.")
+                elif "instagram" in url.lower():
+                    dica = ("\n\n💡 O Instagram costuma bloquear meu IP (ou a sessão venceu). "
+                            "Caminho garantido: baixa o reel no teu celular e me manda o VÍDEO "
+                            "aqui — analiso 100%, sem depender do link.")
+                else:
+                    dica = "\n\n💡 Se o link não abrir, me manda o vídeo/print direto que eu analiso."
+                _responder(chat, pref + f"✗ {str(e)[:160]}{dica}")
+                radar.registrar_job(False, origem=conta or "", url=url, motivo=str(e)[:150])
+        return f"links {oks}/{len(urls)} ok"
     return None
+
+
+def _agrupar_album(resultados: list) -> list:
+    """Telegram entrega CARROSSEL/álbum como N mensagens separadas com o mesmo
+    `media_group_id`. Sem juntar, 8 slides viram 8 análises soltas — cada uma sem o
+    contexto das outras, e a legenda (que vem só na 1ª) se perde nas demais.
+
+    Junta as fotos do mesmo álbum na PRIMEIRA mensagem (campo `_album`) e descarta as
+    repetidas. Mensagem sem media_group_id passa intacta."""
+    saida, por_grupo = [], {}
+    for u in resultados:
+        m = u.get("message") or u.get("channel_post") or {}
+        g = m.get("media_group_id")
+        if not g or not m.get("photo"):
+            saida.append(u)
+            continue
+        if g in por_grupo:  # já temos o líder do álbum: só acumula a foto
+            lider = por_grupo[g]
+            lider.setdefault("_album", []).append(m["photo"])
+            # legenda pode vir em qualquer item do álbum — a 1ª não-vazia vence
+            if not (lider.get("caption") or "").strip() and (m.get("caption") or "").strip():
+                lider["caption"] = m["caption"]
+            continue
+        m["_album"] = [m["photo"]]
+        por_grupo[g] = m
+        saida.append(u)
+    return saida
 
 
 def rodar(*, buscar=None) -> dict:
@@ -206,7 +293,7 @@ def rodar(*, buscar=None) -> dict:
     except (OSError, ValueError):
         off = 0
     upd = (buscar or (lambda o: _get("getUpdates", {"offset": o, "timeout": 0}))) (off + 1)
-    resultados = upd.get("result", []) if isinstance(upd, dict) else []
+    resultados = _agrupar_album(upd.get("result", []) if isinstance(upd, dict) else [])
     feitos = []
     maior = off
     for u in resultados:
