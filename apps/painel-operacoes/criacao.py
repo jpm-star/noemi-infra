@@ -312,6 +312,16 @@ def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | s
     if _bloco_est := _est.bloco(_principal, _acento):
         _injetar(site_dir / "index.html", _bloco_est)
     _est_desc = _auto["porque"] if not estilo else estilo
+    # QA PÓS-GERAÇÃO (JP 2026-08-05): telefone de mentira NÃO passa. Marcar depois não
+    # basta — 14 sites já tinham subido assim e o lead clica antes de alguém revisar.
+    # Não apaga o site (o JP pode querer olhar), mas devolve ok=False: o painel mostra
+    # o erro e o link não é tratado como entregável.
+    _tel_ruins = telefones_falsos_no_html(
+        (site_dir / "index.html").read_text(encoding="utf-8", errors="ignore"))
+    if _tel_ruins:
+        return {"ok": False, "url": url, "slug": slug,
+                "erro": f"QA bloqueou: telefone placeholder no site ({', '.join(_tel_ruins)}). "
+                        f"Corrija o WhatsApp do briefing e gere de novo."}
     try:
         with _db_noemi() as c:
             c.execute("INSERT INTO sites_gerados (cliente,segmento,slug,url,criado_em) VALUES (?,?,?,?,?)",
@@ -447,22 +457,57 @@ def _injetar(idx: Path, bloco: str) -> bool:
         return False
 
 
+# Telefone de mentira em site publicado é o erro mais caro do gerador: o lead CLICA e cai
+# no vazio. Detecção por PADRÃO, não por lista — a varredura de 2026-08-05 achou 14 dos 50
+# sites no ar com números de uma família que nenhuma lista previa (…99998888, …111000N).
+_TEL_FALSO = (
+    re.compile(r"(\d)\1{5,}"),                   # 6+ dígitos iguais seguidos
+    re.compile(r"9{4,}8{4,}"),                   # 99998888 e parentes
+    re.compile(r"1{3,}0{3,}\d?\b"),              # série de demo …111000N
+    re.compile(r"(?:0123|1234|2345|3456|4567|5678|6789){2,}"),
+)
+
+
+def telefone_falso(numero: str) -> bool:
+    """Número tem CARA de placeholder? Espelha `sdr_motor.app.identidade.telefone_falso`.
+    Duplicado de propósito: os dois repos são deployados separados e um import cruzado
+    faria o QA do gerador depender do backend da Noemi estar instalado."""
+    d = re.sub(r"\D", "", numero or "")
+    return len(d) >= 10 and any(rx.search(d) for rx in _TEL_FALSO)
+
+
+def telefones_falsos_no_html(html: str) -> list[str]:
+    """Todos os números com cara de placeholder no HTML (wa.me, tel:, texto solto)."""
+    achados = set()
+    for num in re.findall(r"(?:wa\.me/|tel:\+?|whatsapp[^0-9]{0,20})(\d{10,15})", html, re.I):
+        if telefone_falso(num):
+            achados.add(num)
+    return sorted(achados)
+
+
 def _gate(idx: Path) -> dict:
     """Checklist manual de qualidade (izanagi não roda aqui): stub/placeholder, motion, vídeo, tamanho."""
     try:
         html = idx.read_text(encoding="utf-8", errors="ignore")
     except OSError:
-        return {"status": "órfão", "tem_stub": False, "motion": False, "video": False, "kb": 0}
+        return {"status": "órfão", "tem_stub": False, "motion": False, "video": False,
+                "kb": 0, "tel_falso": []}
     low = html.lower()
     kb = len(html) // 1024
     tem_stub = any(s in low for s in _STUB)
     motion = ("@keyframes" in low) or ("animation:" in low) or ("transition:" in low)
     video = "<video" in low
+    tel_falso = telefones_falsos_no_html(html)
     if tem_stub or kb < 6:
         status = "stub"
+    elif tel_falso:
+        # NÃO é "no ar": um site que manda o lead pra número morto é pior que um stub,
+        # porque parece pronto. Aparece vermelho na galeria e no Studio.
+        status = "telefone falso"
     else:
         status = "no ar"
-    return {"status": status, "tem_stub": tem_stub, "motion": motion, "video": video, "kb": kb}
+    return {"status": status, "tem_stub": tem_stub, "motion": motion, "video": video,
+            "kb": kb, "tel_falso": tel_falso}
 
 
 def listar_sites() -> list[dict]:
@@ -515,6 +560,24 @@ if __name__ == "__main__":  # self-check offline (sem gerar site real, sem rede)
     assert slugs["bom-site"]["status"] == "no ar" and slugs["ruim-site"]["status"] == "stub"
     # gerar valida obrigatórios sem chamar o motor
     assert gerar("", "x")["ok"] is False
+    # QA de telefone: pega a FAMÍLIA de falsos que a varredura achou nos 50 sites no ar,
+    # e não confunde número real (senão o QA vira ruído e alguém desliga)
+    for falso in ("5514000000000", "5566999998888", "14999998888", "5518991110009",
+                  "5514991110008"):
+        assert telefone_falso(falso), falso
+    for real in ("5514998745847", "5514996900353", "5516988364226", "5514991694754"):
+        assert not telefone_falso(real), real
+    assert telefones_falsos_no_html(
+        '<a href="https://wa.me/5566999998888">fala</a>') == ["5566999998888"]
+    assert telefones_falsos_no_html(
+        '<a href="https://wa.me/5514998745847">fala</a>') == []
+    # o gate rebaixa o status: site com telefone morto NÃO é "no ar"
+    ruim = d / "tel-ruim"; ruim.mkdir()
+    (ruim / "index.html").write_text(
+        "<html>" + "conteúdo real de verdade " * 400
+        + '<a href="https://wa.me/5566999998888">z</a></html>', encoding="utf-8")
+    g2 = _gate(ruim / "index.html")
+    assert g2["status"] == "telefone falso" and g2["tel_falso"] == ["5566999998888"], g2
     # STUDIO #2 — galeria selecionável: preview usa a MESMA fonte da geração
     assert _semente("Clínica X") == _semente("Clínica X")          # estável entre chamadas
     assert _semente("Clínica X", 42) == 42                          # lead_id manda
