@@ -353,11 +353,24 @@ def _insight(transcricao: str, contexto: list[dict], instrucao: str = "") -> dic
     extrativo se o proxy estiver fora — nunca crasha a análise."""
     from shared_core.ai import llm_proxy
 
-    def _call(prompt: str, mt: int, temp: float):  # Groq → Claude direto (TPD diário do Groq é comum)
-        t = llm_proxy.completar(prompt, model="analise", max_tokens=mt, temperature=temp)
-        if not t:
-            t = llm_proxy.completar(prompt, model="fallback-anthropic", max_tokens=mt, temperature=temp)
-        return t
+    def _call(prompt: str, mt: int, temp: float):
+        """Groq → outro modelo → Claude, e ESPERANDO o minuto virar entre tentativas.
+
+        O two-pass gasta ~3.600 tokens por vídeo e o teto é 12.000/MINUTO. Quando
+        chegam 3-4 vídeos em rajada (o JP manda em lote), o 1º passa e os outros
+        estouram o TPM. Antes disso, `_insight` desistia na 1ª falha e degradava pra
+        extrativo — o vídeo virava "score 0" com a cota 99% livre no minuto seguinte.
+        Esperar 35s custa 35s; degradar custa a análise inteira."""
+        import time as _t
+        for tentativa in range(3):
+            if t := llm_proxy.completar(prompt, model="analise", max_tokens=mt, temperature=temp):
+                return t
+            if t := llm_proxy.completar(prompt, model="fallback-anthropic",
+                                        max_tokens=mt, temperature=temp):
+                return t
+            if tentativa < 2:  # provável TPM: o teto reseta por minuto
+                _t.sleep(int(os.environ.get("RADAR_ESPERA_TPM_S", "35")))
+        return None
 
     # TWO-PASS: pass 1 = raciocínio profundo (prosa densa, temp maior p/ ângulos não-óbvios);
     # pass 2 = estrutura nos 10 campos (temp baixa, fiel). Eleva a profundidade vs 1-pass.
@@ -421,7 +434,10 @@ def _insight(transcricao: str, contexto: list[dict], instrucao: str = "") -> dic
             "categoria": cat if cat in CATEGORIAS else "outro",
             "score": score,
             "tags": (persuasao[:6] or assinatura.lower().replace(",", " ").split()[:6]),
-            "fonte": "llm",
+            "fonte": "llm_parcial" if bruto.get("_parcial") else "llm",
+            # score ausente num JSON truncado é DESCONHECIDO, não zero
+            **({"score_incerto": True} if bruto.get("_parcial")
+                and "score_replicabilidade" not in bruto else {}),
             # #7: tier JPOS onde o insight é acionável (vazio = não crava)
             **{"tier_jpos": tier_do_insight({
                 "insight": resumo, "resumo": resumo, "assinatura_tema": assinatura,
@@ -435,6 +451,52 @@ def _insight(transcricao: str, contexto: list[dict], instrucao: str = "") -> dic
             # cam.1/3/4 restauradas — a Caixa de Ideias (harvest_ideias) volta a receber estes:
             "vertical": vert, "vertical_nova": vertical_nova, "marketing": marketing,
             "ferramentas": ferramentas, "modelos": modelos}
+
+
+def _reparar_json(texto: str) -> dict | None:
+    """Salva JSON TRUNCADO fechando o que ficou aberto.
+
+    Causa real (2026-08-05): o schema tem 10+ campos e a saída às vezes corta no meio
+    ("promessa_vs_entrega": {" e acabou). O extrator descartava TUDO e a análise virava
+    "score 0" — com 8 dos 10 campos já prontos na mão. Um insight parcial vale
+    infinitamente mais que nenhum: fecha as estruturas abertas e devolve o que veio.
+
+    Descarta o último par chave/valor incompleto (senão o json.loads morre nele)."""
+    t = texto[texto.find("{"):] if "{" in texto else ""
+    if not t:
+        return None
+    t = re.sub(r"```$", "", t.rstrip()).rstrip()
+    # corta um "campo": incompleto no fim — o valor nunca chegou
+    t = re.sub(r',\s*"[^"]*"\s*:\s*(\{|\[)?\s*"?[^",}\]]*$', "", t)
+    t = re.sub(r',\s*"[^"]*"?$', "", t)
+    t = t.rstrip().rstrip(",")
+    # fecha o que ficou aberto, na ordem inversa da abertura
+    pilha = []
+    dentro_str = escapou = False
+    for ch in t:
+        if escapou:
+            escapou = False
+            continue
+        if ch == "\\":
+            escapou = True
+            continue
+        if ch == '"':
+            dentro_str = not dentro_str
+            continue
+        if dentro_str:
+            continue
+        if ch in "{[":
+            pilha.append(ch)
+        elif ch in "}]" and pilha:
+            pilha.pop()
+    if dentro_str:  # string aberta: fecha a aspa
+        t += '"'
+    t += "".join("}" if c == "{" else "]" for c in reversed(pilha))
+    try:
+        d = json.loads(t)
+        return d if isinstance(d, dict) else None
+    except ValueError:
+        return None
 
 
 def _bloco_balanceado(texto: str, i: int) -> str | None:
@@ -486,6 +548,13 @@ def _extrair_json(texto: str) -> dict | None:
                 return d
         except (ValueError, TypeError):
             continue
+    # ÚLTIMO RECURSO: JSON truncado (schema de 10+ campos corta no meio). Fecha o que
+    # ficou aberto e devolve o parcial — 8 campos valem infinitamente mais que score 0.
+    if reparado := _reparar_json(texto):
+        # marca a origem: score ausente aqui é CAMPO CORTADO, não avaliação baixa.
+        # Sem isso, "score 0 parcial" volta a ser indistinguível de "vídeo ruim".
+        reparado["_parcial"] = True
+        return reparado
     return None
 
 
