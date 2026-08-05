@@ -133,7 +133,9 @@ td{padding:7px 8px;border-top:1px solid var(--line)}
     <div class="passo">1 · CLIENTE</div>
     <div id="af" class="hint"></div>
     <div class="linha">
-      <div><label>Nome do negócio *</label><input id="nome" placeholder="Rações e Cia"></div>
+      <div><label>Nome do negócio *</label>
+        <input id="nome" list="leads" autocomplete="off" placeholder="Rações e Cia">
+        <datalist id="leads"></datalist></div>
       <div><label>Nicho *</label><input id="nicho" placeholder="pet shop"></div>
       <div><label>WhatsApp</label><input id="whatsapp" placeholder="14 99999-9999"></div>
     </div>
