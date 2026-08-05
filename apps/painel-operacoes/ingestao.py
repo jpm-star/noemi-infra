@@ -175,14 +175,25 @@ def do_crm(nome: str) -> dict:
         if k in ("nicho", "whatsapp", "publico", "diferenciais", "cidade", "tier") and v}}
 
 
+_HF_CACHE: tuple[bool, str] | None = None
+
+
 def higgsfield_disponivel() -> tuple[bool, str]:
     """Higgsfield supre material visual faltante em vez de cair em banco de imagem
-    (caso Academia Bellator). Hoje: CLIENT_ID vazio e o MCP exige OAuth — então a
-    costura existe e o motor sabe que NÃO tem, em vez de fingir que gerou."""
-    cid = os.environ.get("HIGGSFIELD_CLIENT_ID", "").strip()
-    if not cid:
-        return False, "HIGGSFIELD_CLIENT_ID vazio (o MCP também exige OAuth do JP)"
-    return True, "configurado"
+    (caso Academia Bellator). Pergunta ao provider de verdade — credencial válida
+    mas SEM CRÉDITO conta como indisponível: gerar visual que vai falhar no meio da
+    criação do site é pior que saber antes e marcar a mídia como ausente.
+
+    ponytail: memo por processo. A resposta só muda quando o JP compra crédito;
+    sondar a cada consolidação seria uma chamada de rede por site gerado."""
+    global _HF_CACHE
+    if _HF_CACHE is None:
+        try:
+            from shared_core.ai import higgsfield
+            _HF_CACHE = higgsfield.disponivel()
+        except Exception as e:  # noqa: BLE001
+            _HF_CACHE = (False, f"provider indisponível: {e}"[:120])
+    return _HF_CACHE
 
 
 def consolidar(*, nome: str = "", site_url: str = "", formulario: str = "",

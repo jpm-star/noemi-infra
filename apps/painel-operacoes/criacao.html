@@ -1,0 +1,308 @@
+<!doctype html><html lang="pt-BR"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Criação — Gerar site</title>
+<style>
+:root{--bg:#060a12;--panel:#0c1422;--panel2:#0f1a2c;--line:#1b2942;--cy:#34e2ff;--op:#2fe6a0;
+      --ri:#ffb020;--mut:#8aa2c0;--txt:#e6edf7;--roxo:#c9a9ff}
+*{box-sizing:border-box;margin:0}
+body{background:radial-gradient(700px 400px at 100% 0%,rgba(52,226,255,.06),transparent 55%),var(--bg);
+     color:var(--txt);font:14px/1.55 system-ui,-apple-system,sans-serif;padding:20px 16px;max-width:1020px;margin:0 auto}
+a{color:var(--cy);text-decoration:none}
+.top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px}
+h1{font-size:1.3rem}h2{font-size:1rem;margin:22px 0 10px;color:var(--mut)}
+.sub{color:var(--mut);font-size:.84rem;margin-bottom:14px}
+.gap{background:rgba(255,176,32,.09);border:1px solid rgba(255,176,32,.35);border-radius:11px;
+     padding:11px 14px;font-size:.82rem;color:#ffd28a;margin-bottom:16px;line-height:1.5}
+.gap b{color:var(--ri)}
+.gap.ok{background:rgba(47,230,160,.08);border-color:rgba(47,230,160,.4);color:#a9f0cf}
+.gap.ok b,.gap.ok code{color:var(--op)}
+.falta{background:rgba(255,176,32,.10);border:1px solid rgba(255,176,32,.4);border-radius:11px;
+  padding:11px 14px;margin-top:12px;font-size:.82rem;color:#ffd28a;line-height:1.55}
+.falta b{color:var(--ri)}
+.falta li{margin:4px 0 0 4px;list-style:none}
+.contratoOk{background:rgba(47,230,160,.10);border:1px solid rgba(47,230,160,.4);border-radius:11px;
+  padding:10px 14px;margin-top:12px;font-size:.82rem;color:#a9f0cf}
+input[type=file]{padding:7px 9px;font-size:.82rem}
+input[type=file]::file-selector-button{background:#12233a;color:var(--cy);border:1px solid var(--line);border-radius:7px;padding:5px 10px;margin-right:9px;cursor:pointer}
+.card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:14px;padding:16px}
+label{display:block;font-size:.8rem;color:var(--mut);margin:10px 0 4px}
+input,textarea,select{width:100%;font:inherit;border-radius:9px;border:1px solid var(--line);background:#08101d;color:var(--txt);padding:9px 11px}
+input:focus,textarea:focus{outline:1px solid var(--cy)}
+textarea{min-height:64px;resize:vertical}
+.row{display:flex;gap:12px;flex-wrap:wrap}.row>div{flex:1 1 200px}
+.hint{font-size:.72rem;color:var(--mut);margin-top:3px}
+button.gerar{margin-top:14px;background:var(--op);color:#04140d;font-weight:800;border:0;border-radius:10px;padding:11px 20px;cursor:pointer;font-size:.95rem}
+button.gerar:disabled{opacity:.5;cursor:wait}
+#res{margin-top:12px}
+.ok{background:rgba(47,230,160,.1);border:1px solid rgba(47,230,160,.4);border-radius:10px;padding:12px}
+.err{background:rgba(255,80,80,.1);border:1px solid rgba(255,80,80,.4);border-radius:10px;padding:12px;color:#ff9a9a}
+table{width:100%;border-collapse:collapse;font-size:.83rem;margin-top:6px}
+th{text-align:left;color:var(--mut);font-weight:600;padding:7px 9px;border-bottom:1px solid var(--line)}
+td{padding:8px 9px;border-bottom:1px solid #121c2e}
+tr:hover td{background:rgba(52,226,255,.04)}
+.st{font-size:.72rem;padding:2px 9px;border-radius:20px;white-space:nowrap;font-weight:600}
+.st.noar{background:rgba(47,230,160,.14);color:var(--op)}
+.st.stub{background:rgba(255,176,32,.14);color:var(--ri)}
+.st.orfao{background:rgba(138,162,192,.14);color:var(--mut)}
+.flag{font-size:.72rem;color:var(--mut)}.flag b{color:var(--txt)}
+.on{color:var(--op)}.off{color:#5a6b82}
+.cnt{color:var(--mut);font-size:.8rem;margin:4px 0}
+button.del{background:transparent;border:1px solid transparent;color:var(--mut);cursor:pointer;
+  font-size:.95rem;border-radius:7px;padding:2px 7px;margin-left:8px;line-height:1}
+button.del:hover{color:#ff9a9a;border-color:rgba(255,80,80,.4);background:rgba(255,80,80,.09)}
+button.orf{background:#12233a;color:var(--mut);border:1px solid var(--line);border-radius:8px;
+  padding:5px 11px;font-size:.78rem;cursor:pointer;margin-left:8px}
+button.orf:hover{color:var(--txt);border-color:var(--cy)}
+</style></head><body>
+<div class="top"><h1>🏗️ Criação de site</h1><a href="/obs">← QG</a></div>
+<div class="sub">Interface operacional do motor (motor-isca-sites → <code>montar_site</code>). Gera de verdade em /var/www/sites.</div>
+
+<div class="gap ok">✅ <b>Foto, vídeo e copy do cliente agora funcionam.</b> Enviou <b>foto</b> → vira hero real. Enviou <b>vídeo</b> → embute <code>&lt;video&gt;</code> de verdade (autoplay/loop/muted, sem render Higgsfield). <b>Copy pronta</b> → sobrescreve o texto que a IA escreveria. Sem nada disso, o motor gera por briefing como antes (fallback intacto).</div>
+
+<div class="card">
+  <div class="row">
+    <div>
+      <label>Empresa / lead</label>
+      <input id="nome" list="leads" placeholder="digite ou escolha um lead pesquisado" autocomplete="off">
+      <datalist id="leads"></datalist>
+      <div class="hint">Escolher um lead pesquisado preenche nicho, WhatsApp, público e achados sozinho.</div>
+      <div class="hint" id="af" style="color:var(--op)"></div>
+    </div>
+    <div><label>Nicho / segmento</label><input id="nicho" placeholder="ex: clínica odontológica"></div>
+  </div>
+  <div class="row">
+    <div><label>WhatsApp</label><input id="whatsapp" placeholder="14 99999-9999"></div>
+    <div><label>Público-alvo</label><input id="publico" placeholder="ex: famílias da região"></div>
+    <div><label>Cor primária (opcional)</label><input id="cor" placeholder="#00e6a2 ou vazio = tema"></div>
+    <div><label>🎯 Tier <span class="hint">(define o que o motor executa)</span></label>
+      <select id="tier" onchange="verEscopo()">
+        <option value="T1">T1 — landing + IA monitorando</option>
+        <option value="T2">T2 — + multi-página, SEO, AEO, GEO</option>
+        <option value="T3">T3 — + IA nativa, Calendar, e-mail</option>
+        <option value="T4">T4 — + painel do cliente</option>
+      </select>
+      <div class="hint" id="escopo"></div></div>
+    <div><label>🎨 Estilo visual <span class="hint">(acabamento por cima do tema)</span></label>
+      <select id="estilo" onchange="descEstilo()"></select>
+      <div class="hint" id="desest"></div></div>
+  </div>
+  <label>Diferenciais / conteúdo pesquisado <span class="hint">(uma linha cada — é isto que a IA usa pra escrever a copy)</span></label>
+  <textarea id="diferenciais" placeholder="atendimento no mesmo dia&#10;aceita convênio&#10;20 anos de experiência"></textarea>
+  <div class="row">
+    <div><label>📷 Foto de hero <span class="hint">(opcional — vira o fundo do hero)</span></label><input id="foto" type="file" accept="image/*"></div>
+    <div><label>🎬 Vídeo de hero <span class="hint">(opcional — embute &lt;video&gt; real)</span></label><input id="video" type="file" accept="video/*"></div>
+  </div>
+  <label>🖼️ Acervo do cliente <span class="hint">(20+ fotos — viram galeria no fim da página; o OCR lê o que está ESCRITO nelas (placa, tabela de planos, horário) e usa como contexto da copy)</span></label>
+  <input id="fotos" type="file" accept="image/*" multiple onchange="contarFotos()">
+  <div class="hint" id="cfotos"></div>
+  <label>✍️ Copy pronta do cliente <span class="hint">(opcional — sobrescreve a copy da IA; um parágrafo por linha)</span></label>
+  <textarea id="copy_livre" placeholder="cole aqui o texto que o cliente já mandou pronto — vai literal no site"></textarea>
+  <div id="contrato"></div>
+  <button class="gerar" id="btn" onclick="gerar()">🚀 Gerar site</button>
+  <div id="res"></div>
+</div>
+
+<h2>🧠 Aprendizado — referências de estrutura</h2>
+<div class="card">
+  <p class="hint" style="margin:0 0 10px">
+    Viu um site com estrutura boa? Sobe o print aqui. A visão lê a <b>ordem das seções</b> e
+    vira candidata de ESTRUTURA <b>pro segmento que você marcar</b> — entra no sorteio junto
+    com as receitas padrão. Isso é canal permanente: alimente sempre que vir algo que funciona.
+  </p>
+  <div class="row">
+    <div><label>Print do site de referência</label><input id="rimg" type="file" accept="image/*"></div>
+    <div><label>Tag / contexto</label><input id="rtag" placeholder="ex: hero com vídeo, prova social com números grandes"></div>
+    <div><label>Segmento</label><select id="rseg"></select></div>
+  </div>
+  <button class="gerar" id="rbtn" style="background:var(--roxo);color:#150a25" onclick="subirRef()">🧠 Ensinar estrutura</button>
+  <div id="rres"></div>
+  <div id="rlista" style="margin-top:12px"></div>
+</div>
+
+<h2>Sites gerados</h2>
+<div class="cnt" id="cnt"></div>
+<div style="margin:2px 0 6px"><button class="orf" onclick="limparOrfaos()">🧹 limpar órfãos do registro</button></div>
+<table><thead><tr><th>Site</th><th>Nicho</th><th>Status</th><th>Qualidade</th><th>Criado</th><th></th></tr></thead>
+<tbody id="tb"></tbody></table>
+
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+let LEADCAT={}, AUTOFILL={}, TIER="";  // AUTOFILL = o que o motor preencheu -> a ficha compara com o final
+async function carregarLeads(){
+  try{const d=await(await fetch("/api/leads-alvo")).json();
+    const seen=new Set();
+    $("leads").innerHTML=(d.leads||[]).filter(l=>{if(seen.has(l.nome))return false;seen.add(l.nome);LEADCAT[l.nome]=l.categoria;return true;})
+      .map(l=>`<option value="${esc(l.nome)}">`).join("");
+  }catch(e){}
+}
+// C1 — autofill: tudo que a pesquisa já sabe (tracker_prospects + leads_alvo) entra
+// sozinho. Só preenche campo VAZIO — o que o operador digitou por cima nunca é pisado.
+async function autofill(){
+  const nome=$("nome").value.trim(); if(!nome)return;
+  const c=LEADCAT[nome]; if(c&&!$("nicho").value)$("nicho").value=c;  // fallback imediato
+  try{
+    const d=await(await fetch("/api/criacao/lead?nome="+encodeURIComponent(nome))).json();
+    if(!d||!d.achou){$("af").textContent="";return;}
+    const posto=[];
+    for(const [id,val] of [["nicho",d.nicho],["whatsapp",d.whatsapp],["publico",d.publico],
+                           ["diferenciais",d.diferenciais]]){
+      if(val&&!$(id).value.trim()){$(id).value=val;posto.push(id);AUTOFILL[id]=val;}
+    }
+    TIER=d.tier||"";
+    $("af").innerHTML=posto.length
+      ? `✅ autopreenchido de <b>${esc(d.fonte)}</b>${d.tier?" · "+esc(d.tier):""}: ${posto.join(", ")} <span class="hint">(edite por cima se quiser)</span>`
+      : `ℹ️ lead achado em ${esc(d.fonte)}, mas os campos já estavam preenchidos`;
+  }catch(e){}
+}
+$("nome").addEventListener("change",autofill);
+$("nome").addEventListener("blur",autofill);
+const stCls=s=>s.startsWith("no ar")?"noar":s==="stub"?"stub":"orfao";
+const dot=(on,txt)=>`<span class="${on?'on':'off'}">${on?'●':'○'} ${txt}</span>`;
+async function carregarSites(){
+  const d=await(await fetch("/api/criacao/sites")).json();
+  const S=d.sites||[];
+  const noar=S.filter(x=>x.status.startsWith("no ar")).length, stub=S.filter(x=>x.status==="stub").length;
+  $("cnt").textContent=`${S.length} sites · ${noar} no ar · ${stub} stub/incompleto · dedup por slug`;
+  $("tb").innerHTML=S.map(x=>`<tr>
+    <td><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.slug)}</a></td>
+    <td>${esc(x.segmento||"—")}</td>
+    <td><span class="st ${stCls(x.status)}">${esc(x.status)}</span></td>
+    <td class="flag">${dot(x.motion,"motion")} · ${dot(x.video,"vídeo")} · <b>${x.kb||0}kb</b>${x.tem_stub?' · <span class="off">stub!</span>':''}</td>
+    <td class="flag">${(x.criado_em||"").slice(0,10)||"—"}</td>
+    <td style="white-space:nowrap"><a href="${esc(x.url)}" target="_blank" rel="noopener">abrir ↗</a>
+      <button class="del" title="Apagar site (irreversível)" onclick="apagar('${esc(x.slug)}')">🗑</button></td></tr>`).join("");
+}
+// C2 — apagar: pasta em /var/www/sites + linha no registro. Irreversível => confirma.
+async function apagar(slug){
+  if(!confirm(`Apagar o site "${slug}"?\n\nIsso remove a pasta em /var/www/sites e o registro.\nIRREVERSÍVEL.`))return;
+  try{
+    const fd=new FormData();fd.append("slug",slug);
+    const d=await(await fetch("/api/criacao/apagar",{method:"POST",body:fd})).json();
+    if(d.ok){$("res").innerHTML=`<div class="ok">🗑 Apagado: <b>${esc(slug)}</b> (pasta: ${d.pasta?"sim":"não existia"} · registro: ${d.linhas})</div>`;carregarSites();}
+    else $("res").innerHTML=`<div class="err">Falhou apagar: ${esc(d.erro||"erro")}</div>`;
+  }catch(e){$("res").innerHTML=`<div class="err">Erro de rede: ${esc(e.message)}</div>`;}
+}
+async function limparOrfaos(){
+  if(!confirm("Remover do registro os sites que não existem mais em disco (órfãos)?"))return;
+  const d=await(await fetch("/api/criacao/limpar-orfaos",{method:"POST"})).json();
+  $("res").innerHTML=d.ok?`<div class="ok">🧹 ${d.total} órfão(s) removido(s)${d.total?": "+d.removidos.map(esc).join(", "):""}</div>`
+                         :`<div class="err">${esc(d.erro||"erro")}</div>`;
+  carregarSites();
+}
+function contarFotos(){
+  const n=($("fotos").files||[]).length;
+  $("cfotos").innerHTML=n?`${n} foto(s) selecionada(s)${n<20?' <span style="color:var(--ri)">— o alvo é 20+ pra galeria encher</span>':' ✅'}`:"";
+}
+async function gerar(){
+  const nome=$("nome").value.trim(), nicho=$("nicho").value.trim();
+  if(!nome||!nicho){$("res").innerHTML='<div class="err">Empresa e nicho são obrigatórios.</div>';return;}
+  if(!CONTRATO.ok && !confirm(`${CONTRATO.mensagem}\n\nGerar assim mesmo?`)) return;
+  $("btn").disabled=true;$("btn").textContent="⏳ gerando (IA + assets)…";
+  $("res").innerHTML="";
+  try{
+    const fd=new FormData();
+    fd.append("nome",nome);fd.append("nicho",nicho);
+    fd.append("whatsapp",$("whatsapp").value);fd.append("publico",$("publico").value);
+    fd.append("cor",$("cor").value);fd.append("diferenciais",$("diferenciais").value);
+    fd.append("estilo",$("estilo").value);
+    fd.append("autofill",JSON.stringify(AUTOFILL));
+    fd.append("tier",$("tier").value||TIER||"");  // ficha: autofill acertou ou foi corrigido?
+    fd.append("copy_livre",$("copy_livre").value);
+    if($("foto").files[0])fd.append("foto",$("foto").files[0]);
+    if($("video").files[0])fd.append("video",$("video").files[0]);
+    for(const f of ($("fotos").files||[]))fd.append("fotos",f);  // C3: acervo (N arquivos, mesmo campo)
+    const r=await fetch("/api/criacao/gerar",{method:"POST",body:fd});  // multipart: browser põe o boundary
+    const d=await r.json();
+    if(d.ok){$("res").innerHTML=`<div class="ok">✅ Publicado: <a href="${esc(d.url)}" target="_blank" rel="noopener">${esc(d.url)}</a>`+
+      `<div class="hint" style="margin-top:6px;color:#a9f0cf">estrutura: <b>${esc(d.estrutura||"default")}</b> (${esc(d.estrutura_origem||"default")})`+
+      ` · ${d.fotos||0} fotos · ${d.segundos||"?"}s · ficha: <code>${esc(d.ficha||"—")}</code></div></div>`;carregarSites();}
+    else $("res").innerHTML=`<div class="err">Falhou: ${esc(d.erro||"erro")}</div>`;
+  }catch(e){$("res").innerHTML=`<div class="err">Erro de rede: ${esc(e.message)}</div>`;}
+  $("btn").disabled=false;$("btn").textContent="🚀 Gerar site";
+}
+// Estilos (morfismos): camada de acabamento trocável enquanto o JP ajusta a demo.
+let ESTILOS=[];
+async function carregarEstilos(){
+  try{const d=await(await fetch("/api/criacao/estilos")).json();
+    ESTILOS=d.estilos||[];
+    $("estilo").innerHTML=`<option value="">✨ Automático (por segmento + tier)</option>`+ESTILOS.filter(e=>e.valor).map(e=>`<option value="${esc(e.valor)}">${esc(e.rotulo)}</option>`).join("");
+    descEstilo();
+  }catch(e){}
+}
+function descEstilo(){
+  const v=$("estilo").value;
+  if(!v){$("desest").textContent="eu escolho o morfismo pelo segmento e tier, com acento numa seção onde outro comunica melhor";return;}
+  const e=ESTILOS.find(x=>x.valor===v);
+  $("desest").textContent=e?e.desc:"";
+}
+// ── Aprendizado: referências de ESTRUTURA por segmento ──────────────────────
+async function carregarRefs(){
+  try{
+    const d=await(await fetch("/api/criacao/referencias")).json();
+    if(!$("rseg").innerHTML)
+      $("rseg").innerHTML=`<option value="">(detectar pelo nicho)</option>`+
+        (d.segmentos||[]).map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join("");
+    const R=d.referencias||[];
+    $("rlista").innerHTML=R.length?`<table><thead><tr><th>Tag</th><th>Segmento</th><th>Ordem lida</th><th>No pool?</th><th></th></tr></thead><tbody>`+
+      R.map(r=>`<tr>
+        <td>${esc(r.tag||"—")}</td><td>${esc(r.segmento||"—")}</td>
+        <td class="flag">${esc(((r.receita||{}).ordem||[]).join(" → ")||"não lida")}</td>
+        <td>${r.aprovada?'<span class="st noar">no pool</span>':'<span class="st orfao">fora</span>'}</td>
+        <td style="white-space:nowrap">
+          <button class="orf" onclick="aprovarRef(${r.id},${r.aprovada?'false':'true'})">${r.aprovada?'tirar':'usar'}</button>
+          <button class="del" onclick="apagarRef(${r.id})">🗑</button></td></tr>`).join("")+
+      `</tbody></table>`:'<p class="hint">nenhuma referência ainda — suba a primeira acima.</p>';
+  }catch(e){}
+}
+async function subirRef(){
+  const f=$("rimg").files[0];
+  if(!f){$("rres").innerHTML='<div class="err">escolha um print de referência.</div>';return;}
+  $("rbtn").disabled=true;$("rbtn").textContent="⏳ lendo a estrutura…";
+  try{
+    const fd=new FormData();
+    fd.append("imagem",f);fd.append("tag",$("rtag").value);fd.append("segmento",$("rseg").value);
+    const d=await(await fetch("/api/criacao/referencia",{method:"POST",body:fd})).json();
+    if(d.ok){
+      const o=((d.referencia||{}).receita||{}).ordem||[];
+      $("rres").innerHTML=`<div class="ok">🧠 ${d.leu?`Estrutura lida: <b>${esc(o.join(" → "))}</b> — já entrou no pool de <b>${esc(d.referencia.segmento||"?")}</b>`:esc(d.aviso)}</div>`;
+      $("rimg").value="";$("rtag").value="";carregarRefs();
+    } else $("rres").innerHTML=`<div class="err">${esc(d.erro||"falhou")}</div>`;
+  }catch(e){$("rres").innerHTML=`<div class="err">erro de rede: ${esc(e.message)}</div>`;}
+  $("rbtn").disabled=false;$("rbtn").textContent="🧠 Ensinar estrutura";
+}
+window.aprovarRef=async(id,ap)=>{
+  await fetch("/api/criacao/referencia/aprovar",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({id:id,aprovada:ap})});carregarRefs();};
+window.apagarRef=async id=>{
+  if(!confirm("Apagar esta referência?"))return;
+  await fetch("/api/criacao/referencia/apagar",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({id:id})});carregarRefs();};
+async function verEscopo(){
+  const t=$("tier").value;
+  try{const d=await(await fetch("/api/criacao/escopo?tier="+t)).json();
+    $("escopo").innerHTML=`executa: ${d.escopo.map(esc).join(" · ")}`;}catch(e){}
+  validarTier();
+}
+// TIER COMO CONTRATO: valida ANTES de gerar. Entregar um "T2" que e um T1 com
+// etiqueta e pior que recusar — quem descobre depois e o cliente.
+let CONTRATO={ok:true};
+async function validarTier(){
+  const corpo={tier:$("tier").value,nome:$("nome").value,nicho:$("nicho").value,
+    whatsapp:$("whatsapp").value,cidade:(AUTOFILL.cidade||""),
+    diferenciais:$("diferenciais").value,servicos:$("diferenciais").value,
+    email:(AUTOFILL.email||""),midia:($("fotos").files||[]).length?["f"]:[]};
+  try{
+    const d=await(await fetch("/api/criacao/validar-tier",{method:"POST",
+      headers:{"Content-Type":"application/json"},body:JSON.stringify(corpo)})).json();
+    CONTRATO=d;
+    $("contrato").innerHTML = d.ok
+      ? `<div class="contratoOk">✅ ${esc(d.mensagem)}</div>`
+      : `<div class="falta"><b>⚠️ o material não sustenta ${esc(d.tier)}</b><br>${esc(d.mensagem)}
+         <ul>${d.faltas.map(f=>`<li>• <b>${esc(f.campo)}</b> — ${esc(f.porque)}</li>`).join("")}</ul></div>`;
+  }catch(e){}
+}
+["nome","nicho","whatsapp","diferenciais"].forEach(id=>{
+  const el=$(id); if(el) el.addEventListener("blur",validarTier);});
+carregarLeads();carregarSites();carregarEstilos();carregarRefs();verEscopo();
+</script></body></html>
