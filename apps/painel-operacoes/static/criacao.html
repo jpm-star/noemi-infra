@@ -113,11 +113,26 @@ button.orf:hover{color:var(--txt);border-color:var(--cy)}
     com as receitas padrão. Isso é canal permanente: alimente sempre que vir algo que funciona.
   </p>
   <div class="row">
-    <div><label>Print do site de referência</label><input id="rimg" type="file" accept="image/*"></div>
+    <div><label>Prints de referência <span class="hint">(até 50 de uma vez)</span></label>
+      <input id="rimg" type="file" accept="image/*" multiple></div>
     <div><label>Tag / contexto</label><input id="rtag" placeholder="ex: hero com vídeo, prova social com números grandes"></div>
     <div><label>Segmento</label><select id="rseg"></select></div>
   </div>
   <button class="gerar" id="rbtn" style="background:var(--roxo);color:#150a25" onclick="subirRef()">🧠 Ensinar estrutura</button>
+  <div class="linha" style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--line)">
+    <div><label>Ou aprenda de um SITE (sem print)</label>
+      <input id="rurl" placeholder="https://exemplo.com.br — a estrutura sai do HTML"></div>
+    <div><label>Ou de uma galeria em lote</label>
+      <select id="rgal">
+        <option value="">— escolher —</option>
+        <option value="onepagelove">onepagelove</option>
+        <option value="lapaninja">lapa.ninja</option>
+        <option value="landbook">land-book</option>
+      </select></div>
+    <div><label>Quantas (galeria)</label><input id="rlim" type="number" min="1" max="40" value="12"></div>
+  </div>
+  <button class="gerar" id="rsbtn" style="background:var(--esmeralda,#059669);color:#fff;margin-top:10px"
+          onclick="scrapRef()">🌐 Aprender do site / galeria</button>
   <div id="rres"></div>
   <div id="rlista" style="margin-top:12px"></div>
 </div>
@@ -297,7 +312,43 @@ async function carregarRefs(){
       `</tbody></table>`:'<p class="hint">nenhuma referência ainda — suba a primeira acima.</p>';
   }catch(e){}
 }
+
+// LOTE (até 50): o caminho de 1-por-vez foi o que manteve a biblioteca em ZERO.
+async function subirRefLote(files){
+  const fd=new FormData();
+  fd.append("segmento",$("rseg").value);
+  for(const f of files) fd.append("imagens",f);
+  $("rbtn").disabled=true;$("rbtn").textContent=`🧠 lendo ${files.length} referência(s)…`;
+  try{
+    const d=await(await fetch("/api/criacao/referencias/lote",{method:"POST",body:fd})).json();
+    $("rres").innerHTML=d.ok
+      ? `<div class="ok">✅ ${d.salvas} referência(s) aprendida(s)${d.falhas?` · ${d.falhas} falharam`:""}</div>`
+      : `<div class="err">${esc(d.erro||"falhou")}</div>`;
+    carregarRefs();
+  }catch(e){$("rres").innerHTML=`<div class="err">erro: ${esc(e.message)}</div>`;}
+  $("rbtn").disabled=false;$("rbtn").textContent="🧠 Ensinar estrutura";
+}
+// SCRAP: estrutura direto do HTML — sem print, sem gastar cota de LLM.
+async function scrapRef(){
+  const url=$("rurl").value.trim(), gal=$("rgal").value;
+  if(!url&&!gal){$("rres").innerHTML='<div class="err">informe uma URL ou escolha uma galeria</div>';return;}
+  const fd=new FormData();
+  fd.append("segmento",$("rseg").value); fd.append("url",url);
+  fd.append("galeria",gal); fd.append("limite",$("rlim").value||"12");
+  $("rsbtn").disabled=true;$("rsbtn").textContent="🌐 lendo estrutura…";
+  try{
+    const d=await(await fetch("/api/criacao/referencias/scrap",{method:"POST",body:fd})).json();
+    $("rres").innerHTML=d.ok
+      ? `<div class="ok">✅ ${d.salvas!==undefined?`${d.salvas}/${d.tentadas} site(s) viraram referência`:`estrutura: ${(d.ordem||[]).join(" › ")}`}
+         ${(d.descartadas||[]).length?`<div class="hint">descartados por estrutura rasa: ${d.descartadas.length}</div>`:""}</div>`
+      : `<div class="err">${esc(d.motivo||d.erro||"falhou")}</div>`;
+    carregarRefs();
+  }catch(e){$("rres").innerHTML=`<div class="err">erro: ${esc(e.message)}</div>`;}
+  $("rsbtn").disabled=false;$("rsbtn").textContent="🌐 Aprender do site / galeria";
+}
 async function subirRef(){
+  const fs=$("rimg").files;
+  if(fs&&fs.length>1) return subirRefLote(fs);
   const f=$("rimg").files[0];
   if(!f){$("rres").innerHTML='<div class="err">escolha um print de referência.</div>';return;}
   $("rbtn").disabled=true;$("rbtn").textContent="⏳ lendo a estrutura…";
