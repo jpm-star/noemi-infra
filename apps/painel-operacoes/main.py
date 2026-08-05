@@ -317,6 +317,36 @@ async def wa_verificar(req: Request) -> JSONResponse:
 
 
 # -- Radar de Vídeo: análise (yt-dlp→Whisper→insight) com memória persistente ---
+@app.post("/api/radar/pdf")
+async def radar_pdf(arquivo: UploadFile = File(...), instrucao: str = Form(""),
+                    origem: str = Form("pdf")) -> JSONResponse:
+    """Sobe um PDF e roda a MESMA pipeline de insight do vídeo/imagem."""
+    import asyncio
+    import os as _os
+    import tempfile as _tmp
+
+    import radar
+    if not arquivo.filename:
+        return JSONResponse({"ok": False, "erro": "envie um arquivo"}, status_code=422)
+    dados = await arquivo.read()
+    if not dados:
+        return JSONResponse({"ok": False, "erro": "arquivo vazio"}, status_code=422)
+    if len(dados) > 40 * 1024 * 1024:
+        return JSONResponse({"ok": False, "erro": "PDF acima de 40MB"}, status_code=422)
+    tmp = _tmp.mkdtemp(prefix="pdf_")
+    caminho = _os.path.join(tmp, _os.path.basename(arquivo.filename)[:80] or "doc.pdf")
+    with open(caminho, "wb") as f:
+        f.write(dados)
+    try:  # extração + visão + LLM: pesado, fora do event loop
+        res = await asyncio.to_thread(radar.analisar_pdf, caminho, origem, instrucao)
+        return JSONResponse({"ok": True, **res})
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"ok": False, "erro": str(e)[:250]}, status_code=422)
+    finally:
+        import shutil
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 @app.post("/api/radar/analisar")
 async def radar_analisar(req: Request) -> JSONResponse:
     import asyncio

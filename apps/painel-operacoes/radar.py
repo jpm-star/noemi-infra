@@ -749,6 +749,50 @@ def analisar_imagem(caminho: str, origem: str = "telegram", instrucao: str = "")
     return _processar(texto, origem, "(imagem enviada)", instrucao)
 
 
+def analisar_pdf(caminho: str, origem: str = "pdf", instrucao: str = "") -> dict:
+    """PDF → MESMA pipeline de insight do vídeo/imagem (reusa _processar/_insight).
+
+    Dois tipos de PDF, dois caminhos — e o segundo é o que costuma faltar:
+      1. PDF de TEXTO (relatório, apostila, proposta): pdftotext extrai direto.
+      2. PDF ESCANEADO/slides como imagem: pdftotext devolve nada. Aí renderiza as
+         páginas (pdftoppm) e manda pra MESMA visão do carrossel — um deck exportado
+         em PDF é exatamente um carrossel, então a leitura é a mesma.
+    Sem dependência nova: poppler (pdftotext/pdftoppm) já está no host.
+    """
+    from shared_core.ai import visao
+    p = Path(caminho)
+    if not p.exists():
+        raise RuntimeError("arquivo não encontrado")
+    texto = ""
+    with tempfile.TemporaryDirectory(prefix="radar_pdf_") as td:
+        saida = Path(td) / "t.txt"
+        try:  # -layout preserva colunas/tabela, que sem isso viram sopa de palavras
+            subprocess.run(["pdftotext", "-layout", "-q", str(p), str(saida)],
+                           check=True, capture_output=True, timeout=120)
+            texto = saida.read_text(encoding="utf-8", errors="ignore").strip()
+        except Exception:  # noqa: BLE001
+            texto = ""
+        if len(texto) < 200:  # PDF escaneado / deck de imagem → visão nas páginas
+            try:
+                subprocess.run(["pdftoppm", "-jpeg", "-r", "110", "-l", "8",
+                                str(p), str(Path(td) / "pg")],
+                               check=True, capture_output=True, timeout=180)
+                frames = [x.read_bytes() for x in sorted(Path(td).glob("pg*.jpg"))[:8]]
+            except Exception:  # noqa: BLE001
+                frames = []
+            if frames:
+                prompt = (f"{len(frames)} paginas de um PDF, EM ORDEM. Leia todas e conte a "
+                          "ideia completa (tese, argumento, numeros, conclusao). Cite os "
+                          "textos como aparecem. NAO invente o que nao esta visivel.")
+                lido, _ = visao.analisar_frames(frames, prompt=prompt)
+                texto = (texto + "\n" + (lido or "")).strip()
+    if not texto.strip():
+        raise RuntimeError("PDF sem texto legível — nem extração nem visão conseguiram ler")
+    # trunca: o insight não melhora com 300 páginas e o prompt tem teto
+    return _processar(f"DOCUMENTO PDF ({p.name})\n{texto[:12000]}", origem,
+                      f"(pdf: {p.name})", instrucao)
+
+
 def analisar_imagens(caminhos: list[str], origem: str = "telegram", instrucao: str = "") -> dict:
     """CARROSSEL: N imagens => UMA análise. Os slides de um carrossel contam UMA ideia
     (gancho no 1, desenvolvimento no meio, CTA no último) — analisar slide a slide perde
