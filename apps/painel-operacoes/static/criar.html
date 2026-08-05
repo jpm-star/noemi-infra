@@ -1,0 +1,254 @@
+<!doctype html><html lang="pt-BR"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Criar site — JPOS</title>
+<style>
+/* Paleta esmeralda+glass: o MESMO padrão da Prospecção do dia. A Criação antiga era
+   dark (#060a12) e o Studio claro — duas linguagens visuais pro mesmo trabalho.
+   Texto em cor FORTE de propósito: cinza claro sobre fundo claro é o erro clássico
+   de glassmorphism, porque o blur já derruba o contraste. */
+:root{
+  --bg:#eef4f1;--bg2:#dbeae3;
+  --glass:rgba(255,255,255,.62);--glass-borda:rgba(255,255,255,.85);
+  --esmeralda:#059669;--esmeralda-esc:#065f46;--esmeralda-cl:#10b981;
+  --ink:#0f2f24;--mut:#40695c;
+  --line:rgba(6,95,70,.16);--warn:#b45309;--bad:#b91c1c}
+*{box-sizing:border-box;margin:0}
+body{
+  background:
+    radial-gradient(820px 420px at 88% -8%,rgba(16,185,129,.30),transparent 62%),
+    radial-gradient(680px 400px at 5% 8%,rgba(5,150,105,.16),transparent 60%),
+    linear-gradient(170deg,var(--bg),var(--bg2));
+  background-attachment:fixed;
+  color:var(--ink);font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  padding:18px 14px 60px;max-width:1180px;margin:0 auto}
+a{color:var(--esmeralda-esc);text-decoration:none;font-weight:600}
+h1{font-size:1.45rem;letter-spacing:-.02em}
+.sub{color:var(--mut);font-size:.85rem;margin:2px 0 16px}
+.hint{color:var(--mut);font-size:.78rem}
+
+.abas{display:flex;gap:7px;margin-bottom:16px;flex-wrap:wrap}
+.aba{cursor:pointer;font-size:.85rem;padding:7px 16px;border-radius:20px;
+  background:rgba(255,255,255,.66);border:1px solid var(--glass-borda);color:var(--mut);
+  font-weight:600;transition:.15s;backdrop-filter:blur(8px)}
+.aba:hover{border-color:var(--esmeralda);color:var(--esmeralda-esc)}
+.aba.on{background:var(--esmeralda);color:#fff;border-color:var(--esmeralda)}
+.painel{display:none}.painel.on{display:block}
+
+.card{background:var(--glass);backdrop-filter:blur(16px) saturate(150%);
+  -webkit-backdrop-filter:blur(16px) saturate(150%);border:1px solid var(--glass-borda);
+  border-radius:18px;padding:16px 18px;box-shadow:0 6px 24px rgba(6,95,70,.10);margin-bottom:14px}
+.passo{font-size:.72rem;font-weight:800;letter-spacing:.1em;color:var(--esmeralda-esc);
+  margin:18px 0 8px;display:flex;align-items:center;gap:8px}
+.passo:first-child{margin-top:0}
+.passo::after{content:"";flex:1;height:1px;background:var(--line)}
+label{display:block;font-size:.76rem;font-weight:700;color:var(--mut);letter-spacing:.04em;margin:10px 0 3px}
+input,textarea,select{width:100%;background:rgba(255,255,255,.78);border:1px solid var(--glass-borda);
+  color:var(--ink);border-radius:12px;padding:9px 13px;font:inherit;font-size:.88rem}
+input:focus,textarea:focus,select:focus{outline:2px solid var(--esmeralda-cl);border-color:transparent}
+textarea{min-height:92px;resize:vertical}
+input[type=file]{padding:7px 10px;font-size:.82rem}
+.linha{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+.btn{cursor:pointer;font:inherit;font-size:.85rem;font-weight:700;padding:9px 18px;border-radius:14px;
+  border:1px solid var(--esmeralda);background:var(--esmeralda);color:#fff;transition:.15s}
+.btn.sec{background:transparent;color:var(--esmeralda-esc)}
+.btn.perigo{background:transparent;color:var(--bad);border-color:rgba(185,28,28,.4)}
+.btn:hover{filter:brightness(1.06)}
+.btn:disabled{opacity:.55;cursor:progress}
+.ok{background:rgba(5,150,105,.12);border-left:4px solid var(--esmeralda);padding:11px 14px;border-radius:12px;font-size:.87rem;margin-top:10px}
+.err{background:rgba(180,83,9,.13);border-left:4px solid var(--warn);padding:11px 14px;border-radius:12px;font-size:.87rem;margin-top:10px}
+.falta{font-size:.8rem;margin:5px 0 0 2px}
+.falta b{color:var(--warn)}
+.proc{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.p{font-size:.7rem;padding:2px 9px;border-radius:10px;font-weight:700}
+.p.real{background:rgba(5,150,105,.16);color:var(--esmeralda-esc)}
+.p.inferido{background:rgba(180,83,9,.15);color:var(--warn)}
+.p.gerado{background:rgba(124,58,237,.14);color:#6d28d9}
+.vazio{color:var(--mut);font-size:.9rem;padding:26px 0;text-align:center}
+
+/* modelos (morfismo + estrutura) */
+.modelos{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:11px}
+.mod{cursor:pointer;border:2px solid transparent;border-radius:15px;padding:4px;
+  background:rgba(255,255,255,.5);transition:.15s;position:relative}
+.mod:hover{background:rgba(255,255,255,.85)}
+.mod.on{border-color:var(--esmeralda);background:rgba(5,150,105,.09)}
+.mod .rot{font-size:.79rem;font-weight:700;padding:5px 7px 2px;line-height:1.2}
+.mod .dsc,.mod .ordem{font-size:.68rem;color:var(--mut);padding:0 7px 6px;line-height:1.3;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.mod .flag{position:absolute;top:7px;right:7px;font-size:.6rem;font-weight:800;
+  background:var(--esmeralda);color:#fff;padding:2px 7px;border-radius:9px;letter-spacing:.05em}
+.amostra{height:86px;border-radius:11px;overflow:hidden;background:#f4f7f5;display:flex;align-items:center;justify-content:center;padding:11px}
+.amostra .peca{font-size:.72rem;font-weight:700;padding:9px 15px;border-radius:10px;background:#fff;color:#0f2f24;border:1px solid rgba(6,95,70,.14)}
+.wf{display:flex;flex-direction:column;gap:3px;height:86px;padding:9px;justify-content:center}
+.wf i{display:block;background:rgba(5,150,105,.26);border-radius:3px;height:7px}
+.wf i.hero{height:15px;background:rgba(5,150,105,.5)}
+.wf i.meio{width:72%}.wf i.curto{width:46%}
+
+/* galeria de sites */
+.placar{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px}
+.meta{background:var(--glass);backdrop-filter:blur(16px);border:1px solid var(--glass-borda);
+  border-radius:16px;padding:12px 15px;box-shadow:0 4px 18px rgba(6,95,70,.09)}
+.meta .t{font-size:.72rem;color:var(--mut);font-weight:700;letter-spacing:.06em}
+.meta .n{font-size:1.6rem;font-weight:800;letter-spacing:-.03em;margin-top:2px}
+.meta .d{font-size:.72rem;color:var(--mut)}
+.grade{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px}
+.site{background:var(--glass);backdrop-filter:blur(18px);border:1px solid var(--glass-borda);
+  border-radius:18px;overflow:hidden;box-shadow:0 6px 24px rgba(6,95,70,.10);display:flex;flex-direction:column;transition:transform .2s}
+.site:hover{transform:translateY(-3px)}
+.shot{position:relative;height:232px;overflow:hidden;background:#fff;border-bottom:1px solid var(--line);flex:none}
+.shot iframe{position:absolute;top:0;left:0;width:1280px;height:892px;border:0;transform:scale(.26);transform-origin:top left;pointer-events:none}
+.shot .selo{position:absolute;top:8px;right:8px;font-size:.68rem;font-weight:800;padding:3px 9px;border-radius:12px;background:rgba(5,150,105,.92);color:#fff}
+.shot .selo.ruim{background:rgba(185,28,28,.92)}
+.shot .vazio2{display:flex;height:100%;align-items:center;justify-content:center;color:var(--mut);font-size:.82rem}
+.corpo{padding:13px 15px 15px;display:flex;flex-direction:column;gap:7px;flex:1}
+.nome{font-weight:700;font-size:1rem;line-height:1.25}
+.secs{display:flex;flex-wrap:wrap;gap:4px}
+.sec{font-size:.68rem;padding:2px 8px;border-radius:10px;background:rgba(5,150,105,.12);color:var(--esmeralda-esc);font-weight:600;border:1px solid rgba(6,95,70,.14)}
+.rodape{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:auto;padding-top:8px;border-top:1px solid var(--line);font-size:.76rem;color:var(--mut)}
+.aviso{color:var(--warn);font-weight:700}
+table{width:100%;border-collapse:collapse;font-size:.83rem}
+th{text-align:left;color:var(--mut);font-size:.72rem;padding:6px 8px}
+td{padding:7px 8px;border-top:1px solid var(--line)}
+.ref{display:flex;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line);font-size:.84rem}
+.ref .tag{font-weight:700}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(80px);
+  background:var(--esmeralda);color:#fff;font-weight:700;padding:11px 20px;border-radius:24px;
+  font-size:.87rem;transition:transform .3s;z-index:9}
+.toast.on{transform:translateX(-50%) translateY(0)}
+</style></head><body>
+
+<h1>🏗️ Criar site</h1>
+<div class="sub">Briefing, modelo, geração, aprendizado e resultado — numa tela só.</div>
+
+<div class="abas">
+  <div class="aba on" data-p="criar" onclick="aba('criar')">Criar</div>
+  <div class="aba" data-p="ingestao" onclick="aba('ingestao')">Ingestão</div>
+  <div class="aba" data-p="galeria" onclick="aba('galeria');carregarSites()">Sites gerados</div>
+  <div class="aba" data-p="aprender" onclick="aba('aprender');carregarRefs()">Aprendizado</div>
+  <div class="aba" data-p="operacao" onclick="aba('operacao');carregarOperacao()">Operação</div>
+</div>
+
+<!-- ══════════ CRIAR ══════════ -->
+<div class="painel on" id="p-criar">
+  <div class="card">
+    <div class="passo">1 · CLIENTE</div>
+    <div id="af" class="hint"></div>
+    <div class="linha">
+      <div><label>Nome do negócio *</label><input id="nome" placeholder="Rações e Cia"></div>
+      <div><label>Nicho *</label><input id="nicho" placeholder="pet shop"></div>
+      <div><label>WhatsApp</label><input id="whatsapp" placeholder="14 99999-9999"></div>
+    </div>
+    <div class="linha">
+      <div><label>Cidade</label><input id="cidade" placeholder="Araçatuba - SP"></div>
+      <div><label>E-mail do cliente <span class="hint">(só entrega; demo não precisa)</span></label>
+        <input id="email" placeholder="contato@cliente.com.br"></div>
+      <div><label>Público-alvo</label><input id="publico" placeholder="tutores de cães e gatos"></div>
+    </div>
+    <div class="linha">
+      <div><label>Tier</label><select id="tier" onchange="verEscopo();carregarModelos()">
+        <option>T1</option><option>T2</option><option>T3</option><option>T4</option></select></div>
+      <div><label>Cor primária (opcional)</label><input id="cor" placeholder="#00e6a2 ou vazio = tema"></div>
+    </div>
+    <div id="escopo" class="falta"></div>
+    <label>Diferenciais / conteúdo pesquisado</label>
+    <textarea id="diferenciais" placeholder="um por linha"></textarea>
+    <label>Copy livre (opcional — sobrescreve a copy gerada)</label>
+    <textarea id="copy_livre" placeholder="deixe vazio para o LLM escrever"></textarea>
+  </div>
+
+  <div class="card">
+    <div class="passo">2 · MÍDIA DO CLIENTE</div>
+    <div class="linha">
+      <div><label>Foto de hero</label><input id="foto" type="file" accept="image/*"></div>
+      <div><label>Vídeo de hero</label><input id="video" type="file" accept="video/*"></div>
+      <div><label>Acervo <span class="hint">(20+ enche a galeria; passa por OCR)</span></label>
+        <input id="fotos" type="file" accept="image/*" multiple></div>
+    </div>
+    <div class="hint" style="margin-top:6px">Tudo é comprimido automaticamente (WebP / H.264 + poster).
+      Fotos do acervo têm prioridade sobre banco de imagens nos cards.</div>
+  </div>
+
+  <div class="card">
+    <div class="passo">3 · MODELO <span id="m-auto" class="hint" style="font-weight:600;letter-spacing:0"></span></div>
+    <div class="modelos" id="m-estilos"><div class="vazio">preencha o nicho para ver os modelos</div></div>
+    <div class="passo">ESTRUTURA DA PÁGINA</div>
+    <div class="modelos" id="m-receitas"></div>
+    <input id="estilo" type="hidden">
+  </div>
+
+  <div class="card">
+    <div class="passo">4 · GERAR</div>
+    <div style="display:flex;gap:9px;flex-wrap:wrap;align-items:center">
+      <button class="btn" id="btn" onclick="gerar()">🚀 Gerar site</button>
+      <span id="g-sel" class="hint"></span>
+    </div>
+    <div id="res"></div>
+  </div>
+</div>
+
+<!-- ══════════ INGESTÃO ══════════ -->
+<div class="painel" id="p-ingestao">
+  <div class="card">
+    <div class="passo">MATERIAL DO CLIENTE</div>
+    <div class="hint" style="margin-bottom:8px">Consolida site atual + formulário + CRM num briefing só,
+      com procedência. O que vem do CRM entra como <b>inferido</b>; o que o cliente mandou vence.</div>
+    <div class="linha">
+      <div><label>Site atual (opcional)</label><input id="b-site" placeholder="https://…"></div>
+      <div><label>Fotos recebidas</label><input id="b-fotos" type="number" min="0" value="0"></div>
+      <div><label>Vídeos recebidos</label><input id="b-videos" type="number" min="0" value="0"></div>
+    </div>
+    <label>Formulário do cliente (cola a resposta crua)</label>
+    <textarea id="b-form" placeholder="Nome da empresa: …&#10;Segmento: …&#10;Cidade: …&#10;WhatsApp: …"></textarea>
+    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" onclick="ingerir()">Consolidar briefing</button>
+      <button class="btn sec" onclick="verEscopo()">Ver escopo do tier</button>
+    </div>
+    <div id="b-res"></div>
+  </div>
+</div>
+
+<!-- ══════════ SITES GERADOS ══════════ -->
+<div class="painel" id="p-galeria">
+  <div class="placar" id="g-placar"></div>
+  <div style="margin-bottom:12px"><button class="btn sec" onclick="limparOrfaos()">🧹 Limpar órfãos do registro</button></div>
+  <div class="grade" id="grade"><div class="vazio">carregando…</div></div>
+</div>
+
+<!-- ══════════ APRENDIZADO ══════════ -->
+<div class="painel" id="p-aprender">
+  <div class="card">
+    <div class="passo">ENSINAR ESTRUTURA</div>
+    <div class="linha">
+      <div><label>Prints de referência <span class="hint">(até 50 de uma vez)</span></label>
+        <input id="rimg" type="file" accept="image/*" multiple></div>
+      <div><label>Tag / contexto</label><input id="rtag" placeholder="ex: hero com vídeo, prova social com números"></div>
+      <div><label>Segmento</label><select id="rseg"></select></div>
+    </div>
+    <button class="btn" id="rbtn" onclick="subirRef()">🧠 Ensinar estrutura</button>
+    <div class="passo">OU APRENDER DE UM SITE / GALERIA <span class="hint" style="font-weight:600;letter-spacing:0">— sem print, sem gastar LLM</span></div>
+    <div class="linha">
+      <div><label>URL de um site</label><input id="rurl" placeholder="https://exemplo.com.br"></div>
+      <div><label>Galeria</label><select id="rgal">
+        <option value="">— escolher —</option><option value="onepagelove">onepagelove</option>
+        <option value="lapaninja">lapa.ninja</option><option value="landbook">land-book</option></select></div>
+      <div><label>Quantas</label><input id="rlim" type="number" min="1" max="40" value="12"></div>
+    </div>
+    <button class="btn" id="rsbtn" onclick="scrapRef()">🌐 Aprender do site / galeria</button>
+    <div id="rres"></div>
+  </div>
+  <div class="card"><div class="passo">BIBLIOTECA</div><div id="rlista"><div class="vazio">carregando…</div></div></div>
+</div>
+
+<!-- ══════════ OPERAÇÃO ══════════ -->
+<div class="painel" id="p-operacao">
+  <div class="placar" id="o-placar"></div>
+  <div class="passo">META DO MÊS · 10 POR TIER</div>
+  <div id="o-tiers" class="modelos"></div>
+  <div class="passo">SITE → LEAD → CANAL</div>
+  <div class="card" style="overflow-x:auto"><table id="o-tab"></table></div>
+  <div class="passo">CUSTO POR INSUMO</div>
+  <div class="card" id="o-custos"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script src="/static/criar.js"></script>
+</body></html>

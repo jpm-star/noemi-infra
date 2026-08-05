@@ -15,7 +15,7 @@ sys.path.insert(0, str(_AQUI))
 sys.path.insert(0, str(_AQUI.parents[1] / "packages"))  # shared_core (llm_proxy)
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 import agg
 
@@ -906,16 +906,27 @@ def leads_pagina() -> str:
     return (_AQUI / "static" / "leads.html").read_text(encoding="utf-8")
 
 
-@app.get("/obs/criacao", response_class=HTMLResponse)
-def criacao_pagina() -> str:
-    return (_AQUI / "static" / "criacao.html").read_text(encoding="utf-8")
+@app.get("/obs/criar", response_class=HTMLResponse)
+def criar_pagina() -> str:
+    """INTERFACE ÚNICA (2026-08-05). Fusão de /obs/criacao + /obs/studio: as duas
+    chamavam a MESMA API e mantinham duas linguagens visuais (dark vs esmeralda) pro
+    mesmo trabalho. Aqui: Criar · Ingestão · Sites gerados · Aprendizado · Operação."""
+    return (_AQUI / "static" / "criar.html").read_text(encoding="utf-8")
 
 
-@app.get("/obs/studio", response_class=HTMLResponse)
-def studio_pagina() -> str:
-    """Studio: briefing (ingestão + tier como contrato) e galeria com preview.
-    Sobe POR CIMA da Criação de site, que segue no ar intacta em /obs/criacao."""
-    return (_AQUI / "static" / "studio.html").read_text(encoding="utf-8")
+@app.get("/static/criar.js")
+def criar_js() -> Response:
+    return Response((_AQUI / "static" / "criar.js").read_text(encoding="utf-8"),
+                    media_type="application/javascript")
+
+
+# Rotas ANTIGAS: redirecionam em vez de sumir. Link morto em favorito/histórico do JP
+# (e o `?lead=` que a Prospecção manda) é o tipo de quebra que só aparece na pior hora.
+@app.get("/obs/criacao")
+@app.get("/obs/studio")
+def _rotas_antigas(request: Request) -> RedirectResponse:
+    q = request.url.query
+    return RedirectResponse(f"/obs/criar{'?' + q if q else ''}", status_code=307)
 
 
 @app.get("/obs/prospeccao", response_class=HTMLResponse)

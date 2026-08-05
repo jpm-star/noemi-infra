@@ -398,19 +398,28 @@ def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | s
     # grava os assets do cliente no dir do site (o HTML já referencia os caminhos relativos)
     site_dir = SITES_DIR / slug
     try:
+        # COMPRESSÃO OBRIGATÓRIA (auditoria Rações & Cia, crítico #4): vídeo de 7MB
+        # cru derruba a experiência em 4G, e nenhum lazy-load conserta byte que não
+        # devia existir. `assets_web` nunca piora: saída maior => mantém o original.
+        import assets_web as _aw
         if foto and foto[0]:
             (site_dir / "img").mkdir(parents=True, exist_ok=True)
-            (site_dir / "img" / f"hero.{foto_ext}").write_bytes(foto[0])
+            _b, foto_ext = _aw.comprimir_imagem(foto[0], foto[1])
+            (site_dir / "img" / f"hero.{foto_ext}").write_bytes(_b)
         if video and video[0]:
             (site_dir / "vid").mkdir(parents=True, exist_ok=True)
-            (site_dir / "vid" / f"hero.{video_ext}").write_bytes(video[0])
+            _v, _poster = _aw.comprimir_video(video[0])
+            (site_dir / "vid" / f"hero.{video_ext}").write_bytes(_v)
+            if _poster:   # sem poster, preload=metadata deixa retângulo preto no hero
+                (site_dir / "img").mkdir(parents=True, exist_ok=True)
+                (site_dir / "img" / "hero-poster.jpg").write_bytes(_poster)
         # C3: acervo do cliente -> <slug>/img/g01.. + galeria injetada no fim da página
         rels: list[str] = []
         if fotos:
             (site_dir / "img").mkdir(parents=True, exist_ok=True)
             for i, (b, n) in enumerate(fotos, 1):
-                e = _ext(n, _IMG_EXT, "jpg")
-                (site_dir / "img" / f"g{i:02d}.{e}").write_bytes(b)
+                _b, e = _aw.comprimir_imagem(b, n)     # acervo também vai comprimido
+                (site_dir / "img" / f"g{i:02d}.{e}").write_bytes(_b)
                 rels.append(f"img/g{i:02d}.{e}")
     except OSError as e:
         return {"ok": False, "erro": f"site gerado mas falhou salvar asset: {e}"}
