@@ -8,3 +8,9 @@ __pycache__/
 # cookies de sessão (segredo, nunca commitar)
 infra/cookies.txt
 cookies.txt
+
+# Worktrees do Claude Code e scratch: são repositórios EMBUTIDOS. Sem isto, um
+# `git add -A` no checkout principal os engole como submódulos-fantasma (aconteceu
+# em 2026-08-05) e o commit vira lixo de 60 arquivos.
+.claude/worktrees/
+.wt-*/
