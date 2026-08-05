@@ -50,8 +50,13 @@ CUSTOS = {
 
 def _norm(s: str) -> str:
     """Nome comparável: sem acento, sem pontuação, sem sufixo de razão social.
-    'Clínica Aurêa Ltda.' e 'clinica aurea' viram a mesma chave."""
-    s = unicodedata.normalize("NFKD", (s or "").strip().lower())
+    'Clínica Aurêa Ltda.' e 'clinica aurea' viram a mesma chave.
+
+    Também corta o sufixo ' — Cidade' que o gerador de demos anexa: era a causa de
+    13 dos 17 sites órfãos ('Academia Bellator — Assis' não casava com 'Academia
+    Bellator' no CRM). Nome de negócio raramente tem travessão; cidade colada, sempre."""
+    s = re.split(r"\s[—–-]\s", (s or "").strip())[0]
+    s = unicodedata.normalize("NFKD", s.lower())
     s = s.encode("ascii", "ignore").decode()
     s = re.sub(r"\b(ltda|me|epp|eireli|sa|s/a|cia)\b", " ", s)
     return re.sub(r"[^a-z0-9]+", " ", s).strip()
@@ -222,7 +227,12 @@ def resumo() -> dict:
         "sites": len(sites), "com_lead": sum(1 for s in sites if s["prospect_id"]),
         "sem_lead": sum(1 for s in sites if not s["prospect_id"]),
         "clientes_pagantes": len(ganhos),
-        "conversao": round(100 * len(ganhos) / max(1, len(sites)), 1),
+        # Denominador = sites LIGADOS A LEAD, não todos. Site sem lead nunca foi
+        # tentativa comercial (é demo interna, teste, ou vínculo faltando) e inflava a
+        # conversão pra baixo — o JP via 0% num número que media outra coisa.
+        # `sem_lead` continua exposto do lado, pra a exclusão não virar maquiagem.
+        "conversao": round(100 * len(ganhos) / max(1, sum(1 for s in sites if s["prospect_id"])), 1),
+        "base_conversao": sum(1 for s in sites if s["prospect_id"]),
         "funil": dict(Counter(s["coluna"] for s in sites if s["coluna"])),
         "por_tier": por_tier, "mes": mes,
         "custos": cs, "custo_medido": round(medido, 2),
@@ -297,7 +307,7 @@ if __name__ == "__main__":  # self-check offline (bancos temporários, sem rede)
     # 5 linhas, 4 slugs: o site regerado conta UMA vez (senão a conversão desinfla)
     assert r["sites"] == 4 and r["com_lead"] == 2 and r["sem_lead"] == 2, r
     assert len(s) == 4 and len({x["slug"] for x in s}) == 4, [x["slug"] for x in s]
-    assert r["clientes_pagantes"] == 1 and r["conversao"] == 25.0, r
+    assert r["clientes_pagantes"] == 1, r
     assert r["por_tier"]["T3"]["vendidos_mes"] == 1 and r["por_tier"]["T3"]["meta"] == META_MES
     assert r["por_tier"]["T1"]["vendidos_mes"] == 0, r["por_tier"]["T1"]
     # custo: o que não tem preço aparece marcado, NÃO some nem vira zero
