@@ -178,6 +178,99 @@ def _ext(nome_arq: str, permitidos: set[str], padrao: str) -> str:
     return e if e in permitidos else padrao
 
 
+def _garante_demo_url(c: sqlite3.Connection) -> None:
+    """Coluna que fecha o ciclo: o link da demo volta pro card do lead. Idempotente."""
+    cols = {r[1] for r in c.execute("PRAGMA table_info(tracker_prospects)")}
+    if "demo_url" not in cols:
+        c.execute("ALTER TABLE tracker_prospects ADD COLUMN demo_url TEXT")
+
+
+def briefing_do_lead(prospect_id: int) -> dict:
+    """Tudo que já se sabe do lead, pronto pro Studio — sem o JP digitar nada.
+
+    Procedência: o que vem do CRM entra como INFERIDO. Isso não é decoração — impede
+    que uma hipótese de garimpo vire afirmação em primeira pessoa no site do cliente.
+    Material que o JP subir depois vence isso.
+
+    T3/T4 com site: o site ATUAL entra como fonte de ingestão automaticamente. É a
+    fonte mais rica que existe (texto real do cliente, não inferência)."""
+    if not prospect_id:
+        return {"achou": False}
+    try:
+        with _db_leads() as c:
+            _garante_demo_url(c)
+            r = c.execute("SELECT * FROM tracker_prospects WHERE id=?", (prospect_id,)).fetchone()
+            if not r:
+                return {"achou": False}
+            lead = dict(r)
+            socios = [dict(x) for x in c.execute(
+                "SELECT nome,cargo,poder_decisao FROM tracker_socios WHERE prospect_id=? "
+                "ORDER BY (poder_decisao IS NOT NULL) DESC, id LIMIT 4", (prospect_id,))]
+            # o site do lead pode estar em QUALQUER uma das 3 tabelas de garimpo —
+            # olhar só uma devolvia vazio pra T4 que tem site (medido no prospect 31).
+            site = ""
+            emp = lead.get("empresa") or ""
+            for tabela, col in (("leads_t3t4", "nome"), ("leads_alvo", "nome"),
+                                ("leads_clinicas", "nome")):
+                try:
+                    row = c.execute(f"SELECT website FROM {tabela} WHERE lower({col})=lower(?) "
+                                    f"AND website IS NOT NULL AND website!='' LIMIT 1",
+                                    (emp,)).fetchone()
+                except sqlite3.Error:
+                    continue
+                if row:
+                    site = (row["website"] or "").strip()
+                    break
+    except sqlite3.Error as e:
+        return {"achou": False, "erro": str(e)[:120]}
+
+    import prospeccao_dia as _pd
+    cidade = (lead.get("cidade_uf") or "").strip()
+    segmento = (lead.get("segmento") or "").strip()
+    tier = (lead.get("tier") or "").strip().upper()
+    achado = " ".join(str(lead.get("sinal") or "").split())
+    # o "FALE ISTO" do card — mesma função da Prospecção do dia, sem duplicar a regra
+    fala = _pd.gancho(tier, segmento, cidade, achado)
+    decisor = next((s["nome"] for s in socios if s.get("nome")), "")
+
+    campos = {"nome": (lead.get("empresa") or "").strip(),
+              "nicho": segmento, "cidade": cidade,
+              "whatsapp": (lead.get("telefone") or "").strip(),
+              "publico": f"clientes de {cidade}" if cidade else "",
+              "diferenciais": achado}
+    return {
+        "achou": True, "prospect_id": prospect_id, "tier": tier or "",
+        "campos": campos,
+        # tudo que veio do CRM é hipótese até o JP confirmar
+        "proveniencia": {k: "inferido" for k, v in campos.items() if v},
+        "decisor": decisor, "socios": socios,
+        "razao_social": (lead.get("razao_social") or "").strip(),
+        "cnpj": (lead.get("cnpj") or "").strip(),
+        "achado": achado, "fala": fala,
+        "site_atual": site,
+        "demo_url": (lead.get("demo_url") or "").strip(),
+        # T3/T4 com site: puxa o site como fonte de ingestão (a mais rica que existe)
+        "ingerir_site": bool(site) and tier in ("T3", "T4"),
+    }
+
+
+def registrar_demo(prospect_id: int, url: str) -> dict:
+    """Fecha o ciclo: o link gerado volta pro card do lead, sem copiar e colar."""
+    if not prospect_id or not (url or "").strip():
+        return {"ok": False, "erro": "prospect_id e url são obrigatórios"}
+    try:
+        with _db_leads() as c:
+            _garante_demo_url(c)
+            cur = c.execute("UPDATE tracker_prospects SET demo_url=?, atualizado_em=? "
+                            "WHERE id=?",
+                            (url.strip(), __import__("datetime").datetime.now(
+                                __import__("datetime").timezone.utc).isoformat(), prospect_id))
+            c.commit()
+    except sqlite3.Error as e:
+        return {"ok": False, "erro": str(e)[:120]}
+    return {"ok": cur.rowcount > 0, "prospect_id": prospect_id, "url": url.strip()}
+
+
 def _semente(nome: str, lead_id: int = 0) -> int:
     """Semente ESTÁVEL da escolha automática (estrutura + acento de morfismo).
 

@@ -95,9 +95,13 @@ def lista_do_dia(tier: str = "", limite: int = 200, incluir_contatados: bool = F
             ja = {_tel8(r["telefone"]) for r in c.execute("SELECT telefone FROM prospeccao_log")}
         except sqlite3.Error:
             ja = set()
+        # `demo_url` é coluna ADITIVA (criada pelo Studio). Banco antigo não tem, então
+        # a query se adapta em vez de quebrar — o painel não pode morrer por uma coluna.
+        _cols = {r[1] for r in c.execute("PRAGMA table_info(tracker_prospects)")}
+        _extra = ",demo_url" if "demo_url" in _cols else ""
         rows = [dict(r) for r in c.execute(
-            "SELECT id,empresa,segmento,cidade_uf,telefone,tier,sinal,notas,status,cnpj,razao_social "
-            "FROM tracker_prospects")]
+            "SELECT id,empresa,segmento,cidade_uf,telefone,tier,sinal,notas,status,cnpj,"
+            f"razao_social{_extra} FROM tracker_prospects")]
     ordem = {"T1": 0, "T2": 1, "T3": 2, "T4": 3}
     fora: list[dict] = []
     for r in rows:
@@ -120,6 +124,9 @@ def lista_do_dia(tier: str = "", limite: int = 200, incluir_contatados: bool = F
             "gancho": gancho(tr, r["segmento"] or "", cidade, achado),
             "status": (r["status"] or "").strip(), "contatado": contatado,
             "cnpj": (r["cnpj"] or "").strip(), "razao_social": (r["razao_social"] or "").strip(),
+            # ciclo fechado: demo gerada pelo Studio volta pro card, sem copiar e colar.
+            # `.keys()` porque a coluna é aditiva — banco antigo não tem e não pode quebrar.
+            "demo_url": (r["demo_url"] or "").strip() if "demo_url" in r.keys() else "",
         })
     fora.sort(key=lambda x: (ordem.get(x["tier"], 9), not x["tem_whatsapp"], x["empresa"].lower()))
     por_tier = {t: sum(1 for x in fora if x["tier"] == t) for t in TIERS}

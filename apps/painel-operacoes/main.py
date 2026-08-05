@@ -535,6 +535,23 @@ async def criacao_validar_tier(req: Request) -> JSONResponse:
     return JSONResponse(tier_contrato.validar(c.get("tier", "T1"), material))
 
 
+@app.get("/api/studio/lead/{prospect_id}")
+def studio_lead(prospect_id: int) -> JSONResponse:
+    """Prefill do Studio a partir do card da Prospecção: CRM + QSA + achado, tudo
+    marcado como INFERIDO. T3/T4 com site traz o site atual como fonte de ingestão."""
+    import criacao
+    return JSONResponse(criacao.briefing_do_lead(prospect_id))
+
+
+@app.post("/api/studio/lead/{prospect_id}/demo")
+async def studio_registrar_demo(prospect_id: int, req: Request) -> JSONResponse:
+    """Fecha o ciclo: o link da demo volta pro card do lead (sem copiar e colar)."""
+    import criacao
+    d = await req.json()
+    r = criacao.registrar_demo(prospect_id, str(d.get("url") or ""))
+    return JSONResponse(r, status_code=200 if r.get("ok") else 422)
+
+
 @app.get("/api/studio/operacao")
 def studio_operacao() -> JSONResponse:
     """STUDIO #4 — o que acontece DEPOIS do site: conversão real, meta por tier,

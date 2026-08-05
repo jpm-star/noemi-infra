@@ -356,10 +356,21 @@ async function gerarSite(){
   try{ d=await(await fetch("/api/criacao/gerar",{method:"POST",body:fd})).json(); }
   catch(e){ $("g-res").innerHTML=`<div class="err">erro de rede: ${esc(e.message)}</div>`; return; }
   if(!d.ok){ $("g-res").innerHTML=`<div class="err">${esc(d.erro||"falhou")}</div>`; return; }
+  // CICLO FECHADO: se veio de um card, o link volta pro lead sozinho.
+  let volta = "";
+  if(LEAD && LEAD.prospect_id){
+    try{
+      const r = await(await fetch(`/api/studio/lead/${LEAD.prospect_id}/demo`,{method:"POST",
+        headers:{"content-type":"application/json"},body:JSON.stringify({url:d.url})})).json();
+      volta = r.ok
+        ? `<br>✅ link já está no card do lead #${LEAD.prospect_id} na Prospecção.`
+        : `<br>⚠️ não consegui devolver o link pro card: ${esc(r.erro||"erro")}`;
+    }catch(e){ volta = `<br>⚠️ falhou devolver o link pro card: ${esc(e.message)}`; }
+  }
   $("g-res").innerHTML=`<div class="ok"><b>Pronto:</b>
     <a href="${esc(d.url)}" target="_blank" rel="noopener">${esc(d.url)}</a><br>
     pele: ${esc(d.estilo||"—")} · estrutura: ${esc(d.estrutura||"—")}
-    (${esc(d.estrutura_origem||"—")}) · ${d.fotos||0} foto(s)</div>`;
+    (${esc(d.estrutura_origem||"—")}) · ${d.fotos||0} foto(s)${volta}</div>`;
   carregarGaleria();  // a galeria já mostra o novo com preview
 }
 
@@ -405,5 +416,43 @@ async function carregarOperacao(){
       <span style="color:var(--mut)">— ${esc(c.nota)}</span></div>`).join("");
 }
 
+/* ---------- ENTRADA PELO CARD DA PROSPECÇÃO (?lead=<prospect_id>) ----------
+   O JP clica "gerar demo" no card e cai aqui já preenchido. Nada de digitar de novo
+   o que o CRM já sabe — e o que veio do CRM entra marcado como INFERIDO, porque
+   hipótese de garimpo não pode virar afirmação em primeira pessoa no site do cliente. */
+let LEAD = null;
+async function carregarLead(){
+  const id = new URLSearchParams(location.search).get("lead");
+  if(!id) return;
+  let d;
+  try{ d = await(await fetch(`/api/studio/lead/${encodeURIComponent(id)}`)).json(); }
+  catch(e){ return; }
+  if(!d.achou) return;
+  LEAD = d;
+  aba("briefing");
+  const c = d.campos || {};
+  $("b-nome").value = c.nome || "";
+  $("b-nicho").value = c.nicho || "";
+  $("b-wa").value = c.whatsapp || "";
+  if(d.tier) $("b-tier").value = d.tier;        // vem do card, editável — nunca em branco
+  if(d.ingerir_site) $("b-site").value = d.site_atual || "";
+  // o que o motor precisa saber, em texto que o JP pode editar antes de gerar
+  const linhas = [];
+  if(d.decisor) linhas.push(`Decisor (QSA): ${d.decisor}`);
+  if(d.razao_social) linhas.push(`Razão social: ${d.razao_social}`);
+  if(d.cnpj) linhas.push(`CNPJ: ${d.cnpj}`);
+  if(c.cidade) linhas.push(`Cidade: ${c.cidade}`);
+  if(d.achado) linhas.push(`Achado da prospecção: ${d.achado}`);
+  $("b-form").value = linhas.join("\n");
+  const proc = Object.keys(d.proveniencia||{}).length;
+  $("b-res").innerHTML = `<div class="ok"><b>Lead #${d.prospect_id} carregado do CRM.</b>
+    ${proc} campo(s) marcados como <b>inferido</b> — o que você subir vence.
+    ${d.decisor?`Decisor: <b>${esc(d.decisor)}</b>.`:"Sem decisor no QSA."}
+    ${d.ingerir_site?"Site atual entra como fonte de ingestão.":""}</div>
+    <div class="falta" style="margin-top:8px"><b>FALE ISTO:</b> ${esc(d.fala||"")}</div>`;
+  carregarModelos();
+}
+
+carregarLead();
 carregarGaleria();
 </script></body></html>

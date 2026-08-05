@@ -233,6 +233,10 @@ function render(){
       ${ABERTO[l.id]?perfilHTML(l):""}
       <div class="acoes">${wa}
         <button class="bt cp" onclick="copiar(${l.id})">📋 copiar fala</button>
+        ${l.demo_url
+          ? `<a class="bt ok" href="${esc(l.demo_url)}" target="_blank" rel="noopener">🖥️ ver demo</a>`
+          : `<a class="bt cp" href="/obs/studio?lead=${l.id}" target="_blank" rel="noopener"
+               title="Abre o Studio já preenchido com o que sabemos deste lead">🖥️ gerar demo</a>`}
         <button class="bt ok" onclick="marcar(${l.id},'ligacao')">✓ marquei contato</button>
         <button class="bt cp" onclick="togglePerfil(${l.id})">${ABERTO[l.id]?'▲ fechar':'▼ perfil'}</button>
       </div>
