@@ -27,7 +27,7 @@ a{color:var(--cy)}h1{font-size:1.4rem;margin:.2em 0}.sub{color:var(--mut);font-s
 .ideia .m{display:inline-block;font-size:.72rem;font-weight:700;background:var(--warn);color:#001;padding:0 8px;border-radius:20px;margin-right:6px}
 </style></head><body>
 <a class="voltar" href="/obs" title="Voltar" onclick="if(history.length>1){history.back();return false}">‹ Voltar</a>
-<h1>💡 Caixa de Ideias <label class="pdfbt" title="Sobe um PDF e ele entra na caixa como qualquer outra análise">📄 PDF<input id="pdf" type="file" accept="application/pdf" hidden onchange="subirPdf()"></label> <a class="csv" href="/api/ideias.csv" title="Baixar tudo em CSV (UTF-8, abre no Excel PT-BR)">⬇️ CSV</a></h1>
+<h1>💡 Caixa de Ideias <label class="pdfbt" title="Sobe um PDF e ele entra na caixa como qualquer outra análise">📄 PDF<input id="pdf" type="file" accept="application/pdf" hidden onchange="subirPdf()"></label> <a class="csv" href="/api/ideias.csv" title="Baixar tudo em CSV (UTF-8, abre no Excel PT-BR)">⬇️ CSV</a> <a class="csv" href="/api/radar/export.md?acionaveis=true" title="Só o que tem score >= 8 e ainda não foi tratado — pra revisar fora do painel">📋 Radar MD</a> <a class="csv" href="/api/radar/export.json" title="Radar cru + auto-análise, pra reprocessar">🧾 JSON</a></h1>
 <p class="sub">Templates replicáveis colhidos de <b>tudo</b> que o Radar analisou — por domínio, com a fonte. O que dá pra transformar em vídeo, site, produto, operação. Cresce sozinho a cada análise.</p>
 <div class="filtros" id="filtros"></div>
 <input class="busca" id="busca" type="search" placeholder="🔎 buscar em todas as ideias…" oninput="render()" autocomplete="off">

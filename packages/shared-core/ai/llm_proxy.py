@@ -14,6 +14,7 @@ Cascata de disponibilidade:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 import urllib.error
@@ -32,8 +33,34 @@ _TRANSITORIO = {429, 500, 502, 503, 504}
 _GATE_429 = int(os.environ.get("ANTHROPIC_GATE_429", "3"))
 
 
+log = logging.getLogger(__name__)
+
+
 def _base() -> str:
     return os.environ.get("LITELLM_URL", "http://127.0.0.1:4000")
+
+
+def _master() -> str:
+    """Chave do gateway LiteLLM — do ambiente OU do .env.
+
+    Lia só de `os.environ` e o painel-operacoes não exporta essa variável: o gateway
+    devolvia 401, o `except` de `completar()` engolia, e a função devolvia None como se
+    o proxy estivesse fora do ar. Sintoma visível: a aba Auto-análise da Caixa de Ideias
+    dizia "Sem achados ainda" com 428 análises e 15.875 chars de digest no banco.
+
+    Mesmo remédio já aplicado em `visao.py` e no `llm_orquestrador` do motor-site: o
+    segredo mora num arquivo gitignored, então quem só olha o ambiente não o encontra."""
+    if k := os.environ.get("LITELLM_MASTER_KEY", "").strip():
+        return k
+    for env in ("/root/noemi-infra/.env", "/root/noemi-infra/infra/.env", "/root/sdr-motor/.env"):
+        try:
+            with open(env, encoding="utf-8", errors="ignore") as f:
+                for l in f:
+                    if l.strip().startswith("LITELLM_MASTER_KEY="):
+                        return l.split("=", 1)[1].strip().strip('"').strip("'")
+        except OSError:
+            continue
+    return ""
 
 
 def _espera(e: urllib.error.HTTPError, tentativa: int) -> float:
@@ -49,9 +76,21 @@ def _espera(e: urllib.error.HTTPError, tentativa: int) -> float:
     return min(2.0 ** tentativa, teto)
 
 
-def _post(model: str, prompt: str, max_tokens: int, temperature: float) -> str | None:
-    """Uma chamada ao proxy pro nome lógico `model`. Devolve texto (ou None se
-    vier vazio). Deixa HTTPError/URLError subirem — quem chama decide repetir."""
+def _sem_think(txt: str) -> str:
+    """Tira o bloco de raciocínio. O gateway pode rotear pra um modelo de reasoning a
+    qualquer momento (é o que a cascata de fallback faz quando o primário satura), e
+    esse bloco é rascunho — nunca pode vazar pra copy nem pro parser de JSON."""
+    import re
+    t = re.sub(r"<think>.*?</think>", "", txt or "", flags=re.S)
+    return re.sub(r"<think>.*$", "", t, flags=re.S).strip()
+
+
+# Piso de espaço pra resposta quando o modelo gasta o teto raciocinando (ver `_post`).
+TETO_REASONING = int(os.environ.get("LITELLM_MAX_TOKENS_REASONING", "6000"))
+
+
+def _uma_chamada(model: str, prompt: str, max_tokens: int, temperature: float) -> tuple[str, str]:
+    """(texto_limpo, finish_reason). Deixa HTTPError/URLError subirem."""
     corpo = json.dumps({
         "model": model, "messages": [{"role": "user", "content": prompt}],
         "max_tokens": max_tokens, "temperature": temperature,
@@ -59,11 +98,36 @@ def _post(model: str, prompt: str, max_tokens: int, temperature: float) -> str |
     req = urllib.request.Request(
         f"{_base()}/v1/chat/completions", data=corpo,
         headers={"Content-Type": "application/json",
-                 "Authorization": f"Bearer {os.environ.get('LITELLM_MASTER_KEY', '')}"})
+                 "Authorization": f"Bearer {_master()}"})
     with urllib.request.urlopen(req, timeout=int(os.environ.get("LITELLM_TIMEOUT_S", "45"))) as r:
         d = json.loads(r.read().decode("utf-8"))
-    texto = d["choices"][0]["message"]["content"]
-    return texto if isinstance(texto, str) and texto.strip() else None
+    escolha = d["choices"][0]
+    bruto = escolha["message"]["content"]
+    return (_sem_think(bruto) if isinstance(bruto, str) else ""), str(escolha.get("finish_reason") or "")
+
+
+def _post(model: str, prompt: str, max_tokens: int, temperature: float) -> str | None:
+    """Uma chamada ao proxy pro nome lógico `model`. Devolve texto (ou None se vier
+    vazio). Deixa HTTPError/URLError subirem — quem chama decide repetir.
+
+    TETO CURTO + MODELO DE RACIOCÍNIO = RESPOSTA VAZIA (2026-08-06). O nome lógico não
+    diz qual modelo atende: quando o primário satura o TPD, a cascata do gateway cai em
+    `gpt-oss-120b`, que emite um bloco <think> ANTES de responder. Com um teto apertado
+    ele gasta o teto inteiro pensando e devolve `finish_reason='length'` com conteúdo
+    vazio — e o chamador lê isso como "o proxy está fora".
+
+    Foi o que manteve a aba Auto-análise dizendo "Sem achados ainda" com 428 análises no
+    banco: o prompt curto do health-check passava (llama respondia), o prompt de 12 mil
+    caracteres estourava o TPD, caía no modelo de raciocínio e voltava vazio.
+
+    Não dá pra prever qual modelo vai atender, então a resposta é reativa: se veio vazio
+    POR FALTA DE ESPAÇO, repete uma vez com espaço de sobra. O caso normal não paga nada."""
+    texto, fim = _uma_chamada(model, prompt, max_tokens, temperature)
+    if not texto and fim == "length" and max_tokens < TETO_REASONING:
+        log.warning("%s devolveu só raciocínio em %d tokens; repetindo com %d.",
+                    model, max_tokens, TETO_REASONING)
+        texto, fim = _uma_chamada(model, prompt, TETO_REASONING, temperature)
+    return texto or None
 
 
 def completar(prompt: str, *, model: str = "analise", max_tokens: int = 400,
@@ -85,6 +149,12 @@ def completar(prompt: str, *, model: str = "analise", max_tokens: int = 400,
             if e.code in _TRANSITORIO and tentativa < retries:
                 time.sleep(_espera(e, tentativa))
                 continue
+            if e.code in (401, 403):
+                # config, não indisponibilidade: sem log isto vira "o proxy está fora"
+                # e o chamador degrada em silêncio (foi o que escondeu a Auto-análise).
+                log.error("gateway recusou a credencial (%s) — LITELLM_MASTER_KEY ausente "
+                          "ou errada. O chamador vai receber None como se o proxy estivesse fora.",
+                          e.code)
             break  # erro duro (401/400) ou retries esgotados → sai do loop
         except (urllib.error.URLError, TimeoutError, ValueError, KeyError, IndexError, OSError):
             return None
@@ -169,5 +239,30 @@ if __name__ == "__main__":  # self-check: 429 duas vezes → 200 (sem sleep real
     assert _r is None and chamadas["n"] == 3, chamadas  # 3 tentativas Groq, ZERO Anthropic
     os.environ.pop("ANTHROPIC_API_KEY", None)
 
-    print("llm_proxy OK — 429×2→200; 401 degrada em 1; gate 3×429+key→Anthropic; "
+    # REASONING: teto curto → só <think> e finish_reason='length'. Tem que repetir
+    # com espaço de sobra em vez de devolver None (era a Auto-análise morta em silêncio).
+    chamadas.clear(); chamadas["n"] = 0
+    vistos_tokens = []
+
+    def _fake_reasoning(req, timeout=0):
+        chamadas["n"] += 1
+        vistos_tokens.append(json.loads(req.data)["max_tokens"])
+        if chamadas["n"] == 1:   # 1ª: gastou o teto pensando, sem resposta
+            return _Resp(json.dumps({"choices": [{"message": {"content": "<think>pensando"},
+                                                  "finish_reason": "length"}]}).encode())
+        return _Resp(json.dumps({"choices": [{"message": {"content": "<think>ok</think>{\"itens\":[]}"},
+                                              "finish_reason": "stop"}]}).encode())
+
+    urllib.request.urlopen = _fake_reasoning
+    r = completar("analisa", model="analise", max_tokens=1000)
+    assert r == '{"itens":[]}', r          # <think> removido, JSON preservado
+    assert chamadas["n"] == 2, chamadas    # repetiu UMA vez
+    assert vistos_tokens == [1000, TETO_REASONING], vistos_tokens
+
+    # e não repete quando o teto já é grande (senão vira loop de custo)
+    chamadas["n"] = 0; vistos_tokens.clear()
+    assert completar("x", model="analise", max_tokens=TETO_REASONING) is None
+    assert chamadas["n"] == 1, chamadas
+
+    print("llm_proxy OK — 429×2→200; reasoning vazio→repete; 401 degrada em 1; gate 3×429+key→Anthropic; "
           "sem key→None; permitir_anthropic=False trava (Groq-only)")

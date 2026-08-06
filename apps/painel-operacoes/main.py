@@ -764,6 +764,29 @@ def ideias_csv():
               headers={"Content-Disposition": "attachment; filename=caixa_de_ideias.csv"})
 
 
+@app.get("/api/radar/export.md")
+def radar_export_md(piso: int = 0, acionaveis: bool = False) -> Response:
+    """Radar em Markdown, pra revisar fora do painel.
+
+    `acionaveis=true` reduz ao que tem score >= 8 E ainda não recebeu feedback — o
+    critério está declarado em `radar_export.PISO_ACIONAVEL`, não escondido aqui."""
+    import radar_export
+    nome = "radar-acionaveis.md" if acionaveis else "radar.md"
+    return Response(radar_export.markdown(piso, acionaveis), media_type="text/markdown",
+                    headers={"Content-Disposition": f'attachment; filename="{nome}"'})
+
+
+@app.get("/api/radar/export.json")
+def radar_export_json(piso: int = 0) -> Response:
+    """Radar cru + a auto-análise, pra reprocessar fora daqui."""
+    import json as _j
+
+    import radar_export
+    return Response(_j.dumps(radar_export.dados(piso), ensure_ascii=False, indent=1),
+                    media_type="application/json",
+                    headers={"Content-Disposition": 'attachment; filename="radar.json"'})
+
+
 @app.get("/api/auto-analise")
 def auto_analise_dados() -> JSONResponse:
     """Auto-análise (task 2): retrato atual amarelo/vermelho da própria operação."""
