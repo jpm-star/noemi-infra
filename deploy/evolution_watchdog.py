@@ -27,6 +27,7 @@ import os
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -112,7 +113,9 @@ def _fetch_http() -> list[dict]:
 
 def _restart_http(nome: str) -> None:
     # /instance/restart reestabelece a sessão existente (não pede QR se a sessão vive).
-    req = urllib.request.Request(f"{_url()}/instance/restart/{nome}", method="POST",
+    # quote(): nomes de instância têm espaço ("noemi ajuda papai", e uma com espaço no
+    # FIM). urllib não escapa a URL sozinho — sem isto o restart vira 404/400.
+    req = urllib.request.Request(f"{_url()}/instance/restart/{urllib.parse.quote(nome)}", method="POST",
                                  headers={"apikey": _apikey()})
     with urllib.request.urlopen(req, timeout=20) as r:
         r.read()

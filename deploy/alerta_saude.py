@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -62,7 +63,8 @@ def _evolution_estado() -> str | None:
     if not url or not inst:
         return None
     req = urllib.request.Request(
-        f"{url}/instance/connectionState/{inst}",
+        # quote(): nome de instância tem espaço; urllib não escapa a URL sozinho.
+        f"{url}/instance/connectionState/{urllib.parse.quote(inst)}",
         headers={"apikey": os.environ.get("EVOLUTION_APIKEY", ""), "User-Agent": "noemi-alerta/1.0"})
     try:
         with urllib.request.urlopen(req, timeout=5) as r:
