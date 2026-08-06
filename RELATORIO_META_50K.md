@@ -8,6 +8,49 @@ disparado.** O kill switch de prospecção segue como estava.
 
 ## 0. Antes das tarefas: três números que mudam o plano
 
+### 0.0 CORREÇÃO (2026-08-06, depois que o JP desconfiou do número)
+
+**O funil que reportei abaixo estava errado por um bug de leitura, não de dados.**
+
+`prospeccao_dia._wa()` exigia 11 dígitos (DDD + 9 + 8) e devolvia "" pra qualquer outro
+formato. A base da CNPJá — **37.070 leads, todos com CNPJ e razão social** — guarda
+telefone com **10 dígitos**, o formato anterior a 2016. Resultado: 26.885 celulares
+perfeitamente válidos apareciam como "sem WhatsApp", e eu dimensionei a meta em cima de
+1.512 leads quando havia 28 mil.
+
+O lado do ENVIO sempre esteve certo: `evolution.normalizar_telefone_br` no sdr-motor já
+adicionava o nono dígito. Só a LEITURA do painel não sabia — e era ela que eu estava
+contando.
+
+| Fonte | Celulares únicos com nome |
+|---|---:|
+| leads_cnpja | 26.885 |
+| leads_clinicas | 1.201 |
+| leads_alvo | 740 |
+| leads_t3t4 | 167 |
+| **únicos (dedup por celular)** | **28.086** |
+| já no tracker | 979 |
+| **nunca trabalhados** | **27.107** |
+
+Os dois números que o JP lembrava batem, e cada um mede uma coisa:
+- **~47 mil** = o volume bruto capturado (37.070 só de CNPJá + as outras fontes).
+- **~3 mil** = os que têm **nome fantasia** (3.477). Os outros 31.734 só têm razão social
+  ("MARIA DA SILVA CABELEIREIRA ME") — dá pra contatar, mas não dá pra abrir a conversa
+  com esse nome. **Essa é a distinção que importa pra abordagem, e ela é real.**
+
+O que muda na meta: 42 fechamentos em **27.107** leads novos é ~0,15% de conversão, não
+os 3% que calculei sobre 1.446. A meta deixa de depender de conversão excepcional e passa
+a depender de **volume de disparo e da instância aguentar** — que é outro problema, e mais
+tratável.
+
+Segmentos dos novos (top): cabeleireiro 13.646 · estética 5.171 · médico 2.407 ·
+advocacia 1.938 · imobiliária 1.235 · odontologia 994. Todos SP.
+
+Corrigido em `normalizar_celular()` com 9 testes de regressão. O que está abaixo desta
+seção foi escrito ANTES da correção — fica como registro do erro.
+
+---
+
 ### 0.1 O funil não tem 1.100 leads de cold call — tem 65
 
 | Tier | Leads | Canal |

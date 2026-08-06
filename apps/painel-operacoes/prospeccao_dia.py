@@ -52,13 +52,35 @@ def _tel8(t: str) -> str:
     return re.sub(r"\D", "", str(t or ""))[-8:]
 
 
-def _wa(tel: str) -> str:
-    """wa.me com DDI 55. Fixo (8 dígitos sem 9) não tem WhatsApp — devolve ''."""
+def normalizar_celular(tel: str) -> str:
+    """Telefone → celular BR de 11 dígitos (DDD + 9 + 8), ou "" se não for celular.
+
+    O NONO DÍGITO (2026-08-06). A base da CNPJá — 37.070 leads, TODOS com nome e CNPJ —
+    guarda telefone com 10 dígitos (DDD + 8), o formato anterior a 2016. A regra antiga
+    aqui exigia 11 dígitos e devolvia "" pra todos eles: 26.885 celulares perfeitamente
+    válidos apareciam como "sem WhatsApp", e a base útil parecia ter 1.512 leads em vez
+    de 28 mil. O funil inteiro foi dimensionado por cima desse erro de leitura.
+
+    A recuperação é a própria regra da portabilidade: quando o número virou 11 dígitos,
+    o 9 foi inserido na frente dos 8 e o prefixo antigo (6-9) foi preservado. Então
+    DDD + [6-9]XXXXXXX vira DDD + 9 + [6-9]XXXXXXX. Prefixo 2-5 era e continua FIXO.
+
+    CANDIDATO, NÃO CONFIRMAÇÃO: isto diz "este número tem forma de celular", não "este
+    número tem WhatsApp". Quem confirma é o portão da Evolution antes do envio — e ele
+    continua sendo obrigatório."""
     d = re.sub(r"\D", "", str(tel or ""))
-    d = d[2:] if d.startswith("55") and len(d) > 11 else d
-    if len(d) != 11 or d[2] != "9":  # celular BR = DDD + 9 + 8 dígitos
-        return ""
-    return "55" + d
+    if d.startswith("55") and len(d) > 11:
+        d = d[2:]
+    if len(d) == 11:
+        return d if d[2] == "9" else ""          # já normalizado (ou fixo mal formatado)
+    if len(d) == 10 and d[2] in "6789":          # formato pré-2016: recupera o 9
+        return d[:2] + "9" + d[2:]
+    return ""                                     # fixo, incompleto ou lixo
+
+
+def _wa(tel: str) -> str:
+    """wa.me com DDI 55. "" quando o número não tem forma de celular."""
+    return "55" + c if (c := normalizar_celular(tel)) else ""
 
 
 def gancho(tier: str, segmento: str, cidade: str, achado: str) -> str:
