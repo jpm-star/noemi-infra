@@ -144,6 +144,7 @@ async function gerar() {
   fd.append("tier", $("tier").value || TIER || "");
   if (selEstilo !== null) fd.append("estilo", selEstilo);
   if (selReceita !== null) fd.append("receita_nome", selReceita);
+  fd.append("variacao", ($("variacao") || {}).value || "0");
   fd.append("autofill", JSON.stringify(AUTOFILL));
   if (LEAD && LEAD.prospect_id) fd.append("lead_id", LEAD.prospect_id);
   if ($("foto").files[0]) fd.append("foto", $("foto").files[0]);
@@ -341,3 +342,16 @@ carregarLeads();
 carregarLeadDoCard();
 verEscopo();
 carregarSites();
+
+
+/* ─────────── "gerar outro": sorteia outra variação do que o motor já aprova ───────────
+   Não abre opção nova: anda UMA casa na semente, que muda estrutura e acento dentro do
+   pool do segmento. É o único controle que o operador precisa quando não gostou. */
+function gerarOutro() {
+  const v = $("variacao");
+  v.value = String((parseInt(v.value || "0", 10) + 1) % 97);
+  selEstilo = null; selReceita = null; $("estilo").value = "";   // manual sai da frente
+  const b = $("btn-variar");
+  if (b) { b.disabled = true; b.textContent = "🎲 gerando…"; }
+  gerar().finally(() => { if (b) { b.disabled = false; b.textContent = "🎲 Gerar outro"; } });
+}

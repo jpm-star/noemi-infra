@@ -211,6 +211,43 @@ def referencias_aprovadas(segmento: str, con: sqlite3.Connection | None = None) 
         return []
 
 
+def diagnostico_biblioteca(con: sqlite3.Connection | None = None) -> dict:
+    """Estado real da biblioteca de estrutura: o que alimenta o gerador e o que é inerte.
+
+    Uma referência só chega ao gerador se `segmento` bate com uma chave de RECEITAS —
+    `pool()` monta o pool a partir do segmento resolvido do nicho. Referência gravada em
+    balde ('servicos', 'generico') fica APROVADA e nunca é consultada por lead nenhum:
+    não contamina, e engana quem olha o total e acha que a biblioteca cresceu.
+
+    Medido em 2026-08-06: 39 das 91 aprovadas (43%) eram órfãs assim."""
+    c = _db(con)
+    linhas = list(c.execute(
+        "SELECT segmento, aprovada, COUNT(*) FROM templates_referencia GROUP BY 1,2"))
+    uteis: dict[str, int] = {}
+    orfas: dict[str, int] = {}
+    pendentes = 0
+    for seg, aprovada, n in linhas:
+        seg = (seg or "?").strip().lower()
+        if not aprovada:
+            pendentes += n
+        elif seg in RECEITAS:
+            uteis[seg] = uteis.get(seg, 0) + n
+        else:
+            orfas[seg] = orfas.get(seg, 0) + n
+    total_ap = sum(uteis.values()) + sum(orfas.values())
+    return {
+        "segmentos_do_motor": sorted(RECEITAS),
+        "aprovadas_uteis": uteis,
+        "aprovadas_orfas": orfas,
+        "pendentes": pendentes,
+        "total_aprovadas": total_ap,
+        "pct_orfas": round(100 * sum(orfas.values()) / total_ap, 1) if total_ap else 0.0,
+        # sem receita própria, a referência é inerte: ou reclassifica pro segmento certo,
+        # ou cria a receita daquele segmento. Deletar não é necessário — só some da conta.
+        "acao": "reclassificar para um segmento do motor, ou criar a receita do segmento",
+    }
+
+
 def referencia_aprovar(rid: int, aprovada: bool = True, con: sqlite3.Connection | None = None) -> dict:
     c = _db(con)
     c.execute("UPDATE templates_referencia SET aprovada=? WHERE id=?", (1 if aprovada else 0, rid))

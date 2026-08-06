@@ -294,7 +294,7 @@ def registrar_demo(prospect_id: int, url: str) -> dict:
     return {"ok": cur.rowcount > 0, "prospect_id": prospect_id, "url": url.strip()}
 
 
-def _semente(nome: str, lead_id: int = 0) -> int:
+def _semente(nome: str, lead_id: int = 0, variacao: int = 0) -> int:
     """Semente ESTÁVEL da escolha automática (estrutura + acento de morfismo).
 
     hash() do Python é randomizado por processo — usar ele faria a estrutura mudar a
@@ -302,7 +302,10 @@ def _semente(nome: str, lead_id: int = 0) -> int:
     entre processos, então o preview do Studio mostra o que a geração vai fazer de
     verdade. É por isso que isto é uma função e não duas linhas repetidas: preview e
     geração TÊM que usar a mesma conta, senão o preview mente."""
-    return lead_id or (int(hashlib.md5((nome or "").encode()).hexdigest()[:8], 16) % 997)
+    base = lead_id or (int(hashlib.md5((nome or "").encode()).hexdigest()[:8], 16) % 997)
+    # `variacao` é o botão "gerar outro": anda no pool sem o operador escolher nada. Some
+    # da conta quando é 0, então o comportamento estável de sempre fica intacto.
+    return base + int(variacao or 0)
 
 
 def modelos(nicho: str = "", tier: str = "", nome: str = "", lead_id: int = 0) -> dict:
@@ -339,7 +342,8 @@ def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | s
           foto: tuple | None = None, video: tuple | None = None, copy_livre: str = "",
           fotos: list[tuple] | None = None, estilo: str = "",
           autofill: dict | None = None, lead_id: int = 0, tier: str = "",
-          receita_nome: str = "", cidade: str = "", email: str = "") -> dict:
+          receita_nome: str = "", cidade: str = "", email: str = "",
+          variacao: int = 0) -> dict:
     """Dispara o motor REAL com o briefing. `foto`/`video` = (bytes, nome_arquivo) opcionais
     (PROMPT 2): salvos em <slug>/{img,vid} e embutidos no hero via contrato estendido do motor.
     `fotos` = lista (bytes, nome) do acervo do cliente (C3): passam por OCR (contexto pra copy)
@@ -362,7 +366,7 @@ def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | s
     import receitas as _rec
     # semente ESTÁVEL: hash() do Python é randomizado por processo — usar ele faria a
     # estrutura mudar a cada regeração do MESMO site (péssimo pra iterar numa demo).
-    _sem = _semente(nome, lead_id)
+    _sem = _semente(nome, lead_id, variacao)
     # STUDIO #2: o JP pode ESCOLHER a estrutura na galeria; vazio segue automático.
     # Nome que não existe no pool cai no automático em vez de gerar site sem ordem.
     receita = next((r for r in _rec.pool(nicho) if r["nome"] == receita_nome.strip()),

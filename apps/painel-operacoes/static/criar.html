@@ -169,12 +169,22 @@ td{padding:7px 8px;border-top:1px solid var(--line)}
       Fotos do acervo têm prioridade sobre banco de imagens nos cards.</div>
   </div>
 
+  <!-- MODELO: o motor decide. A escolha manual virou <details> fechado — quem opera não
+       precisa saber o que é Glassmorphism pra mandar uma demo, e cada campo exposto é uma
+       decisão a mais entre o lead e o site no ar. Continua acessível pra quem quiser. -->
   <div class="card">
-    <div class="passo">3 · MODELO <span id="m-auto" class="hint" style="font-weight:600;letter-spacing:0"></span></div>
-    <div class="modelos" id="m-estilos"><div class="vazio">preencha o nicho para ver os modelos</div></div>
-    <div class="passo">ESTRUTURA DA PÁGINA</div>
-    <div class="modelos" id="m-receitas"></div>
+    <div class="passo">3 · MODELO <span class="hint" style="font-weight:600;letter-spacing:0">— escolhido pelo motor</span></div>
+    <div id="m-auto" class="hint" style="margin:2px 0 10px"></div>
+    <button type="button" class="btn2" id="btn-variar" onclick="gerarOutro()">🎲 Gerar outro</button>
+    <details id="avancado" style="margin-top:12px">
+      <summary class="hint" style="cursor:pointer">escolher na mão (não precisa)</summary>
+      <div class="passo" style="margin-top:10px">ESTILO</div>
+      <div class="modelos" id="m-estilos"><div class="vazio">preencha o nicho para ver os modelos</div></div>
+      <div class="passo">ESTRUTURA DA PÁGINA</div>
+      <div class="modelos" id="m-receitas"></div>
+    </details>
     <input id="estilo" type="hidden">
+    <input id="variacao" type="hidden" value="0">
   </div>
 
   <div class="card">

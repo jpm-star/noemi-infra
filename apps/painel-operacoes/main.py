@@ -677,7 +677,8 @@ async def criacao_gerar(nome: str = Form(...), nicho: str = Form(...), whatsapp:
                         estilo: str = Form(""), autofill: str = Form(""),
                         lead_id: int = Form(0), tier: str = Form(""),
                         receita_nome: str = Form(""), cidade: str = Form(""),
-                        email: str = Form("")) -> JSONResponse:
+                        email: str = Form(""),
+                        variacao: int = Form(0)) -> JSONResponse:
     import asyncio
 
     import criacao
@@ -695,7 +696,7 @@ async def criacao_gerar(nome: str = Form(...), nicho: str = Form(...), whatsapp:
         af = {}
     res = await asyncio.to_thread(criacao.gerar, nome, nicho, whatsapp, diferenciais,
                                   publico, cor, 0, f, v, copy_livre, fs, estilo, af, lead_id, tier,
-                                  receita_nome, cidade, email)
+                                  receita_nome, cidade, email, variacao)
     return JSONResponse(res, status_code=200 if res.get("ok") else 422)
 
 
