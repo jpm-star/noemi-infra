@@ -1,0 +1,16 @@
+[Unit]
+Description=Auto-aprendizado de estrutura: varre as 3 galerias e ingere só o que é novo
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/noemi-infra/apps/painel-operacoes
+EnvironmentFile=-/root/noemi-infra/.env
+EnvironmentFile=-/root/noemi-infra/infra/.env
+Environment=NOEMI_DATA_DIR=/root/noemi-infra/data
+# --limite por FONTE. 10 x 3 fontes = teto de 30 páginas por semana: ritmo que enche
+# a biblioteca sem parecer varredura agressiva pras galerias.
+ExecStart=/root/noemi-infra/.venv/bin/python referencias_scrap.py --semanal --limite 10
+# Rede lenta/galeria fora não é falha da operação: o job registra e sai.
+TimeoutStartSec=1800
+Nice=10

@@ -1,0 +1,13 @@
+[Unit]
+Description=Auto-aprendizado de estrutura, 1x por semana (segunda 03:30)
+
+[Timer]
+# Segunda de madrugada: fora do horário de prospecção (7-19) e antes do JP começar,
+# então a biblioteca já está mais cheia quando ele gera demo na segunda de manhã.
+OnCalendar=Mon *-*-* 03:30:00
+# Se a VPS estiver fora na hora marcada, roda assim que voltar — sem pular a semana.
+Persistent=true
+RandomizedDelaySec=900
+
+[Install]
+WantedBy=timers.target

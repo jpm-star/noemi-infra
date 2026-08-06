@@ -1,0 +1,173 @@
+<!doctype html><html lang="pt-BR"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Campo — cold call e porta-a-porta · JPOS</title>
+<style>
+/* Mesma linguagem da /obs/prospeccao (esmeralda + glass), mas com um contrato a mais:
+   esta página é IMPRESSA e levada no carro. Tudo que é interativo some no @media print
+   e o corpo vira tinta preta sobre branco — glass no papel só gasta toner. */
+:root{--bg:#eef4f1;--bg2:#dbeae3;--glass:rgba(255,255,255,.66);--gb:rgba(255,255,255,.86);
+  --esm:#059669;--esc:#065f46;--ink:#0f2f24;--mut:#40695c;--line:rgba(6,95,70,.16);
+  --warn:#b45309;--bad:#b91c1c}
+*{box-sizing:border-box;margin:0}
+body{background:radial-gradient(820px 420px at 88% -8%,rgba(16,185,129,.28),transparent 62%),
+  linear-gradient(170deg,var(--bg),var(--bg2));background-attachment:fixed;color:var(--ink);
+  font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:18px 14px 60px;
+  max-width:1000px;margin:0 auto}
+a{color:var(--esc);text-decoration:none;font-weight:600}
+h1{font-size:1.45rem;letter-spacing:-.02em}
+.sub{color:var(--mut);font-size:.85rem;margin:2px 0 16px}
+.top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.btn{cursor:pointer;font:inherit;font-size:.82rem;font-weight:700;padding:7px 15px;border-radius:20px;
+  border:1px solid var(--gb);background:rgba(255,255,255,.7);color:var(--esc)}
+.btn.on{background:var(--esm);color:#fff;border-color:var(--esm)}
+
+/* ── contador de ritmo ─────────────────────────────────────────────── */
+.ritmo{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:10px;margin-bottom:8px}
+.card{background:var(--glass);backdrop-filter:blur(16px) saturate(150%);border:1px solid var(--gb);
+  border-radius:16px;padding:12px 15px;box-shadow:0 4px 18px rgba(6,95,70,.09)}
+.card .t{font-size:.7rem;color:var(--mut);font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.card .n{font-size:1.55rem;font-weight:800;letter-spacing:-.03em;margin-top:2px}
+.card .d{font-size:.72rem;color:var(--mut)}
+.card.destaque{border-color:var(--esm);box-shadow:0 6px 22px rgba(5,150,105,.22)}
+.aviso{background:rgba(180,83,9,.10);border:1px solid rgba(180,83,9,.35);color:#7c3d06;
+  border-radius:12px;padding:9px 13px;font-size:.8rem;margin-bottom:18px}
+.aviso b{color:var(--warn)}
+
+/* ── rota ──────────────────────────────────────────────────────────── */
+.cidade{margin:22px 0 8px;display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;
+  border-bottom:2px solid var(--line);padding-bottom:5px}
+.cidade h2{font-size:1.1rem;letter-spacing:-.01em}
+.cidade .km{font-size:.75rem;color:var(--mut);font-weight:600}
+.lead{background:var(--glass);backdrop-filter:blur(18px) saturate(150%);border:1px solid var(--gb);
+  border-left:4px solid var(--esm);border-radius:16px;padding:14px 16px;margin-bottom:11px;
+  box-shadow:0 6px 24px rgba(6,95,70,.10);break-inside:avoid}
+.lead.t3{border-left-color:var(--warn)}
+.lh{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start}
+.nome{font-weight:700;font-size:1.02rem}
+.m2{color:var(--mut);font-size:.79rem;margin-top:1px}
+.tag{font-size:.68rem;font-weight:800;padding:3px 9px;border-radius:11px;background:rgba(5,150,105,.14);
+  color:var(--esc);letter-spacing:.04em;white-space:nowrap}
+.tag.t3{background:rgba(180,83,9,.15);color:#7c3d06}
+.fala{background:rgba(255,255,255,.75);border-left:3px solid var(--esm);border-radius:0 10px 10px 0;
+  padding:9px 13px;margin:10px 0;font-size:.93rem;line-height:1.5}
+.fala b{color:var(--esc)}
+.rot{font-size:.7rem;font-weight:800;letter-spacing:.07em;color:var(--mut);text-transform:uppercase;
+  margin:11px 0 5px}
+.obj{font-size:.85rem;margin-bottom:7px;padding-left:12px;border-left:2px solid var(--line)}
+.obj .o{font-weight:700}
+.obj .r{color:#264a3e}
+.obj .rev{color:var(--bad);font-size:.72rem;font-weight:700}
+.sens{background:rgba(185,28,28,.09);border:1px dashed rgba(185,28,28,.4);border-radius:10px;
+  padding:7px 11px;font-size:.78rem;color:#7f1d1d;margin-top:9px}
+.vazio{color:var(--mut);padding:30px 0;text-align:center}
+
+@media print{
+  body{background:#fff;color:#000;padding:0;max-width:none;font-size:11.5pt}
+  .top,.btn,.ritmo{display:none}
+  .lead,.card{background:#fff;box-shadow:none;border:1px solid #999;backdrop-filter:none}
+  .fala{background:#f4f4f4}
+  .cidade{page-break-after:avoid}
+}
+</style></head><body>
+
+<div class="top">
+  <div>
+    <h1>Campo — cold call e porta-a-porta</h1>
+    <div class="sub" id="sub">carregando…</div>
+  </div>
+  <div>
+    <button class="btn" onclick="window.print()">Imprimir</button>
+    <a class="btn" href="/obs/prospeccao">Fila completa</a>
+  </div>
+</div>
+
+<div class="ritmo" id="ritmo"></div>
+<div id="avisoRitmo"></div>
+
+<div class="top" style="margin-bottom:12px">
+  <div id="filtros">
+    <button class="btn on" data-tier="">T3 + T4</button>
+    <button class="btn" data-tier="T4">só T4</button>
+    <button class="btn" data-tier="T3">só T3</button>
+  </div>
+</div>
+
+<div id="lista" class="vazio">carregando fila…</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = t => String(t ?? '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+const brl = v => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', {maximumFractionDigits: 0});
+
+async function carregarRitmo() {
+  let d;
+  try { d = await (await fetch('/api/campo/ritmo')).json(); }
+  catch (e) { $('#ritmo').innerHTML = '<div class="card"><div class="t">ritmo</div><div class="d">indisponível</div></div>'; return; }
+  $('#ritmo').innerHTML = `
+    <div class="card"><div class="t">Meta</div><div class="n">${brl(d.meta)}</div>
+      <div class="d">${d.inicio.split('-').reverse().slice(0,2).join('/')} → ${d.fim.split('-').reverse().slice(0,2).join('/')}</div></div>
+    <div class="card"><div class="t">Fechado</div><div class="n">${brl(d.fechado)}</div>
+      <div class="d">${d.pct}% · ${d.clientes_fechados} cliente(s)</div></div>
+    <div class="card"><div class="t">Dias úteis</div><div class="n">${d.dias_uteis_restantes}</div>
+      <div class="d">de ${d.dias_uteis_total} restantes</div></div>
+    <div class="card destaque"><div class="t">Por dia útil</div>
+      <div class="n">${d.por_dia_util == null ? '—' : brl(d.por_dia_util)}</div>
+      <div class="d">${d.estado === 'calibrada' ? 'calibrada com dado real' : 'estimada'}</div></div>`;
+  $('#avisoRitmo').innerHTML = d.aviso
+    ? `<div class="aviso"><b>Estimativa, não previsão.</b> ${esc(d.aviso)}` +
+      (d.clientes_necessarios_premissa
+        ? ` Na premissa de ${brl(d.ticket_premissa)} por cliente, seriam <b>${d.clientes_necessarios_premissa} fechamentos</b>.`
+        : '') + '</div>'
+    : '';
+}
+
+function cardLead(l) {
+  const t3 = (l.tier || '').toUpperCase() === 'T3';
+  const objs = (l.objecoes || []).map(o => `
+    <div class="obj"><div class="o">“${esc(o.o)}”</div>
+      <div class="r">${esc(o.r)}</div>
+      ${o.ok === false ? `<div class="rev">⚠ revisar antes de usar — ${esc(o.revisar || '')}</div>` : ''}</div>`).join('');
+  return `<div class="lead ${t3 ? 't3' : ''}">
+    <div class="lh">
+      <div><div class="nome">${esc(l.empresa)}</div>
+        <div class="m2">${esc(l.segmento || '')}${l.decisor ? ' · falar com <b>' + esc(l.decisor) + '</b>' : ''}
+          ${l.telefone ? ' · ' + esc(l.telefone) : ''}</div></div>
+      <span class="tag ${t3 ? 't3' : ''}">${esc(l.tier)} · fit ${l.score}</span>
+    </div>
+    <div class="fala"><b>Abertura (15s):</b> ${esc(l.abertura)}</div>
+    <div class="rot">Oferta</div>
+    <div style="font-size:.87rem">${esc(l.oferta)} · demonstração grátis ·
+      <b>15% de desconto fechando até ${esc(window._prazo || '')}</b></div>
+    ${objs ? '<div class="rot">Se ele disser…</div>' + objs : ''}
+    ${l.sensivel ? `<div class="sens"><b>Não diga na cara:</b> ${esc(l.achado)}</div>` : ''}
+  </div>`;
+}
+
+async function carregar(tier) {
+  $('#lista').className = 'vazio';
+  $('#lista').textContent = 'carregando fila…';
+  let d;
+  try { d = await (await fetch('/api/campo/script?tier=' + encodeURIComponent(tier || ''))).json(); }
+  catch (e) { $('#lista').textContent = 'falhou carregar a fila'; return; }
+  window._prazo = d.prazo_oferta;
+  $('#sub').innerHTML = `${d.total} leads em ${d.cidades} cidades · rota saindo de ${esc(d.origem)} ·
+    oferta válida até <b>${esc(d.prazo_oferta)}</b> · gerado ${esc(d.gerado_em)}`;
+  if (!d.total) { $('#lista').textContent = 'nenhum lead T3/T4 pendente'; return; }
+  $('#lista').className = '';
+  $('#lista').innerHTML = d.grupos.map(g => `
+    <div class="cidade"><h2>${esc(g.cidade)}</h2>
+      <span class="km">${g.km_do_anterior != null ? '+' + g.km_do_anterior + ' km da parada anterior' : ''}
+        ${g.km_da_origem != null ? ' · ' + g.km_da_origem + ' km de Marília' : ''}</span>
+      <span class="km">· ${g.leads.length} lead(s)</span></div>
+    ${g.leads.map(cardLead).join('')}`).join('');
+}
+
+document.querySelectorAll('#filtros .btn').forEach(b => b.onclick = () => {
+  document.querySelectorAll('#filtros .btn').forEach(x => x.classList.remove('on'));
+  b.classList.add('on');
+  carregar(b.dataset.tier);
+});
+carregarRitmo();
+carregar('');
+</script>
+</body></html>

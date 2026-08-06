@@ -1,0 +1,222 @@
+<!doctype html><html lang="pt-BR"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Prospecção do dia — JPOS</title>
+<style>
+:root{
+  /* CRM claro, esmeralda + glass. Texto em cor FORTE de propósito: cinza claro sobre
+     fundo claro é o erro clássico de glassmorphism — o blur já baixa o contraste. */
+  --bg:#eef4f1;--bg2:#dbeae3;
+  --glass:rgba(255,255,255,.62);--glass-borda:rgba(255,255,255,.85);
+  --esmeralda:#059669;--esmeralda-esc:#065f46;--esmeralda-cl:#10b981;
+  --ink:#0f2f24;      /* texto principal — quase preto esverdeado, alto contraste */
+  --mut:#40695c;      /* secundário: escuro o bastante pra ler sobre o glass */
+  --line:rgba(6,95,70,.16);--warn:#b45309;--bad:#b91c1c;--wa:#128c4b}
+*{box-sizing:border-box;margin:0}
+body{
+  background:
+    radial-gradient(820px 420px at 88% -8%,rgba(16,185,129,.30),transparent 62%),
+    radial-gradient(680px 400px at 5% 8%,rgba(5,150,105,.16),transparent 60%),
+    linear-gradient(170deg,var(--bg),var(--bg2));
+  background-attachment:fixed;
+  color:var(--ink);font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  padding:18px 14px 60px;max-width:1080px;margin:0 auto}
+a{color:var(--esmeralda-esc);text-decoration:none;font-weight:600}
+.top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:4px}
+h1{font-size:1.45rem;letter-spacing:-.02em}
+.sub{color:var(--mut);font-size:.85rem;margin-bottom:16px}
+
+/* placar de metas */
+.placar{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:18px}
+.meta{background:var(--glass);backdrop-filter:blur(16px) saturate(150%);
+  -webkit-backdrop-filter:blur(16px) saturate(150%);border:1px solid var(--glass-borda);
+  border-radius:16px;padding:12px 15px;position:relative;overflow:hidden;
+  box-shadow:0 4px 18px rgba(6,95,70,.09)}
+.meta .t{font-size:.72rem;color:var(--mut);font-weight:700;letter-spacing:.06em}
+.meta .n{font-size:1.6rem;font-weight:800;letter-spacing:-.03em;margin-top:2px}
+.meta .d{font-size:.72rem;color:var(--mut)}
+.meta .bar{position:absolute;left:0;bottom:0;height:3px;background:var(--esmeralda);opacity:.85}
+
+/* filtros */
+.filtros{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
+.chip{cursor:pointer;font-size:.82rem;padding:6px 14px;border-radius:20px;background:rgba(255,255,255,.66);
+  border:1px solid var(--glass-borda);color:var(--mut);font-weight:600;transition:.15s;backdrop-filter:blur(8px)}
+.chip:hover{border-color:var(--esmeralda);color:var(--esmeralda-esc)}
+.chip.on{background:var(--esmeralda);color:#fff;border-color:var(--esmeralda)}
+.busca{flex:1;min-width:160px;background:rgba(255,255,255,.7);border:1px solid var(--glass-borda);
+  color:var(--ink);border-radius:20px;padding:8px 15px;font:inherit;font-size:.85rem;backdrop-filter:blur(8px)}
+
+/* card do lead */
+.lead{background:var(--glass);backdrop-filter:blur(18px) saturate(150%);
+  -webkit-backdrop-filter:blur(18px) saturate(150%);
+  border:1px solid var(--glass-borda);border-left:4px solid var(--esmeralda);
+  border-radius:18px;padding:15px 17px;margin-bottom:12px;
+  box-shadow:0 6px 24px rgba(6,95,70,.10);
+  transition:transform .2s cubic-bezier(.16,1,.3,1),box-shadow .2s}
+.lead:hover{transform:translateY(-2px);box-shadow:0 14px 38px rgba(6,95,70,.18)}
+.lead.t2{border-left-color:#7c3aed}.lead.t3{border-left-color:#b45309}.lead.t4{border-left-color:var(--esmeralda-esc)}
+.lead.feito{opacity:.42}
+.lh{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.nome{font-weight:700;font-size:1.02rem;letter-spacing:-.01em}
+.meta2{color:var(--mut);font-size:.79rem;margin-top:1px}
+.badge{font-size:.68rem;font-weight:800;padding:3px 10px;border-radius:20px;letter-spacing:.04em;
+  background:rgba(5,150,105,.16);color:var(--esmeralda-esc);white-space:nowrap}
+.badge.t2{background:rgba(124,58,237,.14);color:#5b21b6}
+.badge.t3{background:rgba(180,83,9,.14);color:#92400e}
+.badge.t4{background:rgba(6,95,70,.16);color:var(--esmeralda-esc)}
+.fala{background:rgba(255,255,255,.72);border:1px solid var(--line);border-left:3px solid var(--esmeralda-cl);
+  border-radius:12px;padding:11px 13px;margin:10px 0 8px;font-size:.9rem;line-height:1.55;color:var(--ink)}
+.fala .rot{font-size:.66rem;color:var(--esmeralda-esc);font-weight:800;letter-spacing:.08em;display:block;margin-bottom:3px}
+.achado{font-size:.76rem;color:var(--mut);margin-bottom:10px}
+.achado b{color:#b9c8dc}
+.achado .sens{color:var(--warn)}
+.acoes{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.bt{border:0;border-radius:9px;padding:8px 14px;font:inherit;font-size:.84rem;font-weight:700;
+  cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px;transition:.15s}
+.bt.wa{background:var(--wa);color:#04240f}.bt.wa:hover{filter:brightness(1.08)}
+.bt.cp{background:rgba(255,255,255,.8);color:var(--ink);border:1px solid var(--line)}
+.bt.cp:hover{border-color:var(--esmeralda)}
+.bt.ok{background:transparent;color:var(--mut);border:1px solid var(--line)}
+.bt.ok:hover{color:var(--esmeralda-esc);border-color:var(--esmeralda)}
+.bt.off{background:rgba(0,0,0,.06);color:#6b7f78;cursor:not-allowed}
+.bt.csv{background:var(--esmeralda);color:#fff;font-size:.8rem;padding:7px 13px}
+.bt.csv:hover{filter:brightness(1.08)}
+.tel{font-size:.82rem;color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+.empty{color:var(--mut);text-align:center;padding:40px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(80px);
+  background:var(--esmeralda);color:#fff;font-weight:700;padding:11px 20px;border-radius:24px;
+  font-size:.87rem;transition:transform .3s cubic-bezier(.16,1,.3,1);z-index:9;box-shadow:0 8px 26px rgba(0,0,0,.4)}
+.toast.on{transform:translateX(-50%) translateY(0)}
+.dica{background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:11px;
+  padding:10px 13px;font-size:.8rem;color:#ffd98a;margin-bottom:14px;line-height:1.5}
+.nota{margin-top:11px;border-top:1px dashed var(--line);padding-top:10px}
+.nota summary{cursor:pointer;font-size:.76rem;color:var(--esmeralda-esc);font-weight:700;
+  list-style:none;user-select:none}
+.nota summary::-webkit-details-marker{display:none}
+.nota summary::before{content:"📝 ";}
+.nota .campos{display:flex;gap:9px;flex-wrap:wrap;margin-top:9px}
+.nota .campos>div{flex:1 1 220px}
+.nota label{display:block;font-size:.68rem;color:var(--mut);font-weight:700;margin-bottom:3px;
+  letter-spacing:.03em;text-transform:uppercase}
+.nota textarea{width:100%;min-height:52px;resize:vertical;font:inherit;font-size:.84rem;
+  color:var(--ink);background:rgba(255,255,255,.85);border:1px solid var(--line);
+  border-radius:10px;padding:8px 10px}
+.nota textarea:focus{outline:2px solid var(--esmeralda-cl);border-color:transparent}
+.nota .salvar{margin-top:8px;background:var(--esmeralda);color:#fff;border:0;border-radius:9px;
+  padding:7px 15px;font:inherit;font-size:.8rem;font-weight:700;cursor:pointer}
+.nota .salvar:hover{background:var(--esmeralda-esc)}
+.nota .preenchida{color:var(--esmeralda-esc)}
+@media (max-width:560px){.lh{flex-direction:column}.acoes{width:100%}.bt{flex:1;justify-content:center}}
+</style></head><body>
+
+<div class="top">
+  <h1>📞 Prospecção do dia</h1>
+  <div style="display:flex;gap:8px;align-items:center">
+    <a class="bt csv" href="/api/prospeccao/dia.csv?tiers=T3,T4"
+       title="Baixar T3+T4 com telefone, gancho e achado — pra ligar offline">⬇️ CSV T3/T4</a>
+    <a href="/obs">← QG</a>
+  </div>
+</div>
+<p class="sub" id="sub">carregando fila…</p>
+
+<div class="placar" id="placar"></div>
+
+<div class="dica">
+  <b>Gancho honesto</b> — a frase de cada card é verdade verificável. Nunca invente contato
+  anterior. O <b>achado</b> é contexto interno: use se perguntarem "como assim?", não pra abrir.
+  Achado marcado <span class="sens">⚠ sensível</span> (ex: reclamação de review) <b>não se fala na cara</b>.
+</div>
+
+<div class="filtros" id="filtros"></div>
+<div id="lista"><p class="empty">carregando…</p></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $=i=>document.getElementById(i);
+const esc=s=>(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+let D={leads:[],tiers:{}}, TIER="", FEITOS=new Set();
+
+function toast(t){const e=$("toast");e.textContent=t;e.classList.add("on");
+  clearTimeout(e._t);e._t=setTimeout(()=>e.classList.remove("on"),2200);}
+
+function msg(l){
+  // mensagem pronta pro WhatsApp: gancho honesto + oferta do tier, sem contato forjado
+  const oferta=(D.tiers[l.tier]||{}).oferta||"um site que traz cliente";
+  return `Oi! Aqui é o João, da JPOS. Sobre a ${l.empresa}: ${l.gancho}. `+
+         `Eu trabalho com ${oferta.toLowerCase()} — posso te mandar um exemplo pronto pra você ver em 10 segundos?`;
+}
+function placar(){
+  $("placar").innerHTML=Object.entries(D.tiers).map(([t,v])=>{
+    const pct=Math.min(100,Math.round(((v.meta-Math.min(v.meta,v.pendentes))/v.meta)*100));
+    return `<div class="meta"><div class="t">${t}</div><div class="n">${v.pendentes}</div>
+      <div class="d">na fila · meta ${v.meta}</div><div class="bar" style="width:${pct}%"></div></div>`;}).join("");
+}
+function filtros(){
+  const chips=[["","Tudo",D.total]].concat(Object.entries(D.tiers).map(([t,v])=>[t,t,v.pendentes]));
+  $("filtros").innerHTML=chips.map(([k,l,n])=>
+    `<span class="chip ${k===TIER?'on':''}" onclick="setTier('${k}')">${esc(l)} (${n})</span>`).join("")+
+    `<input class="busca" id="q" placeholder="🔎 nome, cidade ou nicho…" oninput="render()">`;
+}
+window.setTier=t=>{TIER=t;filtros();render();};
+function render(){
+  const q=($("q")?.value||"").trim().toLowerCase();
+  const L=D.leads.filter(l=>(!TIER||l.tier===TIER)&&
+    (!q||[l.empresa,l.cidade,l.segmento].join(" ").toLowerCase().includes(q)));
+  if(!L.length){$("lista").innerHTML='<p class="empty">nada na fila com esse filtro 🎉</p>';return;}
+  $("lista").innerHTML=L.map(l=>{
+    const cls=l.tier.toLowerCase(), feito=FEITOS.has(l.id);
+    const nota=l.nota||{ligacao:'',reacao_demo:''};
+    const temNota=!!(nota.ligacao||nota.reacao_demo);
+    const wa=l.tem_whatsapp
+      ? `<a class="bt wa" target="_blank" rel="noopener" href="https://wa.me/${l.wa}?text=${encodeURIComponent(msg(l))}" onclick="marcar(${l.id},'whatsapp')">💬 WhatsApp</a>`
+      : `<span class="bt off" title="telefone fixo — não tem WhatsApp">☎ só fixo</span>`;
+    return `<div class="lead ${cls} ${feito?'feito':''}" id="l${l.id}">
+      <div class="lh">
+        <div><div class="nome">${esc(l.empresa)}</div>
+          <div class="meta2">${esc(l.segmento||"—")}${l.cidade?" · "+esc(l.cidade):""} · <span class="tel">${esc(l.telefone)}</span></div></div>
+        <span class="badge ${cls}">${esc(l.tier)}</span>
+      </div>
+      <div class="fala"><span class="rot">FALE ISTO</span>${esc(l.gancho)}</div>
+      ${l.achado?`<div class="achado">${l.sensivel?'<span class="sens">⚠ sensível — não fale na cara:</span> ':'<b>achado:</b> '}${esc(l.achado)}</div>`:""}
+      <div class="acoes">${wa}
+        <button class="bt cp" onclick="copiar(${l.id})">📋 copiar fala</button>
+        <button class="bt ok" onclick="marcar(${l.id},'ligacao')">✓ marquei contato</button>
+      </div>
+      <details class="nota"${temNota?" open":""}>
+        <summary class="${temNota?'preenchida':''}">${temNota?'anotação salva — abrir':'anotar ligação / reação à demo'}</summary>
+        <div class="campos">
+          <div><label>Como foi a ligação</label>
+            <textarea id="lig${l.id}" placeholder="atendeu? falou com quem? objeção?">${esc(nota.ligacao)}</textarea></div>
+          <div><label>Reação à demo</label>
+            <textarea id="rea${l.id}" placeholder="viu o link? o que achou? pediu ajuste?">${esc(nota.reacao_demo)}</textarea></div>
+        </div>
+        <button class="salvar" onclick="salvarNota(${l.id})">salvar anotação</button>
+      </details></div>`;}).join("");
+}
+window.salvarNota=async id=>{
+  const lig=document.getElementById('lig'+id).value, rea=document.getElementById('rea'+id).value;
+  try{
+    const r=await(await fetch("/api/prospeccao/nota",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({prospect_id:id,ligacao:lig,reacao_demo:rea})})).json();
+    if(r.ok){ const l=D.leads.find(x=>x.id===id); if(l)l.nota={ligacao:lig,reacao_demo:rea};
+      toast("anotação salva ✅"); } else toast("falhou salvar");
+  }catch(e){toast("erro de rede");}
+};
+window.copiar=id=>{const l=D.leads.find(x=>x.id===id);
+  navigator.clipboard.writeText(msg(l)).then(()=>toast("fala copiada ✂️"),()=>toast("não deu pra copiar"));};
+window.marcar=async(id,canal)=>{
+  const l=D.leads.find(x=>x.id===id); if(!l)return;
+  FEITOS.add(id); document.getElementById("l"+id)?.classList.add("feito");
+  try{
+    await fetch("/api/proslog",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({empresa:l.empresa,telefone:l.telefone,canal:canal,
+        resultado:"ligado",o_que_falei:l.gancho})});
+    toast("registrado no histórico ✅");
+  }catch(e){toast("falhou registrar (segue na fila)");FEITOS.delete(id);}
+};
+fetch("/api/prospeccao/dia").then(r=>r.json()).then(d=>{
+  D=d;
+  $("sub").innerHTML=`<b>${d.total}</b> leads sem contato · T1 primeiro (meta maior, gancho mais simples)`+
+    (d.sem_whatsapp?` · <b>${d.sem_whatsapp}</b> só com fixo (pergunte o WhatsApp na ligação)`:"");
+  placar();filtros();render();
+}).catch(()=>{$("lista").innerHTML='<p class="empty">erro ao carregar a fila</p>';});
+</script></body></html>
