@@ -40,6 +40,10 @@ _SYS = (
     "- Cada variação tem que soar como uma PESSOA diferente escrevendo, não como sinônimo "
     "trocado: mude a ordem, o que vem primeiro, o jeito de perguntar.\n"
     '- {nome} é um marcador que fica literal no texto — nunca preencha.\n'
+    "- O gancho tem que ser VERIFICÁVEL: o que a demo entrega de fato (um site pronto pra "
+    "ver, sem compromisso). Nada de resultado prometido.\n"
+    "RUIM: 'monto seu site e você passa a aparecer no Google pra quem procura o serviço.'\n"
+    "BOM: 'a gente faz site; posso montar uma demonstração de vocês e te mandar pra ver?'\n"
     'Responda SOMENTE JSON: {"variacoes":["...","..."]}'
 )
 
@@ -48,17 +52,21 @@ def _gerar_cru(base: str, quantas: int, contexto: str) -> list[str]:
     if "/root/motor-site" not in sys.path:
         sys.path.insert(0, "/root/motor-site")
     from app.providers.llm_orquestrador import _chamar, _master
+    # O GERADOR recebe o MESMO contrato que o juiz cobra. Sem isto ele reescreve a base e
+    # de brinde inventa capacidade plausível ("seu site aparece no Google") — foi o que
+    # reprovou a abertura nos três ângulos, e é a mesma correção que salvou o script_call.
+    sistema = _SYS + auditor_copy.contrato_produto()
     user = (f"CONTEXTO: {contexto}\n" if contexto else "") + \
            f"MENSAGEM-BASE:\n{base}\n\nGere {quantas} variações."
     # Gemini primeiro SE tiver saldo — é o que o JP pediu; hoje a chave está zerada e a
     # exceção cai no pool sem travar nada.
     if chave := auditor_copy._do_env("GEMINI_API_KEY"):
         try:
-            return _do_gemini(_SYS, user, chave, quantas)
+            return _do_gemini(sistema, user, chave, quantas)
         except Exception as e:  # noqa: BLE001
             log.info("Gemini indisponível (%s) — variações pelo pool", e)
     d = _chamar(os.environ.get("LITELLM_BASE", "http://127.0.0.1:4000") + "/v1/chat/completions",
-                _master(), MODELO, _SYS, user, 0.9)   # temperatura alta: variedade é o objetivo
+                _master(), MODELO, sistema, user, 0.9)   # temperatura alta: variedade é o objetivo
     return [str(v).strip() for v in (d.get("variacoes") or []) if str(v).strip()]
 
 
