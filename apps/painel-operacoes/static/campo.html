@@ -113,6 +113,17 @@ async function carregarRitmo() {
     <div class="card destaque"><div class="t">Por dia útil</div>
       <div class="n">${d.por_dia_util == null ? '—' : brl(d.por_dia_util)}</div>
       <div class="d">${d.estado === 'calibrada' ? 'calibrada com dado real' : 'estimada'}</div></div>`;
+  // O denominador ao lado da meta: R$1.851/dia é trivial com 27 mil leads e impossível
+  // com 1.500. Sem isto o número está certo e ninguém consegue julgar se é possível.
+  const alc = d.leads_utilizaveis ? `
+    <div class="card"><div class="t">Base do WhatsApp</div><div class="n">${d.leads_utilizaveis.toLocaleString('pt-BR')}</div>
+      <div class="d">com nome fantasia (dos 27.107)</div></div>
+    <div class="card"><div class="t">Alcance na janela</div><div class="n">${(d.alcance_na_janela||0).toLocaleString('pt-BR')}</div>
+      <div class="d">${d.instancias} instância(s) com rampa</div></div>
+    <div class="card ${(d.conversao_exigida_pct||0) > 2 ? '' : 'destaque'}"><div class="t">Conversão exigida</div>
+      <div class="n">${d.conversao_exigida_pct == null ? '—' : d.conversao_exigida_pct + '%'}</div>
+      <div class="d">${d.fechamentos_necessarios} fechamentos</div></div>` : '';
+  if (alc) $('#ritmo').insertAdjacentHTML('beforeend', alc);
   $('#avisoRitmo').innerHTML = d.aviso
     ? `<div class="aviso"><b>Estimativa, não previsão.</b> ${esc(d.aviso)}` +
       (d.clientes_necessarios_premissa

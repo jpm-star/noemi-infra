@@ -29,6 +29,9 @@ META_REAIS = float(os.environ.get("META_REAIS", "50000"))
 DIAS_UTEIS_META = int(os.environ.get("DIAS_UTEIS_META", "27"))
 INICIO = os.environ.get("META_INICIO", "2026-08-07")   # 1º dia útil da contagem
 MIN_CONTATOS_CALIBRAR = 10   # abaixo disto, taxa de conversão é opinião
+# Instâncias Evolution conectadas hoje. Constante e não auto-detectado de propósito:
+# consultar a Evolution no caminho do widget o faria depender de rede pra abrir.
+INSTANCIAS_HOJE = int(os.environ.get("EVOLUTION_INSTANCIAS", "2"))
 
 # Feriados nacionais que caem dentro da janela. Lista curta e explícita: um feriado
 # esquecido inflaciona os dias úteis e faz a meta diária sair menor do que precisa ser.
@@ -110,6 +113,31 @@ def garantir_coluna() -> bool:
         return False
 
 
+def _alcance(falta: float, dias_uteis: int) -> dict:
+    """Quantos leads o canal alcança na janela, e a conversão que a meta exigiria deles.
+
+    É o contexto que faltava ao lado do "R$ X por dia útil": o mesmo valor é trivial com
+    27 mil leads e impossível com 1.500. Sem isto, o widget mostrava um número correto
+    que ninguém conseguia julgar. Degrada pra {} se algo faltar — ritmo não pode morrer
+    por causa de um campo acessório."""
+    try:
+        import capacidade
+        import importar_cnpja
+        # com nome FANTASIA: é a base real do WhatsApp automatizado, não os 27 mil
+        uteis = len(importar_cnpja.candidatos())
+        plano = capacidade.dimensionar(uteis, dias_uteis, INSTANCIAS_HOJE)
+    except Exception:  # noqa: BLE001
+        return {}
+    fech = int(-(-falta // TICKET_PREMISSA)) if TICKET_PREMISSA else 0
+    return {
+        "leads_utilizaveis": uteis,
+        "instancias": INSTANCIAS_HOJE,
+        "alcance_na_janela": plano.alcance_liquido,
+        "fechamentos_necessarios": fech,
+        "conversao_exigida_pct": round(plano.conversao_exigida(fech), 2) if fech else None,
+    }
+
+
 def painel(hoje: date | None = None) -> dict:
     """Tudo que o widget mostra, já calculado. Função pura sobre o banco."""
     hoje = hoje or datetime.now(SP).date()
@@ -138,6 +166,12 @@ def painel(hoje: date | None = None) -> dict:
         "clientes_necessarios_premissa": (
             None if calibrada or not TICKET_PREMISSA else int(-(-falta // TICKET_PREMISSA))),
         "ticket_premissa": TICKET_PREMISSA if not calibrada else None,
+        # DENOMINADOR (2026-08-06). O widget nunca usou o número de leads — meta ÷ dias
+        # úteis não depende dele, então os números acima sempre estiveram certos. O que
+        # faltava era a pergunta que o JP fazia olhando pra eles: "isso é possível?".
+        # Sem o tamanho do funil ao lado, "R$1.851/dia" não diz se exige 3% ou 0,15% de
+        # conversão — e essa diferença é a diferença entre plano e fantasia.
+        **_alcance(falta, restantes),
         "aviso": ("" if calibrada else
                   f"Número ESTIMADO: ainda não há venda fechada pra calcular conversão. "
                   f"Calibra sozinho depois de {MIN_CONTATOS_CALIBRAR} contatos "
