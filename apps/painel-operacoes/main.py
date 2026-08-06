@@ -15,7 +15,7 @@ sys.path.insert(0, str(_AQUI))
 sys.path.insert(0, str(_AQUI.parents[1] / "packages"))  # shared_core (llm_proxy)
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 import agg
 
@@ -503,6 +503,67 @@ async def criacao_referencia_aprovar(req: Request) -> JSONResponse:
     return JSONResponse(receitas.referencia_aprovar(int(c.get("id") or 0), bool(c.get("aprovada", True))))
 
 
+@app.post("/api/criacao/referencias/lote")
+async def criacao_referencias_lote(segmento: str = Form(""),
+                                   imagens: list[UploadFile] = File([])) -> JSONResponse:
+    """Upload em LOTE de referências (até 50). O caminho de 1-por-vez era o gargalo:
+    a biblioteca ficou em ZERO por meses porque alimentar custava um print de cada vez.
+
+    A visão roda por arquivo, fora do event loop. Falha em um NÃO derruba o lote —
+    subir 50 e perder tudo por causa do 30º é pior que salvar 49."""
+    import asyncio
+    import os as _os
+    import time as _t
+    from pathlib import Path as _P
+
+    import receitas
+    arqs = [u for u in (imagens or []) if u and u.filename][:50]
+    if not arqs:
+        return JSONResponse({"ok": False, "erro": "nenhum arquivo"}, status_code=422)
+    destino = _P(_os.environ.get("NOEMI_DATA_DIR", str(_AQUI.parents[1] / "data"))) / "referencias"
+    destino.mkdir(parents=True, exist_ok=True)
+    salvas, falhas = [], []
+    for i, up in enumerate(arqs):
+        try:
+            dados = await up.read()
+            if not dados:
+                falhas.append({"arquivo": up.filename, "erro": "vazio"})
+                continue
+            ext = (up.filename.rsplit(".", 1)[-1] or "jpg").lower()[:5]
+            nome_arq = f"ref-{int(_t.time())}-{i:02d}.{ext if ext.isalnum() else 'jpg'}"
+            (destino / nome_arq).write_bytes(dados)
+            receita = await asyncio.to_thread(receitas.ler_referencia, dados, up.filename)
+            r = receitas.referencia_salvar(
+                tag=up.filename[:60], segmento=segmento, imagem=nome_arq,
+                receita=receita or {}, tipo="estrutura",
+                aprovada=bool((receita or {}).get("ordem")))
+            salvas.append({"arquivo": up.filename, "id": r.get("id"),
+                           "ordem": (receita or {}).get("ordem") or []})
+        except Exception as e:  # noqa: BLE001 — um arquivo ruim não derruba o lote
+            falhas.append({"arquivo": up.filename, "erro": str(e)[:80]})
+    return JSONResponse({"ok": True, "salvas": len(salvas), "falhas": len(falhas),
+                         "detalhe": salvas[:50], "erros": falhas[:10]})
+
+
+@app.post("/api/criacao/referencias/scrap")
+async def criacao_referencias_scrap(segmento: str = Form(...), url: str = Form(""),
+                                    galeria: str = Form(""),
+                                    limite: int = Form(12)) -> JSONResponse:
+    """Ingestão AUTOMÁTICA por URL/galeria: estrutura sai do HTML, sem print e sem LLM.
+
+    É o que tira a biblioteca do zero sem depender do JP colar imagem."""
+    import asyncio
+
+    import referencias_scrap as rs
+    if not (url.strip() or galeria.strip()):
+        return JSONResponse({"ok": False, "erro": "informe url ou galeria"}, status_code=422)
+    if url.strip():
+        r = await asyncio.to_thread(rs.de_url, url, segmento, "", True)
+    else:
+        r = await asyncio.to_thread(rs.de_galeria, galeria, segmento, max(1, min(limite, 40)), True)
+    return JSONResponse(r, status_code=200 if r.get("ok") else 422)
+
+
 @app.post("/api/criacao/referencia/apagar")
 async def criacao_referencia_apagar(req: Request) -> JSONResponse:
     import receitas
@@ -845,16 +906,27 @@ def leads_pagina() -> str:
     return (_AQUI / "static" / "leads.html").read_text(encoding="utf-8")
 
 
-@app.get("/obs/criacao", response_class=HTMLResponse)
-def criacao_pagina() -> str:
-    return (_AQUI / "static" / "criacao.html").read_text(encoding="utf-8")
+@app.get("/obs/criar", response_class=HTMLResponse)
+def criar_pagina() -> str:
+    """INTERFACE ÚNICA (2026-08-05). Fusão de /obs/criacao + /obs/studio: as duas
+    chamavam a MESMA API e mantinham duas linguagens visuais (dark vs esmeralda) pro
+    mesmo trabalho. Aqui: Criar · Ingestão · Sites gerados · Aprendizado · Operação."""
+    return (_AQUI / "static" / "criar.html").read_text(encoding="utf-8")
 
 
-@app.get("/obs/studio", response_class=HTMLResponse)
-def studio_pagina() -> str:
-    """Studio: briefing (ingestão + tier como contrato) e galeria com preview.
-    Sobe POR CIMA da Criação de site, que segue no ar intacta em /obs/criacao."""
-    return (_AQUI / "static" / "studio.html").read_text(encoding="utf-8")
+@app.get("/static/criar.js")
+def criar_js() -> Response:
+    return Response((_AQUI / "static" / "criar.js").read_text(encoding="utf-8"),
+                    media_type="application/javascript")
+
+
+# Rotas ANTIGAS: redirecionam em vez de sumir. Link morto em favorito/histórico do JP
+# (e o `?lead=` que a Prospecção manda) é o tipo de quebra que só aparece na pior hora.
+@app.get("/obs/criacao")
+@app.get("/obs/studio")
+def _rotas_antigas(request: Request) -> RedirectResponse:
+    q = request.url.query
+    return RedirectResponse(f"/obs/criar{'?' + q if q else ''}", status_code=307)
 
 
 @app.get("/obs/prospeccao", response_class=HTMLResponse)

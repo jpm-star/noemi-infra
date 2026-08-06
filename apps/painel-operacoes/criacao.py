@@ -345,6 +345,15 @@ def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | s
     nome = (nome or "").strip()
     if not nome or not (nicho or "").strip():
         return {"ok": False, "erro": "empresa e nicho são obrigatórios"}
+    # TRIAGEM na ENTRADA: contato inválido/placeholder morre AQUI, antes de gastar LLM
+    # e antes do QA pós-geração pegar o telefone falso no HTML (site já publicado).
+    import intake
+    _tri = intake.triar({"nome_empresa": nome, "whatsapp": whatsapp, "email": email,
+                         "cnpj": (autofill or {}).get("cnpj", "")}, lead_id)
+    if not _tri["ok"]:
+        return {"ok": False, "erros": _tri["erros"],
+                "erro": "triagem: " + " · ".join(f"{k}: {v}" for k, v in _tri["erros"].items())}
+    whatsapp, email, dono = _tri["whatsapp"], _tri["email"], _tri["dono"]
     if isinstance(diferenciais, str):
         diferenciais = [d.strip() for d in diferenciais.splitlines() if d.strip()]
     fotos = [f for f in (fotos or []) if f and f[0]]
@@ -368,6 +377,10 @@ def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | s
         receita = {**receita,
                    "ordem": _rec._norm_ordem(receita.get("ordem")) or _rec.ORDEM_DEFAULT}
     receita = receita or _rec.escolher(nicho, semente=_sem)
+    # ANTES de aplicar o template: se o esqueleto bate com o de um concorrente publicado
+    # no mesmo segmento+cidade, troca por outra receita do pool (nunca trava).
+    import diversificador
+    receita = diversificador.diversificar(nicho, cidade, receita, semente=_sem)
     briefing = {"nome_empresa": nome, "nicho": nicho.strip(), "whatsapp": (whatsapp or "").strip(),
                 "diferenciais": diferenciais, "publico": (publico or "").strip(),
                 "cor_primaria": (cor or "").strip() or None,
@@ -386,14 +399,29 @@ def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | s
     if (copy_livre or "").strip():
         briefing["copy_livre"] = copy_livre.strip()
     try:
-        montar_site = _montar_site()
+        _montar_site()   # só pelo setup (sys.path do motor + .env com a chave)
+        from app.config import deploy_ativo, gerador_ativo, orquestrador_ativo
+        from app.pipeline import _slug
     except Exception as e:  # noqa: BLE001 — motor não carregou = gap de infra, reporta
         return {"ok": False, "erro": f"motor não carregou: {type(e).__name__}: {e}"}
+    # GATE DE COPY. `montar_site()` não serve aqui: ele sintetiza a copy DENTRO da mesma
+    # chamada que renderiza e publica — não há como revisar antes de o site ir ao ar.
+    # Estes 3 estágios SÃO o corpo de pipeline.montar_site (analisar+sintetizar / gerar /
+    # publicar), com o portão no meio. `analisar` é local (sem LLM): a copy segue custando
+    # 1 chamada Groq por tentativa, + 1 da revisão.
+    # ponytail: se o motor ganhar um 4º estágio, este trecho precisa acompanhar.
+    import qa_copy
+    _orq = orquestrador_ativo()
+    copy_ok, _vered = qa_copy.portao(
+        lambda: _orq.sintetizar(briefing, _orq.analisar(briefing)), nicho, ref=nome)
+    if copy_ok is None:   # 2 reprovas: NÃO publica, sinaliza o operador com o motivo
+        return {"ok": False, "qa": _vered.dict(),
+                "erro": "QA de copy bloqueou (2 tentativas): "
+                        + ("; ".join(_vered.problemas) or _vered.severidade)}
     try:
-        r = montar_site(briefing)
+        url = deploy_ativo().publicar(gerador_ativo().gerar(copy_ok, _slug(nome))).url
     except Exception as e:  # noqa: BLE001 — falha de geração vira erro legível, não site vazio
         return {"ok": False, "erro": f"geração falhou: {type(e).__name__}: {e}"}
-    url = r.deploy.url
     slug = re.sub(r".*/([^/]+)/?$", r"\1", url.rstrip("/"))
     # grava os assets do cliente no dir do site (o HTML já referencia os caminhos relativos)
     site_dir = SITES_DIR / slug
@@ -452,6 +480,7 @@ def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | s
         "estilo": _est_desc, "receita": receita, "segundos": round(_t.time() - t_inicio, 1),
         "hero_foto": bool(foto and foto[0]), "hero_video": bool(video and video[0]),
         "copy_livre": bool((copy_livre or "").strip()),
+        "dono": dono, "qa_copy": _vered.dict(),
     })
     return {"ok": True, "url": url, "slug": slug, "fotos": len(rels), "estilo": _est_desc,
             "estrutura": receita.get("nome"), "estrutura_origem": receita.get("origem"),
