@@ -209,9 +209,18 @@ Exemplos reprovados:
 > solução" → *promessa: oferta vaga, falta de clareza*
 
 **O padrão é claro: `promessa` em todos os ângulos.** Pelo próprio critério do gate, isso
-manda corrigir o *prompt*, não as frases. Fiz isso nas objeções do cold call e a taxa foi
-de ~18% para 2 em 3 com nota 9 — a mesma correção precisa passar pela mensagem de abertura
-antes de qualquer disparo.
+manda corrigir o *prompt*, não as frases.
+
+Fiz exatamente isso nas objeções do cold call, e o resultado mediu a tese:
+
+| | objeções aprovadas |
+|---|---|
+| prompt original | **6 / 33 (18%)** |
+| prompt com o contrato do produto + exemplos "RUIM/BOM" | **20 / 32 (62%)** |
+
+O gerador não conhecia a régua que o juiz cobrava — o autor não pode adivinhar o critério
+do avaliador. **A mesma correção precisa passar pela mensagem de abertura antes de
+qualquer disparo**; é o item 1 da lista do §8.
 
 **Nada é disparado até você olhar isto.** É o gate funcionando, não uma falha.
 
@@ -233,6 +242,7 @@ Duas decisões de projeto que valem citar, porque parecem defeito e são intenci
 | Demo regerada | 3× no ar, com print a cada rodada |
 | Rotas do painel | `/obs/campo`, `/api/campo/ritmo`, `/api/campo/script` → 200, console sem erro |
 | Acervo pet shop | 2/4 fotos julgadas e aprovadas, 2 posições em placa |
+| Objeções (11 combinações) | 20/32 aprovadas · página responde em **263 ms** (cache) |
 
 As 10 falhas do sdr-motor são **pré-existentes** na branch `feat/refundacao-noemi-jpos`
 (medidas guardando minhas mudanças e rodando a suíte limpa). Não são minhas e não as
