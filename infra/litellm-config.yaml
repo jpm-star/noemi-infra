@@ -255,13 +255,23 @@ litellm_settings:
   # ORDEM (a mesma lógica em toda cadeia): outro MODELO na mesma chave (TPD é por
   # modelo) → chave de OUTRA função como overflow → pago → LOCAL. O local é o que
   # torna "nunca falhar por cota" verdade, não a quantidade de chave.
-  fallbacks: [{"site-copy": ["site-copy-b", "site-copy-c", "analise-dedicada",
-                             "pool-groq", "groq-reserva", "fallback-anthropic", "ollama-local"]},
-              {"analise": ["groq-reserva", "groq-modelo-b", "groq-modelo-c",
-                           "analise-dedicada", "pool-groq", "fallback-anthropic", "ollama-local"]},
-              {"analise-dedicada": ["analise-dedicada-b", "site-copy-b",
+  # ORDEM: TODO llama (não-reasoning) ANTES de qualquer gpt-oss (2026-08-06).
+  # Trocar de modelo não troca só a cota — troca o COMPORTAMENTO. O gpt-oss é modelo de
+  # RACIOCÍNIO: gasta o teto de tokens num bloco de reasoning e devolve `content` vazio
+  # com finish_reason='length'. O chamador lê isso como "o proxy caiu" e degrada calado.
+  # Foi o que manteve a Auto-análise da Caixa de Ideias dizendo "Sem achados ainda" com
+  # 428 análises no banco: o llama primário saturou o TPD, a cascata pulou direto pro
+  # gpt-oss-20b, e ele queimou 6000 tokens pensando sem emitir uma linha de JSON.
+  # `pool-groq` (10 chaves de llama, cota inteira) estava DEPOIS deles — a cascata
+  # preferia um modelo que não responde a uma chave que responderia.
+  # gpt-oss fica como último degrau Groq: serve pra texto livre, não pra saída estruturada.
+  fallbacks: [{"site-copy": ["site-copy-b", "analise-dedicada", "pool-groq", "groq-reserva",
+                             "site-copy-c", "fallback-anthropic", "ollama-local"]},
+              {"analise": ["groq-reserva", "analise-dedicada", "pool-groq",
+                           "groq-modelo-b", "groq-modelo-c", "fallback-anthropic", "ollama-local"]},
+              {"analise-dedicada": ["analise-dedicada-b", "pool-groq", "site-copy-b",
                                     "fallback-anthropic", "ollama-local"]},
-              {"motor-b": ["groq-reserva", "groq-modelo-b", "groq-modelo-c", "pool-groq", "ollama-local"]}]
+              {"motor-b": ["groq-reserva", "pool-groq", "groq-modelo-b", "groq-modelo-c", "ollama-local"]}]
   drop_params: true          # ignora params que um provider não suporta
   request_timeout: 40
   cache: true                # cache de prompt em memória (hit rate era 0%) — corta
