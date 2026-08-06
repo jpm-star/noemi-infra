@@ -12,11 +12,14 @@ from __future__ import annotations
 
 import hashlib
 import html as html_mod
+import logging
 import os
 import re
 import sqlite3
 import sys
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 SITES_DIR = Path(os.environ.get("SITE_OUT_DIR", "/var/www/sites"))
 _MOTOR = os.environ.get("MOTOR_SITE_DIR", "/root/motor-site")
@@ -375,6 +378,18 @@ def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | s
                 # ESTRUTURA: ordem das seções + tipo de hero (vazio = default do motor)
                 "receita_ordem": receita.get("ordem") or [],
                 "receita_hero": receita.get("hero") or ""}
+    # ACERVO DO SEGMENTO (2026-08-06). Sem foto do cliente, os cards de serviço iam pro
+    # loremflickr, que devolve foto ALEATÓRIA do Flickr pra palavra: a demo do pet shop
+    # saiu com clipart de banheira e estátua de urso. Aqui entram as fotos já julgadas
+    # pela visão pro segmento — buscadas UMA vez e reusadas por todos os leads do ramo.
+    # Só é consultado quando o cliente não mandou nada: foto real do cliente vence sempre.
+    if not fotos:
+        try:
+            import acervo_fotos
+            if urls := acervo_fotos.garantir(nicho):
+                briefing["acervo"] = urls
+        except Exception:  # noqa: BLE001 — acervo é enfeite; geração não morre por ele
+            log.warning("acervo do segmento %r indisponível", nicho, exc_info=True)
     # assets do cliente: passa o caminho RELATIVO no briefing; os bytes são gravados pós-geração.
     foto_ext = video_ext = None
     if foto and foto[0]:

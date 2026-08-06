@@ -15,12 +15,17 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
 import random
 import subprocess
 import tempfile
 import time
+import urllib.error
 import urllib.request
+from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 _MODELO = os.environ.get("VISAO_MODELO", "gemini-2.0-flash")
 # fallback de modelo (a "forma diferente" da visão quando o primário 429/erra)
@@ -47,7 +52,9 @@ def analisar_frames(frames: list[bytes], *, prompt: str | None = None,
     if not frames:
         return "", "sem_visao"
     # 1) Groq multimodal: entende a cena de graça (default ON — a key já é a da operação)
-    if os.environ.get("VISAO_GROQ", "1") == "1" and os.environ.get("GROQ_API_KEY", "").strip():
+    # o gateway serve como credencial: quem tem a master key não precisa da GROQ_API_KEY
+    if os.environ.get("VISAO_GROQ", "1") == "1" and (
+            os.environ.get("GROQ_API_KEY", "").strip() or _master()):
         txt = (_groq_fn or _groq)(frames, prompt)
         if txt:
             return txt, "groq"
@@ -63,6 +70,22 @@ def analisar_frames(frames: list[bytes], *, prompt: str | None = None,
 
 _GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 _GROQ_MODELO = os.environ.get("VISAO_GROQ_MODELO", "qwen/qwen3.6-27b")
+_GATEWAY_URL = os.environ.get("LITELLM_BASE", "http://127.0.0.1:4000") + "/v1/chat/completions"
+
+
+def _master() -> str:
+    """Chave do gateway LiteLLM. Procura no .env porque quem chama a visão (painel,
+    motor-site, Radar) não exporta essa variável — e sem ela o gateway devolve 401."""
+    if k := os.environ.get("LITELLM_MASTER_KEY", "").strip():
+        return k
+    for env in ("/root/noemi-infra/.env", "/root/noemi-infra/infra/.env", "/root/sdr-motor/.env"):
+        p = Path(env)
+        if not p.is_file():
+            continue
+        for l in p.read_text(errors="ignore").splitlines():
+            if l.strip().startswith("LITELLM_MASTER_KEY="):
+                return l.split("=", 1)[1].strip().strip('"').strip("'")
+    return ""
 
 
 def _groq(frames: list[bytes], prompt: str | None) -> str:
@@ -71,25 +94,62 @@ def _groq(frames: list[bytes], prompt: str | None) -> str:
     Cuidados aprendidos na marra: (a) o WAF da Cloudflare bloqueia o UA padrão do
     urllib (403/1010) — manda UA explícito; (b) o modelo emite bloco <think>, que é
     raciocínio e NÃO pode vazar pra copy do site."""
-    key = os.environ.get("GROQ_API_KEY", "").strip()
+    # GATEWAY PRIMEIRO (2026-08-06). O provider cru usa UMA chave, e o TPM de 8000
+    # estoura já na segunda imagem de uma mesma rodada — o 429 caía em silêncio e a
+    # visão virava 'sem_visao'. O gateway roda o mesmo modelo sobre as 10 chaves do
+    # pool em round-robin. Sem gateway no ar, segue no provider cru (melhor que nada).
+    url, key, modelo = _GROQ_URL, os.environ.get("GROQ_API_KEY", "").strip(), _GROQ_MODELO
+    if mk := _master():
+        url, key, modelo = _GATEWAY_URL, mk, "visao"
     if not key:
         return ""
     conteudo: list[dict] = [{"type": "text", "text": prompt or _PROMPT_PADRAO}]
     for b in frames[:4]:  # visão é cara em token: 4 imagens já dão o contexto
         conteudo.append({"type": "image_url", "image_url":
                          {"url": "data:image/jpeg;base64," + base64.b64encode(b).decode()}})
-    corpo = json.dumps({"model": _GROQ_MODELO, "temperature": 0.2, "max_tokens": 900,
-                        "messages": [{"role": "user", "content": conteudo}]}).encode()
-    req = urllib.request.Request(_GROQ_URL, data=corpo, headers={
-        "Authorization": f"Bearer {key}", "Content-Type": "application/json",
-        "User-Agent": "curl/8.5.0"})  # UA explícito: sem isso o WAF devolve 403/1010
-    try:
+    # 6000 e não 900: ver o bloco RACIOCÍNIO abaixo. O teto antigo cabia no <think> e
+    # não na resposta — e um teto que corta a resposta é indistinguível de "sem visão".
+    base = {"model": modelo, "temperature": 0.2, "max_tokens": 6000,
+            "messages": [{"role": "user", "content": conteudo}]}
+
+    def _pedir(extra: dict) -> str:
+        req = urllib.request.Request(url, data=json.dumps({**base, **extra}).encode(),
+                                     headers={"Authorization": f"Bearer {key}",
+                                              "Content-Type": "application/json",
+                                              # UA explícito: sem isso o WAF devolve 403/1010
+                                              "User-Agent": "curl/8.5.0"})
         with urllib.request.urlopen(req, timeout=int(os.environ.get("VISAO_TIMEOUT_S", "60"))) as r:
-            d = json.loads(r.read().decode("utf-8"))
-        txt = d["choices"][0]["message"]["content"] or ""
-    except Exception:  # noqa: BLE001 — 429/timeout/rede → cai pro próximo nível
+            return json.loads(r.read().decode("utf-8"))["choices"][0]["message"]["content"] or ""
+
+    # RACIOCÍNIO (2026-08-06). O qwen3.6 é o ÚNICO multimodal do Groq e é modelo de
+    # reasoning: emite um bloco <think> antes de responder. Com o teto antigo de 900
+    # tokens ele gastava os 900 pensando, e `_sem_think` (corretamente) devolvia "" pro
+    # think truncado. A visão inteira ficou muda em produção — sem erro, sem log, caindo
+    # pro OCR e virando 'sem_visao'.
+    # DOIS cintos, porque cada um cobre um caminho:
+    #   `reasoning_effort=none` corta o think na origem (~20 tokens) — vale no provider
+    #      cru, mas o gateway o descarta (`drop_params: true` do router), então não dá
+    #      pra depender dele;
+    #   `max_tokens=6000` dá espaço pro think TERMINAR e a resposta sair depois — é o
+    #      que faz funcionar pelo gateway. Medido nos dois caminhos.
+    # `extra_body` não é usado de propósito: só o gateway o entende, e o provider cru
+    # rejeitaria — um corpo que serve aos dois vale mais que a economia de tokens.
+    try:
+        txt = _pedir({"reasoning_effort": "none"})
+    except urllib.error.HTTPError as e:
+        if e.code != 400:  # 429/500/... → próximo nível da cascata
+            return ""
+        try:  # provider que nem conhece o parâmetro: repete sem ele
+            txt = _pedir({})
+        except Exception:  # noqa: BLE001
+            return ""
+    except Exception:  # noqa: BLE001 — timeout/rede → cai pro próximo nível
         return ""
-    return _sem_think(txt)
+    limpo = _sem_think(txt)
+    if txt and not limpo:  # o sintoma que ficou invisível por meses: nunca mais em silêncio
+        log.warning("visão devolveu só raciocínio (%d chars) e nada de resposta — "
+                    "modelo %s ignorou reasoning_effort?", len(txt), _GROQ_MODELO)
+    return limpo
 
 
 def _sem_think(txt: str) -> str:

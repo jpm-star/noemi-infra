@@ -935,6 +935,58 @@ def prospeccao_pagina() -> str:
     return (_AQUI / "static" / "prospeccao.html").read_text(encoding="utf-8")
 
 
+@app.get("/obs/campo", response_class=HTMLResponse)
+def campo_pagina() -> str:
+    """CAMPO — o material de cold call/porta-a-porta do JP e do Lincon (T3/T4).
+
+    Página separada da /obs/prospeccao de propósito: aquela é a fila de TODOS os tiers
+    na tela; esta é feita pra IMPRIMIR e levar no carro, com a rota do dia e o script
+    completo por lead. São dois usos que pedem layouts opostos."""
+    return (_AQUI / "static" / "campo.html").read_text(encoding="utf-8")
+
+
+@app.get("/api/campo/script")
+def campo_script(tier: str = "", limite: int = 200, objecoes: bool = True) -> JSONResponse:
+    """Fila T3/T4 em rota geográfica, com abertura de 15s e objeções por segmento."""
+    import script_call
+    return JSONResponse(script_call.lista(tier=tier, limite=limite, com_objecoes=objecoes))
+
+
+@app.get("/api/campo/ritmo")
+def campo_ritmo() -> JSONResponse:
+    """Meta, dias úteis restantes e quanto tem que sair por dia útil."""
+    import ritmo
+    return JSONResponse(ritmo.painel())
+
+
+@app.post("/api/campo/fechamento")
+async def campo_fechamento(request: Request) -> JSONResponse:
+    """Registra o valor fechado de um prospect — é o que tira o widget de 'estimada'.
+
+    Sem este caminho o contador nunca sairia da premissa: alguém precisa dizer quanto
+    entrou de verdade, e esse alguém é quem fechou."""
+    import sqlite3
+
+    import ritmo
+    c = await request.json()
+    pid, valor = int(c.get("prospect_id") or 0), float(c.get("valor") or 0)
+    if pid <= 0 or valor < 0:
+        return JSONResponse({"ok": False, "erro": "prospect_id e valor são obrigatórios"},
+                            status_code=400)
+    ritmo.garantir_coluna()
+    try:
+        with ritmo._db() as cx:
+            cur = cx.execute("UPDATE tracker_prospects SET valor_fechado=?, status='Fechado' "
+                             "WHERE id=?", (valor or None, pid))
+            cx.commit()
+    except sqlite3.Error as e:
+        return JSONResponse({"ok": False, "erro": str(e)}, status_code=500)
+    if not cur.rowcount:
+        return JSONResponse({"ok": False, "erro": f"prospect {pid} não existe"}, status_code=404)
+    return JSONResponse({"ok": True, "prospect_id": pid, "valor": valor,
+                         "ritmo": ritmo.painel()})
+
+
 @app.get("/api/prospeccao/dia")
 def prospeccao_dia_listar(tier: str = "", limite: int = 200) -> JSONResponse:
     """Leads ainda sem contato (T1 primeiro), com gancho honesto pronto por tier."""

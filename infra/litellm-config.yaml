@@ -60,13 +60,208 @@ model_list:
 # fallback pro local acontece no NÍVEL DO APP (shared-core/ai/local_llm.py) —
 # camada 2 da cascata. Proxy cobre os cloud; local_llm cobre o offline.
 
+  # ── AGENTES COM CHAVE DEDICADA (JP 2026-08-05) ───────────────────────────────
+  # Regra: função crítica tem chave PRÓPRIA. Um lote de 100 demos não pode comer a
+  # cota da análise, e vice-versa. Só entram aqui chaves que o sdr-motor NÃO usa —
+  # a Noemi já tem o isolamento dela (pool de conversação + dedicadas por função) e
+  # reusar aquelas gastaria a cota dela por baixo, invisível pros dois lados.
+  - model_name: site-copy          # geração de copy de site (demos do JP)
+    litellm_params:
+      model: groq/llama-3.3-70b-versatile
+      api_key: os.environ/GROQ_SITE_COPY
+  # mesmos degraus dentro da PRÓPRIA chave: o TPD é POR MODELO, então trocar de
+  # modelo devolve cota inteira sem depender de haver outra chave sobrando.
+  - model_name: site-copy-b
+    litellm_params:
+      model: groq/openai/gpt-oss-120b
+      api_key: os.environ/GROQ_SITE_COPY
+  - model_name: site-copy-c
+    litellm_params:
+      model: groq/openai/gpt-oss-20b
+      api_key: os.environ/GROQ_SITE_COPY
+  - model_name: analise-dedicada
+    litellm_params:
+      model: groq/llama-3.3-70b-versatile
+      api_key: os.environ/GROQ_ANALISE
+  - model_name: analise-dedicada-b
+    litellm_params:
+      model: groq/openai/gpt-oss-120b
+      api_key: os.environ/GROQ_ANALISE
+
+  # ── POOL COMPARTILHADO (10 chaves que estavam OCIOSAS) ───────────────────────
+  # MESMO model_name repetido: o LiteLLM rotaciona entre os deployments e, no 429,
+  # cai no próximo automaticamente. É overflow — só entra DEPOIS que a chave
+  # dedicada da função satura, então um lote grande não rouba a cota de ninguém.
+  - model_name: pool-groq
+    litellm_params:
+      model: groq/llama-3.3-70b-versatile
+      api_key: os.environ/GROQ_POOL_01
+  - model_name: pool-groq
+    litellm_params:
+      model: groq/llama-3.3-70b-versatile
+      api_key: os.environ/GROQ_POOL_02
+  - model_name: pool-groq
+    litellm_params:
+      model: groq/llama-3.3-70b-versatile
+      api_key: os.environ/GROQ_POOL_03
+  - model_name: pool-groq
+    litellm_params:
+      model: groq/llama-3.3-70b-versatile
+      api_key: os.environ/GROQ_POOL_04
+  - model_name: pool-groq
+    litellm_params:
+      model: groq/llama-3.3-70b-versatile
+      api_key: os.environ/GROQ_POOL_05
+  - model_name: pool-groq
+    litellm_params:
+      model: groq/llama-3.3-70b-versatile
+      api_key: os.environ/GROQ_POOL_06
+  - model_name: pool-groq
+    litellm_params:
+      model: groq/llama-3.3-70b-versatile
+      api_key: os.environ/GROQ_POOL_07
+  - model_name: pool-groq
+    litellm_params:
+      model: groq/llama-3.3-70b-versatile
+      api_key: os.environ/GROQ_POOL_08
+  - model_name: pool-groq
+    litellm_params:
+      model: groq/llama-3.3-70b-versatile
+      api_key: os.environ/GROQ_POOL_09
+  - model_name: pool-groq
+    litellm_params:
+      model: groq/llama-3.3-70b-versatile
+      api_key: os.environ/GROQ_POOL_10
+
+  # ── ÚLTIMO DEGRAU: LOCAL, SEM COTA ───────────────────────────────────────────
+  # Reversão consciente da decisão antiga ("Ollama não entra no proxy"): aquele
+  # fallback local só existia no NÍVEL DO APP (shared-core/local_llm.py), e o
+  # motor-site é OUTRO repositório — não alcança. Com o Ollama aqui, a promessa
+  # "nunca falhar por rate limit" vale pra todo caminho que passa no gateway.
+  # llama3.2:3b em CPU: copy pior que a do 70b, mas demo gerada > demo nenhuma.
+  - model_name: ollama-local
+    litellm_params:
+      model: ollama/llama3.2:3b
+      api_base: http://172.16.2.1:11434
+
+  # VISÃO (multimodal). Antes cada chamador batia direto em api.groq.com com UMA chave:
+  # o TPM de 8000 estourava na SEGUNDA imagem de uma rodada e a cascata engolia o 429
+  # em silêncio (virava 'sem_visao'). Aqui as mesmas 10 chaves do pool giram em
+  # round-robin, então uma rodada de 4 fotos não compete consigo mesma.
+  # qwen3.6 é modelo de RACIOCÍNIO: quem chamar tem que mandar reasoning_effort=none,
+  # senão gasta a resposta inteira dentro de <think> (ver shared-core/ai/visao.py).
+  - model_name: visao
+    litellm_params:
+      model: groq/qwen/qwen3.6-27b
+      reasoning_effort: none
+      api_key: os.environ/GROQ_POOL_01
+  - model_name: visao
+    litellm_params:
+      model: groq/qwen/qwen3.6-27b
+      reasoning_effort: none
+      api_key: os.environ/GROQ_POOL_02
+  - model_name: visao
+    litellm_params:
+      model: groq/qwen/qwen3.6-27b
+      reasoning_effort: none
+      api_key: os.environ/GROQ_POOL_03
+  - model_name: visao
+    litellm_params:
+      model: groq/qwen/qwen3.6-27b
+      reasoning_effort: none
+      api_key: os.environ/GROQ_POOL_04
+  - model_name: visao
+    litellm_params:
+      model: groq/qwen/qwen3.6-27b
+      reasoning_effort: none
+      api_key: os.environ/GROQ_POOL_05
+  - model_name: visao
+    litellm_params:
+      model: groq/qwen/qwen3.6-27b
+      reasoning_effort: none
+      api_key: os.environ/GROQ_POOL_06
+  - model_name: visao
+    litellm_params:
+      model: groq/qwen/qwen3.6-27b
+      reasoning_effort: none
+      api_key: os.environ/GROQ_POOL_07
+  - model_name: visao
+    litellm_params:
+      model: groq/qwen/qwen3.6-27b
+      reasoning_effort: none
+      api_key: os.environ/GROQ_POOL_08
+  - model_name: visao
+    litellm_params:
+      model: groq/qwen/qwen3.6-27b
+      reasoning_effort: none
+      api_key: os.environ/GROQ_POOL_09
+  - model_name: visao
+    litellm_params:
+      model: groq/qwen/qwen3.6-27b
+      reasoning_effort: none
+      api_key: os.environ/GROQ_POOL_10
+
+  # JUIZ da auditoria adversarial (auditor_copy / qa_gate). gpt-oss-120b: arquitetura
+  # DIFERENTE do llama que escreve a copy — juiz que é o próprio autor sempre se aprova.
+  # Round-robin nas 10 chaves porque um gate roda em rajada (12 itens × 3 ângulos = 36
+  # chamadas seguidas); numa chave só isso vira 429, o veredito some e o lote trava por
+  # falta de juiz em vez de por problema real.
+  - model_name: juiz
+    litellm_params:
+      model: groq/openai/gpt-oss-120b
+      api_key: os.environ/GROQ_POOL_01
+  - model_name: juiz
+    litellm_params:
+      model: groq/openai/gpt-oss-120b
+      api_key: os.environ/GROQ_POOL_02
+  - model_name: juiz
+    litellm_params:
+      model: groq/openai/gpt-oss-120b
+      api_key: os.environ/GROQ_POOL_03
+  - model_name: juiz
+    litellm_params:
+      model: groq/openai/gpt-oss-120b
+      api_key: os.environ/GROQ_POOL_04
+  - model_name: juiz
+    litellm_params:
+      model: groq/openai/gpt-oss-120b
+      api_key: os.environ/GROQ_POOL_05
+  - model_name: juiz
+    litellm_params:
+      model: groq/openai/gpt-oss-120b
+      api_key: os.environ/GROQ_POOL_06
+  - model_name: juiz
+    litellm_params:
+      model: groq/openai/gpt-oss-120b
+      api_key: os.environ/GROQ_POOL_07
+  - model_name: juiz
+    litellm_params:
+      model: groq/openai/gpt-oss-120b
+      api_key: os.environ/GROQ_POOL_08
+  - model_name: juiz
+    litellm_params:
+      model: groq/openai/gpt-oss-120b
+      api_key: os.environ/GROQ_POOL_09
+  - model_name: juiz
+    litellm_params:
+      model: groq/openai/gpt-oss-120b
+      api_key: os.environ/GROQ_POOL_10
+
 litellm_settings:
   # cascata no proxy: primário (Groq key 1) → reserva (Groq key 2). O 3º nível
   # (Ollama local → regras determinísticas) fica no app (classificacao.py).
   # ORDEM IMPORTA: outra CHAVE primeiro (mesmo modelo, cota nova), depois outro MODELO
   # na mesma chave (TPD é por modelo — resolve o estouro diário), e só no fim o pago.
-  fallbacks: [{"analise": ["groq-reserva", "groq-modelo-b", "groq-modelo-c", "fallback-anthropic"]},
-              {"motor-b": ["groq-reserva", "groq-modelo-b", "groq-modelo-c"]}]
+  # ORDEM (a mesma lógica em toda cadeia): outro MODELO na mesma chave (TPD é por
+  # modelo) → chave de OUTRA função como overflow → pago → LOCAL. O local é o que
+  # torna "nunca falhar por cota" verdade, não a quantidade de chave.
+  fallbacks: [{"site-copy": ["site-copy-b", "site-copy-c", "analise-dedicada",
+                             "pool-groq", "groq-reserva", "fallback-anthropic", "ollama-local"]},
+              {"analise": ["groq-reserva", "groq-modelo-b", "groq-modelo-c",
+                           "analise-dedicada", "pool-groq", "fallback-anthropic", "ollama-local"]},
+              {"analise-dedicada": ["analise-dedicada-b", "site-copy-b",
+                                    "fallback-anthropic", "ollama-local"]},
+              {"motor-b": ["groq-reserva", "groq-modelo-b", "groq-modelo-c", "pool-groq", "ollama-local"]}]
   drop_params: true          # ignora params que um provider não suporta
   request_timeout: 40
   cache: true                # cache de prompt em memória (hit rate era 0%) — corta
