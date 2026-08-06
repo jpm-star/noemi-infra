@@ -33,6 +33,14 @@ services:
       - "127.0.0.1:4000:4000"   # só localhost; Caddy expõe se precisar
     extra_hosts:
       - "host-ollama:172.16.0.1"  # alcança o Ollama do host (systemd)
+    # AS CHAVES DO POOL ENTRAM POR AQUI (2026-08-06). O bloco `environment:` abaixo
+    # declara UMA a UMA, e as 10 GROQ_POOL_* / GROQ_SITE_COPY / GROQ_ANALISE nunca
+    # foram declaradas: existiam no .env, estavam mapeadas no litellm-config.yaml, e
+    # o container simplesmente não as via. `pool-groq` e metade da cascata de fallback
+    # estavam mortos — o gateway sempre caía na mesma chave e tomava 429. Config que
+    # existe no arquivo e não chega no processo é pior que config ausente: parece feita.
+    env_file:
+      - .env
     environment:
       DATABASE_URL: postgresql://litellm:${LITELLM_DB_PASSWORD}@litellm-db:5432/litellm
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}

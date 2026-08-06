@@ -91,6 +91,17 @@ _ALIAS = {
     "salao": ("salão", "salao", "beleza", "cabelei", "barbear", "manicure", "spa"),
     "imobiliaria": ("imobili", "imóve", "imove", "corretor", "aluguel", "leilão", "leilao"),
     "advocacia": ("advoc", "advogad", "jurídic", "juridic", "contabil", "contador"),
+    # Segmentos que o SCRAPER já sabia produzir mas o vocabulário não reconhecia: as
+    # referências eram salvas como 'petshop' e o pool procurava por 'pet shop' — nunca
+    # se encontravam. Pet shop caía na receita default com 1 opção, e é a causa raiz do
+    # "Rações & Cia saiu no template de sempre" (2026-08-05). Manter estas duas listas
+    # em sincronia: referencias_scrap._TERMOS_SEG produz, este _ALIAS resolve.
+    "petshop": ("pet shop", "petshop", "pet ", "ração", "racao", "agropet", "banho e tosa",
+                "animais", "veterinária", "veterinaria"),
+    "restaurante": ("restaurante", "pizzaria", "lanchonete", "padaria", "cafeteria",
+                    "hamburgueria", "bar ", "delivery de comida", "food"),
+    "servicos": ("agência", "agencia", "consultoria", "marketing", "design", "software",
+                 "assessoria", "gráfica", "grafica"),
 }
 
 

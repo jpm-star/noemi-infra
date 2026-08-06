@@ -18,6 +18,8 @@ function toast(t) {
 /* ─────────── autofill por nome (só campo VAZIO; o que você digitou vence) ─────────── */
 async function autofill() {
   const nome = $("nome").value.trim(); if (!nome) return;
+  const cat = LEADCAT[nome];
+  if (cat && !$("nicho").value) $("nicho").value = cat;   // fallback instantâneo
   let d; try { d = await (await fetch("/api/criacao/lead?nome=" + encodeURIComponent(nome))).json(); }
   catch (e) { return; }
   if (!d || !d.achou) { $("af").textContent = ""; return; }
@@ -50,6 +52,20 @@ function usarDoCRM(id) {
   window.__DIVERG = (window.__DIVERG || []).filter(([k]) => k !== id);
   autofill();
 }
+/* Sugestão de leads no campo nome (datalist). Sem isto o JP digita o nome inteiro e
+   erra a grafia — e aí o autofill não casa com o CRM. */
+const LEADCAT = {};
+async function carregarLeads() {
+  try {
+    const d = await (await fetch("/api/leads-alvo")).json();
+    const visto = new Set();
+    $("leads").innerHTML = (d.leads || []).filter(l => {
+      if (visto.has(l.nome)) return false;
+      visto.add(l.nome); LEADCAT[l.nome] = l.categoria; return true;
+    }).map(l => `<option value="${esc(l.nome)}">`).join("");
+  } catch (e) { }
+}
+
 $("nome").addEventListener("change", autofill);
 $("nome").addEventListener("blur", autofill);
 $("nicho").addEventListener("input", () => { clearTimeout(tmr); tmr = setTimeout(carregarModelos, 450); });
@@ -321,6 +337,7 @@ async function carregarOperacao() {
     <span class="hint">— ${esc(c.nota)}</span></div>`).join("");
 }
 
+carregarLeads();
 carregarLeadDoCard();
 verEscopo();
 carregarSites();

@@ -144,6 +144,109 @@ model_list:
       model: ollama/llama3.2:3b
       api_base: http://172.16.2.1:11434
 
+  # VISÃO (multimodal). Antes cada chamador batia direto em api.groq.com com UMA chave:
+  # o TPM de 8000 estourava na SEGUNDA imagem de uma rodada e a cascata engolia o 429
+  # em silêncio (virava 'sem_visao'). Aqui as mesmas 10 chaves do pool giram em
+  # round-robin, então uma rodada de 4 fotos não compete consigo mesma.
+  # qwen3.6 é modelo de RACIOCÍNIO: quem chamar tem que mandar reasoning_effort=none,
+  # senão gasta a resposta inteira dentro de <think> (ver shared-core/ai/visao.py).
+  - model_name: visao
+    litellm_params:
+      model: groq/qwen/qwen3.6-27b
+      reasoning_effort: none
+      api_key: os.environ/GROQ_POOL_01
+  - model_name: visao
+    litellm_params:
+      model: groq/qwen/qwen3.6-27b
+      reasoning_effort: none
+      api_key: os.environ/GROQ_POOL_02
+  - model_name: visao
+    litellm_params:
+      model: groq/qwen/qwen3.6-27b
+      reasoning_effort: none
+      api_key: os.environ/GROQ_POOL_03
+  - model_name: visao
+    litellm_params:
+      model: groq/qwen/qwen3.6-27b
+      reasoning_effort: none
+      api_key: os.environ/GROQ_POOL_04
+  - model_name: visao
+    litellm_params:
+      model: groq/qwen/qwen3.6-27b
+      reasoning_effort: none
+      api_key: os.environ/GROQ_POOL_05
+  - model_name: visao
+    litellm_params:
+      model: groq/qwen/qwen3.6-27b
+      reasoning_effort: none
+      api_key: os.environ/GROQ_POOL_06
+  - model_name: visao
+    litellm_params:
+      model: groq/qwen/qwen3.6-27b
+      reasoning_effort: none
+      api_key: os.environ/GROQ_POOL_07
+  - model_name: visao
+    litellm_params:
+      model: groq/qwen/qwen3.6-27b
+      reasoning_effort: none
+      api_key: os.environ/GROQ_POOL_08
+  - model_name: visao
+    litellm_params:
+      model: groq/qwen/qwen3.6-27b
+      reasoning_effort: none
+      api_key: os.environ/GROQ_POOL_09
+  - model_name: visao
+    litellm_params:
+      model: groq/qwen/qwen3.6-27b
+      reasoning_effort: none
+      api_key: os.environ/GROQ_POOL_10
+
+  # JUIZ da auditoria adversarial (auditor_copy / qa_gate). gpt-oss-120b: arquitetura
+  # DIFERENTE do llama que escreve a copy — juiz que é o próprio autor sempre se aprova.
+  # Round-robin nas 10 chaves porque um gate roda em rajada (12 itens × 3 ângulos = 36
+  # chamadas seguidas); numa chave só isso vira 429, o veredito some e o lote trava por
+  # falta de juiz em vez de por problema real.
+  - model_name: juiz
+    litellm_params:
+      model: groq/openai/gpt-oss-120b
+      api_key: os.environ/GROQ_POOL_01
+  - model_name: juiz
+    litellm_params:
+      model: groq/openai/gpt-oss-120b
+      api_key: os.environ/GROQ_POOL_02
+  - model_name: juiz
+    litellm_params:
+      model: groq/openai/gpt-oss-120b
+      api_key: os.environ/GROQ_POOL_03
+  - model_name: juiz
+    litellm_params:
+      model: groq/openai/gpt-oss-120b
+      api_key: os.environ/GROQ_POOL_04
+  - model_name: juiz
+    litellm_params:
+      model: groq/openai/gpt-oss-120b
+      api_key: os.environ/GROQ_POOL_05
+  - model_name: juiz
+    litellm_params:
+      model: groq/openai/gpt-oss-120b
+      api_key: os.environ/GROQ_POOL_06
+  - model_name: juiz
+    litellm_params:
+      model: groq/openai/gpt-oss-120b
+      api_key: os.environ/GROQ_POOL_07
+  - model_name: juiz
+    litellm_params:
+      model: groq/openai/gpt-oss-120b
+      api_key: os.environ/GROQ_POOL_08
+  - model_name: juiz
+    litellm_params:
+      model: groq/openai/gpt-oss-120b
+      api_key: os.environ/GROQ_POOL_09
+  - model_name: juiz
+    litellm_params:
+      model: groq/openai/gpt-oss-120b
+      api_key: os.environ/GROQ_POOL_10
+
 litellm_settings:
   # cascata no proxy: primário (Groq key 1) → reserva (Groq key 2). O 3º nível
   # (Ollama local → regras determinísticas) fica no app (classificacao.py).
