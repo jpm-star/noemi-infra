@@ -19,6 +19,11 @@ invisível. Largura e opacidade não dizem se o texto tem cor.
 Interface fixa de visão (`shared_core.ai.visao`), nunca o provider direto — regra do
 CLAUDE.md. Hoje resolve para Groq multimodal; com ANTHROPIC_API_KEY passa a poder usar
 Claude sem mudar uma linha daqui.
+DEPENDÊNCIA: playwright, e a VERSÃO IMPORTA. Ele baixa um Chromium com número de build
+casado à versão da lib; instalar uma versão diferente da que já tem navegador em
+~/.cache/ms-playwright faz `launch()` procurar um binário que não existe. Alinhado em
+1.61.0 (o build 1228 que já está no disco):
+    uv pip install --python /root/noemi-infra/.venv/bin/python "playwright==1.61.0"
 """
 from __future__ import annotations
 
