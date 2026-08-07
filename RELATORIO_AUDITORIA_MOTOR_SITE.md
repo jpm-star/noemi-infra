@@ -160,5 +160,62 @@ imobiliária rende mais que um chip novo.
 | 1 | Auditoria documentada | **feito** (este documento) |
 | 2 | Corrigir os 2 bugs no template-base | **feito**, com 2 testes de regressão |
 | 3 | Filtrar biblioteca por segmento | **já filtrava** — auditado e documentado; o que falta é reclassificar os 42% em baldes |
-| 4 | QA visual multimodal retroativo (28 sites) | **não feito** |
-| 5 | Simplificar a interface do operador | **não feito** (o pedido chegou cortado) |
+| 4 | QA visual multimodal retroativo | **feito** — ver §6 |
+| 5 | Simplificar a interface do operador | **feito** — ver §7 |
+
+---
+
+## 6. QA visual (`qa_visual.py`) — implementado e rodado
+
+Duas camadas, nesta ordem:
+1. **Sondas determinísticas** no DOM renderizado. Cada uma nasceu de um bug que foi ao ar:
+   texto invisível por cor, sobreposição real, tipografia gigante sem palavra, estouro
+   horizontal, imagem quebrada, h1 ausente, placeholder vazado.
+2. **Visão multimodal** (interface fixa `shared_core.ai.visao`) — só se as sondas passarem.
+   Não gasta LLM para confirmar o que a regra já reprovou.
+
+A ordem vem da lição do §4: **um QA por geometria teria aprovado a página do título
+invisível**. Largura e opacidade não dizem se o texto tem cor.
+
+**Validado nos dois sentidos** (senão não é gate): reprova o site com bug (7
+`texto_invisivel` + 8 `letra_gigante`) e aprova o corrigido. Um falso positivo foi
+removido: vídeo/orbe/aurora são `absolute` atrás do conteúdo por design, e compará-los
+com o texto acusava "sobreposição" em toda página com hero em mídia.
+
+### Varredura retroativa — 54 sites publicados
+
+| | |
+|---|---:|
+| Aprovados | **15** |
+| Reprovados | **39** |
+
+| Defeito | Ocorrências | De quem |
+|---|---:|---|
+| `imagem_quebrada` | 39 | **bug antigo**, achado pelo gate |
+| `texto_invisivel` | 21 | meu, de hoje (h1 fatiado) |
+| `letra_gigante` | 18 | meu, de hoje (placa) |
+
+O `imagem_quebrada` em 39 sites é o achado que justifica o gate sozinho: o overlay de
+detalhe nascia com `<img id="svImg" src="">`. String vazia **não é "sem imagem"** — o
+navegador a resolve para a URL da própria página e dispara um request que sempre falha.
+Estava lá desde antes de hoje e nenhum teste via. Corrigido (atributo removido) + teste.
+
+Os 39 reprovados voltam a passar conforme forem regenerados com o template corrigido —
+não há correção a fazer site a site.
+
+---
+
+## 7. Interface do operador — zero decisão manual por padrão
+
+Antes: grade de estilos (morfismos) + grade de estruturas, ambas visíveis, com o
+automático apenas *sugerido* ao lado.
+
+Agora:
+- o motor decide **estilo e estrutura** sozinho (segmento + semente estável do lead);
+- a escolha manual virou `<details>` **fechado** — continua acessível, deixa de ser passo;
+- sobrou **um** botão: **"🎲 Gerar outro"**, que anda uma casa na semente e sorteia outra
+  variação *dentro do que o segmento já aprova* — não abre opção nova, não pede
+  entendimento de nada.
+
+Quem opera não precisa saber o que é Glassmorphism para mandar uma demo, e cada campo
+exposto é uma decisão a mais entre o lead e o site no ar.
