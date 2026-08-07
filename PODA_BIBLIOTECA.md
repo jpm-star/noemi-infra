@@ -9,9 +9,9 @@
 
 | | |
 |---|---|
-| linhas totais | 166 (todas `tipo='estrutura'`) |
+| linhas totais | **171** medido em 2026-08-07 (as 166 originais + ids 167-171, uploads de 2026-08-07 01:53, segmento `academia`, `aprovada=0`) |
 | aprovadas | 91 |
-| pendentes (aprovada=0) | 75 |
+| pendentes (aprovada=0) | 75 sobre as 166 originais (80 contando os 5 uploads novos) |
 | aprovadas **úteis** (segmento com receita) | 52 — clinica 28, academia 10, advocacia 9, salao 4, imobiliaria 1 |
 | aprovadas **órfãs** (segmento sem receita) | **39 (42,9%)** — servicos 32, generico 6, restaurante 1 |
 
@@ -195,16 +195,50 @@ enquanto houver 0 lead do ramo.
 
 ---
 
-## 5. Recomendação em uma linha por ação
+## 5. Decisões fechadas (2026-08-07)
 
-| ação | ids | n |
-|---|---|---|
-| `UPDATE segmento='clinica'` | 17, 18, 21, 22, 23, 24, 25, 26, 27, 28 | 10 |
-| `UPDATE aprovada=0` (ou DELETE) — inspiração estética, não estrutura | 31, 33, 34, 37, 38, 39, 41, 44, 45, 46, 47, 49, 50, 51, 52, 53, 54, 55, 56, 68, 69, 70, 84, 85, 86, 87 | 26 |
-| `DELETE` — lixo, sem uso possível | 19, 20 | 2 |
-| manter como está (hold inerte) | 35 | 1 |
+1. **RECLASSIFICAR → segmento `clinica`** — 10 ids: 17, 18, 21, 22, 23, 24, 25, 26, 27, 28.
+   Motivo: clínica/estética BR rotulada como `servicos` por erro da ingestão.
+2. **DESCARTAR** — 2 ids: 19, 20.
+   Motivo: cadastro do CNES (datasus.gov.br), não é site de cliente.
+3. **DESPROMOVER (`aprovada=0`)** — 26 ids: 31, 33, 34, 37, 38, 39, 41, 44, 45, 46, 47, 49,
+   50, 51, 52, 53, 54, 55, 56, 68, 69, 70, 84, 85, 86, 87.
+   Motivo: estúdio de design / SaaS estrangeiro; valor é estético, não estrutural.
+4. **HOLD** — 1 id: 35 (segmento `restaurante`).
+   **Ressalva registrada:** existem **ZERO leads** desse ramo nos 37.070 da base `leads_cnpja`.
+   A busca por `restaur|pizzar|lanchon|food|gastron|padari|bar` nas 3 tabelas de lead deu
+   **só falso-positivo** ("Restauração Dental", "Escobar", "Clean Foods", "Esmalteria e Bar").
+   Chamar isso de "morto por enquanto" é otimismo: não há nenhum lead a caminho. O hold é
+   semente inerte, não previsão.
 
-Depois disso `pct_orfas` de `diagnostico_biblioteca()` cai de 42,9% para ~1,6% (só a linha
-de restaurante), e a conta de "91 aprovadas" passa a significar o que aparenta.
+Efeito esperado: `pct_orfas` de `diagnostico_biblioteca()` cai de 42,9% para ~1,6% (sobra só
+a linha 35), e "91 aprovadas" passa a significar o que aparenta.
 
-**Nada disso foi executado.** Decisão do JP.
+---
+
+## 6. SQL pronto — **NÃO EXECUTADO**
+
+Banco: `/root/noemi-infra/data/noemi.db`. Nada abaixo rodou. Aprovação manual do JP antes de
+qualquer execução. Backup dos sites: `/root/backup-sites-pre-regen-20260807/`.
+
+```sql
+-- ========== NÃO EXECUTADO — aguardando aprovação manual ==========
+
+-- Ação 1 — RECLASSIFICAR clínica/estética BR (10 linhas)
+-- UPDATE templates_referencia SET segmento='clinica'
+--  WHERE id IN (17,18,21,22,23,24,25,26,27,28);
+
+-- Ação 2 — DESCARTAR cadastro CNES (2 linhas)
+-- DELETE FROM templates_referencia WHERE id IN (19,20);
+
+-- Ação 3 — DESPROMOVER estúdio de design / SaaS estrangeiro (26 linhas)
+-- UPDATE templates_referencia SET aprovada=0
+--  WHERE id IN (31,33,34,37,38,39,41,44,45,46,47,49,50,51,52,53,54,55,56,
+--               68,69,70,84,85,86,87);
+
+-- Ação 4 — HOLD id 35: nenhum comando. Nada a executar.
+
+-- Conferência (leitura, seguro rodar):
+-- SELECT segmento, aprovada, COUNT(*) FROM templates_referencia
+--  GROUP BY segmento, aprovada ORDER BY 1,2;
+```
