@@ -232,6 +232,58 @@ instrução nova.
   (id 258 acabava em *"e fechar"*, id 243 em *"lea"*). Agora 280. **6 dos 8** resumos novos
   passam de 200 — o cap estava decepando exatamente a parte que a rubrica cobra.
 
+## Quais dos 8 justificam subir pro Haiku (e quais não)
+
+Critério: sobe **só** quem falha em **MECANISMO** — falha de *julgamento estrutural*, que é o
+que o modelo maior compra. Quem só falha em `modelos`/`vertical` vazios está falhando em
+**campo não preenchido**, coisa que schema/validação resolve de graça: não justifica modelo caro.
+
+| id | conta | falha MECANISMO? | candidato a Haiku |
+|---|---|---|---|
+| 258 | @alexfcoaches | não — 'inversão de culpa psicológica' é mecanismo real | **não** |
+| 257 | @moneymindnews | **sim** — 'reduzir fricção converte' serve pra qualquer coisa | **SIM** |
+| 250 | @maxjohnscn | **sim** — descreve o QUE é (open-source, 129k stars) | **SIM** |
+| 243 | @kallawaymarketing | parcial — nomeia a sequência causal (Context→Lean→Snapback) | não |
+| 233 | @brunofragaoficial | parcial — 'diagnóstico antes de apresentação' já insinua a causa | não |
+| 229 | @avidreadershow | **sim** — mecânica dos 4 quadrantes sem nenhuma causa | **SIM** |
+| 201 | @hormozi | **sim** — dá o número (100x), não a causa (intenção quente) | **SIM** |
+| 184 | @leadgenman | **sim** — descreve o QUE é (skill grátis vs scraper pago) | **SIM** |
+
+**5 candidatos: 257, 250, 229, 201, 184.** Os 3 de fora (258, 243, 233) entregam causa ou
+sequência causal; o buraco deles é campo vazio, não julgamento. Desempate entre os parciais:
+229 descreve mecânica pura ("alterna ganho e perda") sem dizer por que funciona; 243 e 233
+nomeiam a cadeia causal, ainda que curta.
+
+## O ponto de arquitetura (levantado pelo JP)
+
+Se o teto de capacidade se repete em outros pontos do pipeline — e não há razão pra ser
+exclusivo do Radar —, escolher Groq vs Anthropic **caso a caso** não escala: vira decisão
+humana por feature, e some no primeiro deploy. O escalonamento precisa de **gatilho automático
+por classe de tarefa**, não de bom senso na hora.
+
+A classe que estoura o teto é reconhecível: **julgamento** (por que isso funciona / o que isso
+implica / isso é bom?), oposta a **transformação** (reformatar, extrair, classificar, virar
+JSON). Groq dá conta de transformação. Julgamento é onde o 70b parafraseia a entrada e chama
+de causa.
+
+Proposta de gatilho (detecção *pós-resposta*, barata, sem LLM-juiz — 1 tentativa Groq,
+escalona só quando a saída acusa o teto):
+
+| sinal detectável | como se mede | por que denuncia o teto |
+|---|---|---|
+| campo estruturado obrigatório vazio | `modelos == {} / null`, `vertical == ''` | modelo fraco pula o campo que exige síntese, preenche o descritivo |
+| resposta abaixo de N chars no campo de julgamento | `len(resumo) < N` (aqui: <120) | julgamento raso é curto — "X PORQUE Y" e acabou |
+| ausência de citação verbatim | hook não é substring da transcrição | virou paráfrase = perdeu a evidência |
+| eco do placeholder do prompt | saída contém texto literal do template | preencheu a forma, descartou o conteúdo (foi exatamente o modo de falha B) |
+| eco da entrada | n-grama longo do resumo é substring da transcrição | parafraseou em vez de julgar |
+
+Regra: 1+ sinal → **reenvia o mesmo prompt ao tier Anthropic**, uma vez, e registra o motivo
+no log de custo (`escalou_por=`). Sem sinal → fica no Groq, custo zero a mais. O log vira a
+métrica que diz se a classe inteira deve nascer no tier caro (se >X% das chamadas escalam,
+o roteamento por tarefa passa a ser estático e o gatilho vira só rede de segurança).
+
+Isto é **proposta**, não implementação: não escrevi nada disso no código.
+
 ## Onde está o gargalo real
 
 `analise` → `groq/llama-3.3-70b-versatile`. Ele consegue *estruturar*, não consegue *julgar*:
