@@ -413,7 +413,10 @@ def _insight(transcricao: str, contexto: list[dict], instrucao: str = "") -> dic
               for x in (bruto.get("estrutura_narrativa") or []) if isinstance(x, dict)][:8]
     pve_in = bruto.get("promessa_vs_entrega") if isinstance(bruto.get("promessa_vs_entrega"), dict) else {}
     pve = {k: str(pve_in.get(k, "")).strip()[:200] for k in ("promessa", "entrega", "gap")}
-    resumo = str(bruto.get("resumo", "")).strip()[:200]
+    # 280, não 200: o corte decepava justamente a oração do MECANISMO — a parte cara da
+    # frase (id 258 terminava em "e fechar"; id 243 em "lea"). O mecanismo não pode ser
+    # o que some no corte. ponytail: 280 é folga medida, não teto teórico.
+    resumo = str(bruto.get("resumo", "")).strip()[:280]
     _ass = bruto.get("assinatura_tema", "")  # o LLM às vezes devolve LISTA — junta em vez de str(list)
     if isinstance(_ass, list):
         _ass = ", ".join(str(x).strip() for x in _ass if str(x).strip())
