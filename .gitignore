@@ -13,3 +13,8 @@ cookies.txt
 # os engole como submódulos-fantasma (aconteceu 2x em 2026-08-05).
 .claude/worktrees/
 .wt-*/
+
+# Credencial REAL do Evolution (não é exemplo). Ficou versionada num repo PÚBLICO
+# de 2026-08-05 a 2026-08-11 e a chave foi rotacionada por causa disso. Sem barra
+# final, pra pegar também um symlink com esse nome.
+infra/watchdog.env
