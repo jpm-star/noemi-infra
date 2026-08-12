@@ -33,6 +33,13 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
+# TETO DE TEMPO do acervo inteiro. Sem ele a busca é um loop aninhado
+# (serviços x candidatas) e cada julgamento de visão pode levar 20-60s quando o Groq
+# está em rate limit ou devolve só raciocínio sem resposta — medido: uma geração T1 de
+# nicho novo passou de 400s e o cliente do outro lado da mesa esperando. O acervo é
+# ENFEITE: estourou o orçamento, entrega o que já julgou e o motor completa o resto com
+# o banco de imagem. Melhor site em 60s com 2 fotos do que 7 minutos com 4.
+ORCAMENTO_S = float(os.environ.get("ACERVO_ORCAMENTO_S", "75"))
 RAIZ = Path(os.environ.get("ACERVO_DIR", "/var/www/sites/_acervo"))
 URL_BASE = os.environ.get("ACERVO_URL", "/_acervo")   # o Caddy já serve /var/www/sites
 _UA = "noemi-motor-site/1.0 (+https://jpos.com.br)"    # WAF do Groq/Flickr recusa o UA do urllib
@@ -152,10 +159,17 @@ def garantir(nicho: str, forcar: bool = False) -> list[str]:
         return []
     destino.mkdir(parents=True, exist_ok=True)
     urls, diario = [], []
+    _fim = time.monotonic() + ORCAMENTO_S
     for i, (nome, _desc, kw) in enumerate(servicos):
         escolhida = ""
+        if time.monotonic() >= _fim:
+            # não faz break: as posições restantes precisam existir como "" pra o
+            # motor casar foto com serviço pelo ÍNDICE. Lista curta desalinharia tudo.
+            diario.append(f"{nome}: pulada — orçamento de {ORCAMENTO_S:.0f}s do acervo estourou")
+            urls.append("")
+            continue
         for j, cand in enumerate(buscar(kw)):
-            if j >= TENTATIVAS_VISAO:
+            if j >= TENTATIVAS_VISAO or time.monotonic() >= _fim:
                 break
             try:
                 b = _http(cand)
@@ -177,8 +191,10 @@ def garantir(nicho: str, forcar: bool = False) -> list[str]:
     # tosa" e nenhuma de "consulta veterinária", então 2 fotos reais viravam 0. O motor
     # aceita buraco: posição vazia cai no banco de imagem, posição preenchida usa a foto
     # julgada. 2 reais + 2 de banco é melhor que 4 de banco.
-    log.info("acervo de %r: %d/%d posições com foto julgada",
-             nicho, sum(1 for u in urls if u), len(urls))
+    _estourou = sum(1 for d in diario if "orçamento" in d)
+    log.info("acervo de %r: %d/%d posições com foto julgada%s",
+             nicho, sum(1 for u in urls if u), len(urls),
+             f" ({_estourou} pulada(s) por tempo)" if _estourou else "")
     try:
         manifesto.write_text(json.dumps(
             {"nicho": nicho, "urls": urls, "diario": diario}, ensure_ascii=False, indent=1))
