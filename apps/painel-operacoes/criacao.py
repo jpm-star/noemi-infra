@@ -294,6 +294,31 @@ def registrar_demo(prospect_id: int, url: str) -> dict:
     return {"ok": cur.rowcount > 0, "prospect_id": prospect_id, "url": url.strip()}
 
 
+def _tabela_decisoes(decisoes) -> str:
+    """A composição em markdown, com a razão de cada escolha.
+
+    É isto que o JP lê de volta quando o dono pergunta "por que meu site é assim?".
+    Sem a coluna do porquê, a ficha registra QUE houve decisão e não POR QUE — e uma
+    decisão que ninguém sabe defender é indistinguível de sorteio.
+    """
+    if not decisoes:
+        return "_tema do motor — nenhum morfismo aplicado._"
+    linhas = ["| Onde | Morfismo | Comunica | Por que aqui |", "|---|---|---|---|"]
+    for d in decisoes:
+        linhas.append(f"| {d.get('alvo','?')} | `{d.get('estilo','')}` | "
+                      f"{d.get('comunica','—')} | {d.get('porque','—')} |")
+    return "\n".join(linhas)
+
+
+def _paginas_do_site(site_dir) -> list:
+    """index.html da raiz + o de cada página irmã do T2. A home vem PRIMEIRO porque é
+    dela que sai a composição registrada na ficha."""
+    home = site_dir / "index.html"
+    irmas = sorted(d / "index.html" for d in site_dir.iterdir()
+                   if d.is_dir() and (d / "index.html").is_file())
+    return ([home] if home.is_file() else []) + irmas
+
+
 def _semente(nome: str, lead_id: int = 0, variacao: int = 0) -> int:
     """Semente ESTÁVEL da escolha automática (estrutura + acento de morfismo).
 
@@ -333,9 +358,20 @@ def modelos(nicho: str = "", tier: str = "", nome: str = "", lead_id: int = 0) -
                   "porque": r.get("porque", ""), "origem": r.get("origem", ""),
                   "auto": r["nome"] == auto_r["nome"]}
                  for r in _rec.pool(nicho)]
+    # usados = {morfismo: [onde, ...]} — é o que transforma a lista de 9 de MENU em
+    # transparência: o operador vê qual foi aplicado onde, sem ter que escolher nada.
+    usados: dict[str, list[str]] = {}
+    for d in auto_e.get("decisoes", []):
+        usados.setdefault(d["estilo"], []).append(d["alvo"])
+    for e in estilos_:
+        e["usado_em"] = usados.get(e["valor"], [])
+    import memoria_estilo as _mem
     return {"segmento": _rec.segmento_de(nicho), "estilos": estilos_, "receitas": receitas_,
             "auto": {"estilo": auto_e["principal"], "porque": auto_e["porque"],
-                     "acento": acento, "receita": auto_r["nome"]},
+                     "acento": acento, "receita": auto_r["nome"],
+                     "decisoes": auto_e.get("decisoes", []),
+                     "recusados": auto_e.get("recusados", [])},
+            "memoria": _mem.placar(nicho),
             "conceitos": _est.conceitos(nicho)}
 
 
@@ -491,12 +527,35 @@ def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | s
     # numa seção onde outro morfismo comunica melhor (ex: preço em brutalismo dentro de
     # um site minimal). Estilo explícito da UI continua vencendo.
     import estilos as _est
-    _auto = _est.escolher(nicho, tier=str(tier or ""), semente=_sem)
+    import memoria_estilo as _mem
+    # MEMÓRIA: pares seção+estilo que este nicho já rejeitou 2+ vezes saem da frente.
+    # Nunca proíbe — se sobrar nada, a escolha original vale e o motivo fica no log.
+    _evitar = _mem.evitar(nicho)
+    _auto = _est.escolher(nicho, tier=str(tier or ""), semente=_sem, evitar=_evitar)
     _principal = estilo or _auto["principal"]
-    _acento = {} if estilo else _auto["acento"]   # estilo manual = pele única, sem acento
-    if _bloco_est := _est.bloco(_principal, _acento):
-        _injetar(site_dir / "index.html", _bloco_est)
-    _est_desc = _auto["porque"] if not estilo else estilo
+    # estilo manual = pele única, sem acento: o operador pediu UMA coisa, não composição
+    _decisoes: list[dict] = []
+    if estilo:
+        _decisoes = [{"alvo": "página", "estilo": estilo,
+                      "comunica": _est.COMUNICA.get(estilo, ""),
+                      "porque": "escolhido à mão pelo operador"}]
+        for _pg in _paginas_do_site(site_dir):
+            if _b := _est.bloco(estilo, {}):
+                _injetar(_pg, _b)
+        _est_desc = estilo
+    else:
+        # COMPOSIÇÃO POR PÁGINA. Cada página tem seções diferentes: a home tem faq e
+        # serviços, a página de serviço não. Compor contra o HTML de cada uma evita
+        # acento fantasma (CSS que não casa com nada) e mantém o site coerente — antes
+        # disto o morfismo ia SÓ na home e as páginas irmãs do T2 saíam com outra cara.
+        _est_desc = _auto["porque"]
+        for _pg in _paginas_do_site(site_dir):
+            _comp = _est.compor(_auto, _pg.read_text(encoding="utf-8", errors="ignore"))
+            if _b := _est.bloco(_comp["principal"], _comp["acento"]):
+                _injetar(_pg, _b)
+            if _pg.parent == site_dir:      # a HOME é a que vai pra ficha e pro painel
+                _decisoes, _est_desc = _comp["decisoes"], _comp["porque"]
+    _mem.registrar(slug, nicho, str(tier or ""), _sem, int(variacao or 0), _decisoes)
     # QA PÓS-GERAÇÃO (JP 2026-08-05): telefone de mentira NÃO passa. Marcar depois não
     # basta — 14 sites já tinham subido assim e o lead clica antes de alguém revisar.
     # Não apaga o site (o JP pode querer olhar), mas devolve ok=False: o painel mostra
@@ -520,7 +579,7 @@ def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | s
         "autofill": autofill or {}, "final": {"nicho": nicho, "whatsapp": whatsapp,
                                               "publico": publico, "diferenciais": diferenciais},
         "fotos_enviadas": len(fotos), "fotos_gravadas": len(rels), "ocr": ocr_txt,
-        "estilo": _est_desc, "receita": receita, "segundos": round(_t.time() - t_inicio, 1),
+        "estilo": _est_desc, "decisoes": _decisoes, "receita": receita, "segundos": round(_t.time() - t_inicio, 1),
         "hero_foto": bool(foto and foto[0]), "hero_video": bool(video and video[0]),
         "copy_livre": bool((copy_livre or "").strip()),
         "dono": dono, "qa_copy": _vered.dict(),
@@ -551,6 +610,8 @@ def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | s
     return {"ok": True, "url": url, "slug": slug, "fotos": len(rels), "estilo": _est_desc,
             "estrutura": receita.get("nome"), "estrutura_origem": receita.get("origem"),
             "paginas": _pgs, "tier": (tier or "").strip().upper(), "aviso": _aviso,
+            "decisoes": _decisoes, "variacao": int(variacao or 0),
+            "evitando": _evitar,
             "ficha": ficha, "segundos": round(_t.time() - t_inicio, 1),
             "ocr": (ocr_txt[:180] + "…") if len(ocr_txt) > 180 else ocr_txt}
 
@@ -582,6 +643,9 @@ def _ficha(site_dir: Path, d: dict) -> str:
 - **Ordem das seções:** {' → '.join(r.get('ordem') or []) or 'default do motor'}
 - **Hero:** {r.get('hero') or 'pelo dado enviado'}
 - **Estilo (morfismo):** {d.get('estilo') or 'padrão do motor'}
+
+### Composição visual — o que o motor decidiu e por quê
+{_tabela_decisoes(d.get('decisoes'))}
 
 ## Entrada
 - **Veio do autofill e ficou:** {', '.join(auto) if auto else '—'}

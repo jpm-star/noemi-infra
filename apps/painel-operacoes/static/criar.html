@@ -83,6 +83,50 @@ input[type=file]{padding:7px 10px;font-size:.82rem}
 .wf i.hero{height:15px;background:rgba(5,150,105,.5)}
 .wf i.meio{width:72%}.wf i.curto{width:46%}
 
+/* COMPOSIÇÃO — a decisão do motor, legível de relance.
+   Escolha deliberada: a lista de 9 morfismos deixou de ser o elemento principal.
+   O que o operador precisa saber é O QUE FOI DECIDIDO e POR QUÊ; o catálogo inteiro
+   é referência, e referência fica atrás, não na frente. */
+.comp{display:flex;flex-direction:column;gap:8px}
+.dec{display:grid;grid-template-columns:74px 1fr;gap:12px;align-items:center;
+  background:rgba(255,255,255,.55);border:1px solid var(--glass-borda);
+  border-radius:14px;padding:9px 12px 9px 9px;
+  /* CONTÉM O MORFISMO. A amostra recebe o CSS REAL do estilo, e box-shadow é pintada
+     FORA do elemento — `overflow:hidden` na própria amostra não corta a sombra dela
+     mesma. Sem isto, a sombra grossa do brutalism/maximalismo escapa do cartão e
+     cobre o rótulo do morfismo ao lado. */
+  overflow:hidden}
+.dec .amostra{height:54px;padding:7px;border-radius:10px}
+.dec .amostra .peca{font-size:.6rem;padding:6px 9px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dec .onde{font-size:.63rem;font-weight:800;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--esmeralda-esc);background:rgba(5,150,105,.13);padding:2px 8px;border-radius:8px}
+.dec .qual{font-size:.9rem;font-weight:700;margin:3px 0 1px}
+.dec .pq{font-size:.74rem;color:var(--mut);line-height:1.38}
+.dec .cm{font-size:.7rem;color:var(--esmeralda-esc);font-style:italic}
+/* o vocabulário: menor, sem borda de seleção, com marca de uso */
+.vocab{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px}
+.vb{border-radius:12px;padding:3px;background:rgba(255,255,255,.4);position:relative;
+  border:1.5px solid transparent;overflow:hidden}
+.vb.em-uso{border-color:var(--esmeralda);background:rgba(5,150,105,.09)}
+/* a amostra usa o CSS REAL do morfismo, e alguns têm sombra de 18-38px. Numa peça de
+   52px a sombra domina e sobra por cima do rótulo. Reserva de espaço + z-index no texto
+   mantém o preview honesto (é o CSS de verdade) e legível. */
+.vb .amostra{height:52px;padding:7px;border-radius:9px;margin-bottom:9px}
+.vb .rot,.vb .cm{position:relative;z-index:1}
+.dec .amostra{margin-right:2px}
+.vb .amostra .peca{font-size:.58rem;padding:5px 8px;max-width:100%;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vb .rot{font-size:.7rem;font-weight:700;padding:4px 6px 0;line-height:1.15}
+.vb .cm{font-size:.62rem;color:var(--mut);padding:1px 6px 6px;line-height:1.3;
+  height:2.6em;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+  overflow:hidden}
+.vb .uso{position:absolute;top:5px;right:5px;font-size:.55rem;font-weight:800;
+  background:var(--esmeralda);color:#fff;padding:2px 6px;border-radius:8px;letter-spacing:.04em}
+.memo{font-size:.72rem;color:var(--mut);margin-top:9px;line-height:1.45}
+.memo b{color:var(--ink)}
+.memo .frag{background:rgba(180,83,9,.13);color:var(--warn);padding:1px 7px;
+  border-radius:7px;font-weight:700;font-size:.66rem}
+
 /* galeria de sites */
 .placar{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px}
 .meta{background:var(--glass);backdrop-filter:blur(16px);border:1px solid var(--glass-borda);
@@ -169,12 +213,31 @@ td{padding:7px 8px;border-top:1px solid var(--line)}
       Fotos do acervo têm prioridade sobre banco de imagens nos cards.</div>
   </div>
 
+  <!-- MODELO: o motor decide. A escolha manual virou <details> fechado — quem opera não
+       precisa saber o que é Glassmorphism pra mandar uma demo, e cada campo exposto é uma
+       decisão a mais entre o lead e o site no ar. Continua acessível pra quem quiser. -->
   <div class="card">
-    <div class="passo">3 · MODELO <span id="m-auto" class="hint" style="font-weight:600;letter-spacing:0"></span></div>
-    <div class="modelos" id="m-estilos"><div class="vazio">preencha o nicho para ver os modelos</div></div>
-    <div class="passo">ESTRUTURA DA PÁGINA</div>
-    <div class="modelos" id="m-receitas"></div>
+    <div class="passo">3 · MODELO <span class="hint" style="font-weight:600;letter-spacing:0">— escolhido pelo motor</span></div>
+    <div id="m-auto" class="hint" style="margin:2px 0 10px"></div>
+    <button type="button" class="btn2" id="btn-variar" onclick="gerarOutro()">🎲 Gerar outro</button>
+    <div class="passo" style="margin-top:14px">COMO O MOTOR VAI VESTIR ESTE SITE</div>
+    <div class="comp" id="m-comp"><div class="vazio">preencha o nicho para ver a composição</div></div>
+    <div class="memo" id="m-memo"></div>
+
+    <details id="vocabulario" style="margin-top:14px">
+      <summary class="hint" style="cursor:pointer">os 9 morfismos que o motor tem à disposição</summary>
+      <div class="vocab" id="m-vocab" style="margin-top:9px"></div>
+    </details>
+
+    <details id="avancado" style="margin-top:8px">
+      <summary class="hint" style="cursor:pointer">forçar um estilo na mão (o motor já decidiu — isto é exceção)</summary>
+      <div class="passo" style="margin-top:10px">ESTILO ÚNICO (desliga a composição)</div>
+      <div class="modelos" id="m-estilos"><div class="vazio">preencha o nicho para ver os modelos</div></div>
+      <div class="passo">ESTRUTURA DA PÁGINA</div>
+      <div class="modelos" id="m-receitas"></div>
+    </details>
     <input id="estilo" type="hidden">
+    <input id="variacao" type="hidden" value="0">
   </div>
 
   <div class="card">

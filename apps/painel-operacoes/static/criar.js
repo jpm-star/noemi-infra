@@ -112,8 +112,42 @@ async function carregarModelos() {
   let tag = $("css-modelos");
   if (!tag) { tag = document.createElement("style"); tag.id = "css-modelos"; document.head.appendChild(tag); }
   tag.textContent = MOD.estilos.map(e => e.css_preview || "").join("\n");
-  const a = MOD.auto, ac = Object.entries(a.acento || {})[0];
-  $("m-auto").textContent = `— automático: ${a.estilo || "tema do motor"}${ac ? ` com ${ac[1]} em ${ac[0]}` : ""} · estrutura "${a.receita}" · segmento ${MOD.segmento || "genérico"}`;
+  const a = MOD.auto;
+  $("m-auto").textContent = `— ${a.porque || "tema do motor"} · estrutura "${a.receita}" · segmento ${MOD.segmento || "genérico"}`;
+
+  /* COMPOSIÇÃO: cada decisão com onde, o que comunica e por quê. É esta lista que o
+     JP lê de volta quando o dono pergunta "por que meu site ficou assim?". */
+  const dec = a.decisoes || [];
+  $("m-comp").innerHTML = dec.length ? dec.map(d => `
+    <div class="dec">
+      <section class="amostra pv-${esc(d.estilo)}"><div class="peca">${esc(d.estilo)}</div></section>
+      <div>
+        <span class="onde">${d.alvo === "página" ? "a página toda" : esc(d.alvo)}</span>${d.condicional ? '<span class="onde" style="background:rgba(180,83,9,.13);color:var(--warn);margin-left:5px">só se a página tiver</span>' : ""}
+        <div class="qual">${esc(d.estilo)}</div>
+        <div class="cm">${esc(d.comunica || "")}</div>
+        <div class="pq">${esc(d.porque || "")}</div>
+      </div>
+    </div>`).join("")
+    : '<div class="vazio">segmento fora do mapa — sai com o tema do motor, sem morfismo</div>';
+
+  /* VOCABULÁRIO: os 9 como referência, com marca de quem entrou. Não é checkbox —
+     clicar aqui não seleciona nada; a escolha manual mora no <details> de exceção. */
+  $("m-vocab").innerHTML = MOD.estilos.filter(e => e.valor).map(e => `
+    <div class="vb${(e.usado_em || []).length ? " em-uso" : ""}">
+      ${(e.usado_em || []).length ? `<span class="uso">${esc((e.usado_em || []).map(u => u === "página" ? "página" : u).join(", "))}</span>` : ""}
+      <section class="amostra pv-${esc(e.valor)}"><div class="peca">${esc(e.rotulo)}</div></section>
+      <div class="rot">${esc(e.rotulo)}</div>
+      <div class="cm">${esc(e.comunica || e.desc || "")}</div>
+    </div>`).join("");
+
+  /* MEMÓRIA: o sinal é fraco e o rótulo diz isso. Número sem rótulo vira vaidade. */
+  const m = MOD.memoria || {};
+  const rec = (a.recusados || []);
+  $("m-memo").innerHTML = [
+    m.total ? `<b>${m.aceitas}</b> composição(ões) mantida(s) · <b>${m.rejeitadas}</b> trocada(s) no "Gerar outro" — <i>${esc(m.sinal || "")}</i>` : "",
+    (m.evitando || []).length ? `evitando: ${(m.evitando).map(x => `<span class="frag">${esc(x)}</span>`).join(" ")} (rejeitado ${m.min_rejeicoes}+ vezes neste nicho)` : "",
+    rec.length ? `descartado agora: ${rec.map(x => esc(x)).join(" · ")}` : "",
+  ].filter(Boolean).join("<br>");
   $("m-estilos").innerHTML = MOD.estilos.map(e => `
     <div class="mod${selEstilo === e.valor ? " on" : ""}" onclick="pickEstilo('${esc(e.valor)}')">
       ${e.auto ? '<span class="flag">AUTO</span>' : ""}
@@ -129,9 +163,9 @@ async function carregarModelos() {
 function pickEstilo(v) { selEstilo = selEstilo === v ? null : v; $("estilo").value = selEstilo ?? ""; carregarModelos(); }
 function pickReceita(v) { selReceita = selReceita === v ? null : v; carregarModelos(); }
 function mostrarSel() {
-  $("g-sel").textContent = `pele: ${selEstilo === null ? "automático" : (selEstilo || "tema do motor")} · `
-    + `estrutura: ${selReceita === null ? "automática" : selReceita}`
-    + (selEstilo !== null || selReceita !== null ? " (escolha manual)" : "");
+  const comp = (MOD && MOD.auto && MOD.auto.porque) || "automática";
+  $("g-sel").textContent = `composição: ${selEstilo === null ? comp : (selEstilo || "tema do motor") + " (forçado à mão)"} · `
+    + `estrutura: ${selReceita === null ? "automática" : selReceita}`;
 }
 
 /* ─────────── GERAR (upload real + ciclo fechado com o card) ─────────── */
@@ -144,6 +178,7 @@ async function gerar() {
   fd.append("tier", $("tier").value || TIER || "");
   if (selEstilo !== null) fd.append("estilo", selEstilo);
   if (selReceita !== null) fd.append("receita_nome", selReceita);
+  fd.append("variacao", ($("variacao") || {}).value || "0");
   fd.append("autofill", JSON.stringify(AUTOFILL));
   if (LEAD && LEAD.prospect_id) fd.append("lead_id", LEAD.prospect_id);
   if ($("foto").files[0]) fd.append("foto", $("foto").files[0]);
@@ -162,10 +197,19 @@ async function gerar() {
           volta = rr.ok ? `<br>🔗 link já está no card do lead #${LEAD.prospect_id}` : "";
         } catch (e) { }
       }
+      // o AVISO vem do back quando o tier vendeu multi-página e saiu uma só
+      const aviso = d.aviso ? `<div class="err" style="margin-top:8px">⚠️ ${esc(d.aviso)}</div>` : "";
+      // as decisões vão pro resultado: o operador confere a composição SEM abrir a ficha
+      const dl = (d.decisoes || []).map(x =>
+        `<li><b>${esc(x.estilo)}</b> ${x.alvo === "página" ? "na página toda" : `em ${esc(x.alvo)}`} — ${esc(x.porque || "")}</li>`).join("");
       $("res").innerHTML = `<div class="ok">✅ Publicado:
         <a href="${esc(d.url)}" target="_blank" rel="noopener">${esc(d.url)}</a><br>
-        estrutura: <b>${esc(d.estrutura || "default")}</b> · pele: ${esc(d.estilo || "—")}
-        · ${d.fotos || 0} foto(s) · ${d.segundos || "?"}s${volta}</div>`;
+        estrutura: <b>${esc(d.estrutura || "default")}</b>
+        · <b>${d.paginas || 1}</b> página(s)${d.tier ? ` (${esc(d.tier)})` : ""}
+        · ${d.fotos || 0} foto(s) · ${d.segundos || "?"}s${volta}
+        ${dl ? `<ul style="margin:7px 0 0 16px;font-size:.8rem;line-height:1.5">${dl}</ul>` : ""}
+        <div class="hint" style="margin-top:6px">Não gostou da composição? "🎲 Gerar outro"
+        troca — e o motor registra que esta foi recusada.</div></div>${aviso}`;
       carregarSites();
     } else {
       $("res").innerHTML = `<div class="err">Falhou: ${esc(d.erro || "erro")}
@@ -341,3 +385,16 @@ carregarLeads();
 carregarLeadDoCard();
 verEscopo();
 carregarSites();
+
+
+/* ─────────── "gerar outro": sorteia outra variação do que o motor já aprova ───────────
+   Não abre opção nova: anda UMA casa na semente, que muda estrutura e acento dentro do
+   pool do segmento. É o único controle que o operador precisa quando não gostou. */
+function gerarOutro() {
+  const v = $("variacao");
+  v.value = String((parseInt(v.value || "0", 10) + 1) % 97);
+  selEstilo = null; selReceita = null; $("estilo").value = "";   // manual sai da frente
+  const b = $("btn-variar");
+  if (b) { b.disabled = true; b.textContent = "🎲 gerando…"; }
+  gerar().finally(() => { if (b) { b.disabled = false; b.textContent = "🎲 Gerar outro"; } });
+}

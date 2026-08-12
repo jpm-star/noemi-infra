@@ -196,52 +196,317 @@ CONCEITOS: dict[str, list[str]] = {
 }
 
 
-# ── ESCOLHA AUTOMÁTICA por segmento/tier + acento por seção ──────────────────────
-# Morfismo não é enfeite: cada um comunica uma coisa. Vidro/spatial = tecnologia e
-# leveza; neumorfismo/clay = suavidade e cuidado; brutalismo = preço e urgência;
-# minimal = sofisticação e autoridade; skeuomorph = tradição e solidez.
+# ── COMPOSIÇÃO: o motor escolhe VÁRIOS morfismos e diz por quê ───────────────────
 #
-# `principal` veste a página; `acento` troca o morfismo SÓ na seção onde outro
-# comunica melhor (ex: preço em brutalismo grita a oferta dentro de um site minimal).
-# Máx 1 acento por perfil de propósito: 3 morfismos na mesma página viram bagunça.
-PERFIS: dict[str, dict] = {
-    "academia":    {"principal": "spatial",       "acento": {"preco": "brutalism"}},
-    "clinica":     {"principal": "neumorphism",   "acento": {"depo": "glassmorphism"}},
-    "salao":       {"principal": "claymorphism",  "acento": {"antes-depois": "glassmorphism"}},
-    "imobiliaria": {"principal": "minimal",       "acento": {"preco": "glassmorphism"}},
-    "advocacia":   {"principal": "minimal",       "acento": {"faq": "skeuomorphism"}},
-    "restaurante": {"principal": "maximal",       "acento": {"servicos": "glassmorphism"}},
-    "ecommerce":   {"principal": "liquid-glass",  "acento": {"preco": "brutalism"}},
+# Morfismo não é enfeite: cada um comunica uma coisa. O motor veste a página com um
+# `principal` e troca o morfismo em seções específicas (`acentos`) onde outro comunica
+# melhor — preço em brutalismo grita a oferta dentro de um site minimal.
+#
+# ISTO NÃO É UM SELETOR. O operador não escolhe 1 de 9: o motor compõe e REGISTRA a
+# justificativa de cada decisão. A lista de 9 é vocabulário, não menu.
+#
+# Duas travas, porque a versão anterior compunha no papel e não na tela:
+#   (1) ALVO TEM QUE EXISTIR. 4 dos 7 perfis miravam `preco`/`antes-depois`, seções que
+#       o motor nunca emitiu — o CSS saía como `section.preco{...}` e não casava com
+#       nada. A ficha dizia "spatial + brutalism em preço" e o site saía só spatial.
+#   (2) ACENTO TEM QUE APARECER. O perfil da clínica pedia vidro sobre neumorfismo;
+#       neumorfismo chapa o body em #e8ecf2 e o vidro é branco a 10% — a diferença dá
+#       2/2/1 por canal, invisível, e `backdrop-filter` não tem textura pra borrar.
+#
+# Empilhar mais estilos sem essas duas travas multiplicaria acento fantasma.
+
+# Seções que o motor REALMENTE emite. Medido no HTML publicado (varredura de
+# <section class="..."> em /var/www/sites, 2026-08-12). Se o motor ganhar seção nova,
+# ela entra aqui e o teste de alvo passa a aceitá-la.
+SECOES_EMITIDAS = {"servicos", "faq", "lead", "cta-final", "depo", "calc", "jpos-galeria"}
+# Frequência medida em 71 sites publicados (2026-08-12): nenhuma seção é universal,
+# mas há duas ligas. As FREQUENTES aparecem na maioria; `depo` saiu em 18% dos sites e
+# `calc` em 4% — dependem do cliente ter depoimento ou do segmento ter calculadora.
+# O preview do Studio precisa dizer isso: prometer um acento que só entra em 4% dos
+# casos é o preview mentindo, e preview que mente é pior que preview nenhum.
+SECOES_FREQUENTES = {"servicos", "faq", "lead", "cta-final"}
+
+# Derivado do CSS de cada estilo, não de gosto:
+#   CHAPA_FUNDO     — escreve body{background:...}, apagando o que estiver por baixo.
+#   PRECISA_TEXTURA — usa backdrop-filter/rgba translúcido: só aparece se houver
+#                     textura atrás pra borrar. Sobre fundo chapado, some.
+CHAPA_FUNDO = {"neumorphism"}
+PRECISA_TEXTURA = {"glassmorphism", "liquid-glass", "spatial"}
+
+# Densidade visual. Acento com o MESMO peso do principal não acentua nada — é troca
+# lateral que o visitante não percebe e o operador não sabe explicar.
+PESO = {"minimal": 0, "spatial": 1, "glassmorphism": 1, "neumorphism": 1,
+        "claymorphism": 2, "skeuomorphism": 2, "liquid-glass": 2,
+        "brutalism": 3, "maximal": 3}
+
+# O que cada morfismo COMUNICA. É daqui que sai a justificativa que vai pra ficha —
+# e que o JP repete pro dono quando ele pergunta "por que meu site é assim?".
+COMUNICA = {
+    "glassmorphism": "tecnologia e leveza, sem parecer frio",
+    "neumorphism":   "cuidado e suavidade, toque físico",
+    "claymorphism":  "acolhimento, informal e amigável",
+    "brutalism":     "urgência e preço — grita sem pedir licença",
+    "skeuomorphism": "tradição e solidez, textura de documento",
+    "liquid-glass":  "produto premium, superfície viva",
+    "spatial":       "profundidade e modernidade",
+    "minimal":       "autoridade e sofisticação pelo espaço vazio",
+    "maximal":       "fartura e energia, muita coisa acontecendo",
 }
+
+
+def compativel(principal: str, acento: str) -> tuple[bool, str]:
+    """(pode, motivo). Motivo preenchido só quando NÃO pode — vira log e teste."""
+    principal, acento = (principal or "").strip(), (acento or "").strip()
+    if not acento or acento not in ESTILOS:
+        return False, f"morfismo {acento!r} não existe"
+    if acento == principal:
+        return False, "acento igual ao principal não acentua nada"
+    if principal in CHAPA_FUNDO and acento in PRECISA_TEXTURA:
+        return False, (f"{acento} depende de translucidez e {principal} chapa o fundo — "
+                       f"o acento ficaria invisível")
+    if abs(PESO.get(acento, 1) - PESO.get(principal, 1)) < 1:
+        return False, f"{acento} tem o mesmo peso visual de {principal} — troca lateral"
+    return True, ""
+
+
+# Cada acento mira uma seção QUE EXISTE e carrega o porquê comercial, não estético.
+#
+# `principais` é LISTA porque "Gerar outro" precisa ter poder real: girando só a ordem
+# dos acentos, o mesmo candidato era descartado nas duas rodadas e o botão devolvia a
+# MESMA página. Um botão que não muda nada envenena a memória — o operador clica de
+# novo achando que rejeitou algo diferente, e o sistema conta duas rejeições da mesma
+# composição que ele nunca viu variar.
+# São ALTERNATIVAS DEFENSÁVEIS do segmento, nunca os 9 em sorteio: as duas comunicam
+# a mesma coisa por caminhos diferentes.
+PERFIS: dict[str, dict] = {
+    "academia": {
+        "principais": [
+            ("spatial", "academia vende transformação — profundidade dá a sensação de progresso"),
+            ("maximal", "a outra leitura da mesma promessa: energia e movimento em excesso"),
+        ],
+        "acentos": [
+            {"secao": "cta-final", "estilo": "brutalism",
+             "porque": "a matrícula é a única coisa que precisa gritar num site leve"},
+            {"secao": "servicos", "estilo": "claymorphism",
+             "porque": "modalidade é escolha pessoal — cards com corpo convidam a tocar"},
+        ],
+    },
+    "clinica": {
+        "principais": [
+            ("neumorphism", "paciente decide por confiança; relevo suave passa cuidado, não venda"),
+            ("minimal", "a leitura clínica da mesma confiança: limpeza e espaço, sem ruído"),
+        ],
+        "acentos": [
+            {"secao": "faq", "estilo": "skeuomorphism",
+             "porque": "dúvida sobre procedimento pede textura de documento, não de app"},
+            {"secao": "depo", "estilo": "claymorphism",
+             "porque": "depoimento é a parte humana — merece o bloco mais macio da página"},
+        ],
+    },
+    "salao": {
+        "principais": [
+            ("claymorphism", "beleza é prazer, não protocolo — formas gordas e cores doces"),
+            ("maximal", "a versão festiva: cor e fartura como promessa de transformação"),
+        ],
+        "acentos": [
+            {"secao": "servicos", "estilo": "glassmorphism",
+             "porque": "a vitrine de serviços fica sobre foto: vidro deixa a imagem trabalhar"},
+            {"secao": "lead", "estilo": "minimal",
+             "porque": "no meio do colorido, o agendamento precisa ser o lugar calmo"},
+        ],
+    },
+    "imobiliaria": {
+        "principais": [
+            ("minimal", "imóvel caro se vende com espaço vazio; enfeite parece corretor afobado"),
+            ("glassmorphism", "a mesma sobriedade com a foto do imóvel mandando na tela"),
+        ],
+        "acentos": [
+            {"secao": "servicos", "estilo": "claymorphism",
+             "porque": "card de imóvel ganha corpo e convida ao toque na listagem"},
+            {"secao": "cta-final", "estilo": "brutalism",
+             "porque": "agendar visita é o único momento de pressa do site"},
+        ],
+    },
+    "advocacia": {
+        "principais": [
+            ("minimal", "cliente procura autoridade; sobriedade é o argumento visual"),
+            ("skeuomorphism", "a autoridade pela tradição: textura de papel e peso de documento"),
+        ],
+        "acentos": [
+            {"secao": "faq", "estilo": "skeuomorphism",
+             "porque": "dúvida jurídica lida como papel pesa mais que dúvida lida como app"},
+            {"secao": "cta-final", "estilo": "brutalism",
+             "porque": "procurar advogado é decisão adiada — o contato precisa parar o scroll"},
+            {"secao": "calc", "estilo": "brutalism",
+             "porque": "a calculadora é a isca: número grande e borda dura param o scroll"},
+        ],
+    },
+    "restaurante": {
+        "principais": [
+            ("maximal", "comida entra pelos olhos — abundância visual é o próprio produto"),
+            ("claymorphism", "a leitura afetiva: comida de casa, informal e acolhedora"),
+        ],
+        "acentos": [
+            {"secao": "servicos", "estilo": "glassmorphism",
+             "porque": "o prato é a estrela: o card precisa desaparecer sobre a foto"},
+            {"secao": "lead", "estilo": "minimal",
+             "porque": "reservar mesa no meio do excesso só funciona se o formulário respirar"},
+        ],
+    },
+    "ecommerce": {
+        "principais": [
+            ("liquid-glass", "loja online compete por desejo — superfície viva parece produto novo"),
+            ("spatial", "o mesmo desejo por profundidade: o produto flutuando à frente"),
+        ],
+        "acentos": [
+            {"secao": "cta-final", "estilo": "brutalism",
+             "porque": "comprar é decisão de segundos: o botão não pode ser elegante demais"},
+            {"secao": "servicos", "estilo": "minimal",
+             "porque": "a vitrine precisa de silêncio em volta pro produto aparecer"},
+        ],
+    },
+}
+
 # Tier ajusta a AMBIÇÃO visual: T1 é isca (tem que carregar rápido e ser óbvio);
 # T4 é apresentação com a Noemi junto (pode ousar). Motor único, densidade por tier.
 _TIER_PRINCIPAL = {"T1": "minimal", "T2": ""}  # '' = usa o do segmento
+# Quantos acentos por tier. Não é limite técnico, é limite de LEITURA: três morfismos
+# distintos numa página já é o teto do que alguém consegue processar como intenção em
+# vez de bagunça. T1 é isca e não paga elaboração.
+_TIER_ACENTOS = {"T1": 0, "T2": 1, "T3": 2, "T4": 2}
 
 
-def escolher(segmento: str, tier: str = "", semente: int = 0) -> dict:
-    """Morfismo automático: {principal, acento:{secao:morfismo}}. Sem dropdown.
-
-    T1 força minimal (isca: leve e direto). T2+ herda o perfil do segmento. `semente`
-    (id do lead) alterna o acento entre gerações do mesmo nicho — variedade sem virar
-    loteria: o principal, que dá a cara, permanece estável."""
-    # sem acento: o nicho vem escrito "clínica odontológica"/"salão", as chaves são ASCII
+def _ascii(t: str) -> str:
     import unicodedata
-    seg = unicodedata.normalize("NFKD", (segmento or "").strip().lower())
-    seg = seg.encode("ascii", "ignore").decode()
-    perfil = None
-    for chave, p in PERFIS.items():
-        if chave in seg:
-            perfil = p
-            break
-    perfil = perfil or {"principal": "", "acento": {}}
+    t = unicodedata.normalize("NFKD", (t or "").strip().lower())
+    return t.encode("ascii", "ignore").decode()
+
+
+def escolher(segmento: str, tier: str = "", semente: int = 0,
+             evitar: list[str] | None = None) -> dict:
+    """Composição automática: principal + N acentos, cada decisão justificada.
+
+    Devolve `acento` ({secao: morfismo}) por compatibilidade com quem já consumia, e
+    `decisoes` — a lista estruturada [{alvo, estilo, comunica, porque}] que vira ficha,
+    painel e resposta pro dono quando ele pergunta por que o site ficou assim.
+
+    `semente` (id do lead) gira quais acentos entram, sem trocar o principal: variedade
+    entre clientes do mesmo nicho sem virar loteria — a cara do segmento permanece.
+
+    `evitar` = composições que este operador já rejeitou (ver memoria_estilo). Não é
+    proibição: se sobrar nada, a decisão volta a valer e o motivo fica registrado.
+    """
+    seg = _ascii(segmento)
+    perfil = next((p for chave, p in PERFIS.items() if chave in seg), None)
+    perfil = perfil or {"principais": [], "acentos": []}
     t = (tier or "").strip().upper()
-    # T1 força minimal; T2/T3/T4 (ou tier vazio) herdam o perfil do segmento
-    principal = _TIER_PRINCIPAL.get(t) or perfil["principal"]
-    acentos = list((perfil.get("acento") or {}).items())
-    acento = dict([acentos[semente % len(acentos)]]) if acentos else {}
-    return {"principal": principal, "acento": acento,
-            "porque": f"{principal or 'tema do motor'} p/ {seg or 'genérico'}"
-                      f"{f' + {list(acento.values())[0]} em {list(acento)[0]}' if acento else ''}"}
+
+    opcoes = perfil["principais"]
+    # a semente escolhe ENTRE AS ALTERNATIVAS DO SEGMENTO — nunca entre os 9. É o que
+    # dá poder real ao "Gerar outro" sem transformar a identidade do nicho em loteria.
+    base, porque_base = opcoes[semente % len(opcoes)] if opcoes else ("", "")
+    forcado = _TIER_PRINCIPAL.get(t, "")     # '' = tier não força nada
+    principal = forcado or base
+    porque_principal = (
+        "T1 é isca: precisa carregar rápido e ser óbvio na primeira olhada"
+        if forcado and forcado != base else porque_base)
+
+    decisoes = []
+    if principal:
+        decisoes.append({"alvo": "página", "estilo": principal,
+                         "comunica": COMUNICA.get(principal, ""), "porque": porque_principal})
+
+    teto = _TIER_ACENTOS.get(t, 1)
+    candidatos = list(perfil["acentos"])
+    # a semente gira a ORDEM, não sorteia: dois leads do mesmo nicho recebem acentos
+    # diferentes, e o mesmo lead recebe sempre o mesmo (regerar tem que ser estável)
+    if candidatos:
+        giro = semente % len(candidatos)
+        candidatos = candidatos[giro:] + candidatos[:giro]
+
+    aptos: list[dict] = []          # compatíveis, na ordem de preferência
+    recusados = []
+    for c in candidatos:
+        if c["secao"] not in SECOES_EMITIDAS:
+            recusados.append(f"{c['estilo']} em {c['secao']}: seção não existe no HTML gerado")
+            continue
+        ok, motivo = compativel(principal, c["estilo"])
+        if not ok:
+            recusados.append(f"{c['estilo']} em {c['secao']}: {motivo}")
+            continue
+        if evitar and f"{c['secao']}:{c['estilo']}" in evitar:
+            recusados.append(f"{c['estilo']} em {c['secao']}: rejeitado antes pelo operador")
+            continue
+        aptos.append({"alvo": c["secao"], "estilo": c["estilo"],
+                      "comunica": COMUNICA.get(c["estilo"], ""), "porque": c["porque"],
+                      "condicional": c["secao"] not in SECOES_FREQUENTES})
+
+    # `acento` já vem selecionado pra quem consome sem HTML em mãos (preview do Studio).
+    # Quem TEM o HTML deve chamar compor(), que seleciona sobre o que aparece de fato.
+    escolhidos, _ = _selecionar(aptos, teto)
+    decisoes += escolhidos
+    return {"principal": principal,
+            "acento": {d["alvo"]: d["estilo"] for d in escolhidos},
+            "candidatos": aptos, "teto": teto,
+            "decisoes": decisoes, "recusados": recusados,
+            "porque": _resumo(decisoes)}
+
+
+def _selecionar(candidatos: list[dict], teto: int,
+                presentes: set[str] | None = None) -> tuple[list[dict], list[str]]:
+    """Os acentos que de fato entram. (escolhidos, motivos dos que ficaram de fora).
+
+    TODA regra que descarta roda AQUI, no mesmo lugar, depois de saber o que existe na
+    página. Aplicar qualquer uma antes custou caro duas vezes: o teto gastava vaga com
+    seção ausente, e a dedup de morfismo barrava `brutalism` no cta-final por causa de
+    um `brutalism` no `calc` que depois era descartado — sobrava nenhum brutalism e a
+    vaga se perdia num candidato que nunca apareceu na tela.
+    """
+    escolhidos: list[dict] = []
+    fora: list[str] = []
+    for c in candidatos:
+        if presentes is not None and c["alvo"] not in presentes:
+            fora.append(f"{c['estilo']} em {c['alvo']}: a seção não existe nesta página")
+            continue
+        if len(escolhidos) >= teto:
+            fora.append(f"{c['estilo']} em {c['alvo']}: teto de acentos do tier já cheio")
+            continue
+        # o MESMO morfismo em dois alvos é repetição, não composição: o visitante não
+        # lê dois blocos brutalistas como "duas ênfases", lê como "o site é assim".
+        if any(e["estilo"] == c["estilo"] for e in escolhidos):
+            fora.append(f"{c['estilo']} em {c['alvo']}: já usado em outra seção — "
+                        f"repetir não acentua")
+            continue
+        escolhidos.append(dict(c))
+    return escolhidos, fora
+
+
+def _resumo(decisoes: list[dict]) -> str:
+    return " + ".join(
+        f"{d['estilo']} na página" if d["alvo"] == "página" else f"{d['estilo']} em {d['alvo']}"
+        for d in decisoes) or "tema do motor"
+
+
+def compor(escolha: dict, html: str) -> dict:
+    """A composição FINAL desta página: só o que existe nela, teto aplicado depois.
+
+    O teto por tier é de LEITURA, não técnico — três morfismos é o máximo que alguém
+    processa como intenção. Aplicá-lo antes de saber o que aparece desperdiçava a vaga
+    com acento fantasma: a advocacia gastava um slot em `calc`, seção que só existe
+    quando o site tem calculadora, e ficava com um acento a menos que o tier pagou.
+    """
+    presentes = secoes_no_html(html)
+    principal = escolha.get("principal", "")
+    decisoes = [{"alvo": "página", "estilo": principal,
+                 "comunica": COMUNICA.get(principal, ""),
+                 "porque": next((d["porque"] for d in escolha.get("decisoes", [])
+                                 if d["alvo"] == "página"), "")}] if principal else []
+    escolhidos, fora = _selecionar(escolha.get("candidatos", []),
+                                   escolha.get("teto", 1), presentes)
+    decisoes += escolhidos
+    return {"principal": principal,
+            "acento": {d["alvo"]: d["estilo"] for d in decisoes if d["alvo"] != "página"},
+            "decisoes": decisoes, "descartes": fora, "porque": _resumo(decisoes)}
 
 
 def css(estilo: str, escopo: str = "") -> str:
@@ -270,6 +535,34 @@ def css(estilo: str, escopo: str = "") -> str:
     return "\n".join(fora)
 
 
+def secoes_no_html(html: str) -> set[str]:
+    """Classes de <section> presentes NESTE HTML. É a verdade do artefato.
+
+    A lista `SECOES_EMITIDAS` é pré-filtro de sanidade; esta função é a trava final.
+    Seção condicional (a `calc` só aparece em site de advocacia com calculadora, a
+    `depo` só com depoimento) faz qualquer lista estática mentir mais cedo ou mais
+    tarde — e acento que não casa com nada é um estilo declarado na ficha e ausente
+    da tela, que foi exatamente o defeito que a composição veio corrigir.
+    """
+    import re
+    achadas: set[str] = set()
+    for m in re.finditer(r'<section[^>]*\sclass="([^"]+)"', html or ""):
+        achadas |= {c for c in m.group(1).split() if c and c != "reveal"}
+    return achadas
+
+
+def aplicaveis(acento: dict | None, html: str) -> tuple[dict, list[str]]:
+    """(acentos que casam neste HTML, motivos dos que não casam)."""
+    presentes = secoes_no_html(html)
+    fica, fora = {}, []
+    for secao, est in (acento or {}).items():
+        if secao in presentes:
+            fica[secao] = est
+        else:
+            fora.append(f"{est} em {secao}: a seção não existe nesta página")
+    return fica, fora
+
+
 def bloco(estilo: str, acento: dict | None = None) -> str:
     """<style> pronto pra injetar. `acento` = {classe_da_secao: morfismo} aplica um
     morfismo DIFERENTE só naquela seção (o acento vem depois, então vence na cascata).
@@ -287,8 +580,15 @@ def bloco(estilo: str, acento: dict | None = None) -> str:
 
 
 def listar() -> list[dict]:
-    """[{valor, rotulo, desc}] pra montar o seletor da UI."""
-    return [{"valor": k, "rotulo": v["rotulo"], "desc": v["desc"]} for k, v in ESTILOS.items()]
+    """O VOCABULÁRIO: [{valor, rotulo, desc, comunica, peso}].
+
+    Não é menu de seleção. É a referência do que o motor tem à disposição e do que
+    cada morfismo comunica — quem lê a lista entende a decisão que a máquina tomou,
+    em vez de ser obrigado a tomar a decisão no lugar dela.
+    """
+    return [{"valor": k, "rotulo": v["rotulo"], "desc": v["desc"],
+             "comunica": COMUNICA.get(k, ""), "peso": PESO.get(k)}
+            for k, v in ESTILOS.items()]
 
 
 def conceitos(segmento: str) -> list[str]:
@@ -312,17 +612,22 @@ if __name__ == "__main__":  # self-check
         assert bloco(nome).startswith("\n<style") and nome in bloco(nome), nome
     assert css("GLASSMORPHISM") == css("glassmorphism")  # case-insensitive
     # ESCOLHA AUTOMÁTICA (sem dropdown)
-    a = escolher("academia", "T2")
+    a = escolher("academia", "T2", 0)
     assert a["principal"] == "spatial" and a["acento"], a
-    assert escolher("clinica odontológica", "T3")["principal"] == "neumorphism"
+    assert all(d["porque"] and d["comunica"] for d in a["decisoes"]), a["decisoes"]
+    assert escolher("clinica odontológica", "T3", 0)["principal"] == "neumorphism"
     # acento no nicho não pode furar o match (clínica/salão/imobiliária vêm acentuados)
-    assert escolher("clínica odontológica")["principal"] == "neumorphism"
-    assert escolher("salão de beleza")["principal"] == "claymorphism"
-    assert escolher("imobiliária")["principal"] == "minimal"
+    assert escolher("clínica odontológica", semente=0)["principal"] == "neumorphism"
+    assert escolher("salão de beleza", semente=0)["principal"] == "claymorphism"
+    assert escolher("imobiliária", semente=0)["principal"] == "minimal"
     assert escolher("academia", "T1")["principal"] == "minimal", "T1 é isca: leve e direto"
     assert escolher("loja de parafuso")["principal"] == "", "segmento fora do mapa = tema do motor"
     # acento alterna com a semente, principal fica estável (variedade sem virar loteria)
-    assert escolher("academia", "T2", 0)["principal"] == escolher("academia", "T2", 5)["principal"]
+    # o principal ALTERNA entre as alternativas declaradas do segmento (é o que dá
+    # poder ao "Gerar outro"), mas nunca sai delas — variedade sem virar loteria
+    _decl = {e for e, _ in PERFIS["academia"]["principais"]}
+    assert {escolher("academia", "T2", s)["principal"] for s in range(8)} <= _decl
+    assert escolher("academia", "T2", 3) == escolher("academia", "T2", 3)
     # ESCOPO POR SEÇÃO: o CSS do acento só vale dentro da seção
     esc = css("brutalism", escopo="preco")
     assert "section.preco" in esc and "\nbody{" not in esc
@@ -337,4 +642,18 @@ if __name__ == "__main__":  # self-check
     assert len(ls) == len(ESTILOS) and ls[0]["valor"] == ""  # padrão primeiro
     assert any("PRs" in x for x in conceitos("academia"))
     assert any("tier" in x for x in conceitos("nicho-que-nao-existe"))  # transversal sempre vem
-    print(f"estilos OK — {len(ESTILOS)-1} morfismos aplicáveis, conceitos por segmento, degrada sem estilo")
+    # COMPOSIÇÃO: alvo que existe, acento visível, nada repetido
+    for _seg in PERFIS:
+        for _s in range(4):
+            _c = escolher(_seg, "T4", semente=_s)
+            _us = [d["estilo"] for d in _c["decisoes"]]
+            assert len(_us) == len(set(_us)), (_seg, _s, _us)
+            for _a in _c["acento"]:
+                assert _a in SECOES_EMITIDAS, (_seg, _a)
+    assert compativel("neumorphism", "glassmorphism")[0] is False
+    assert compativel("minimal", "brutalism")[0] is True
+    _h = '<section class="faq reveal">x</section>'
+    assert "faq" in compor(escolher("advocacia", "T3", 0), _h)["acento"]
+    assert compor(escolher("advocacia", "T3", 0), "<p>nada</p>")["acento"] == {}
+    print(f"estilos OK — {len(ESTILOS)-1} morfismos, composição por segmento/tier com "
+          f"justificativa, alvo verificado no HTML, degrada sem estilo")
