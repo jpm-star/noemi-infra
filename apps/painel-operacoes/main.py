@@ -237,6 +237,31 @@ def precos_tabela(cliente: bool = False) -> Response:
     return Response(precos.tabela_markdown(cliente=cliente), media_type="text/markdown; charset=utf-8")
 
 
+@app.get("/api/precos/catalogo.pdf")
+def precos_catalogo_pdf(cliente: bool = True) -> Response:
+    """O catálogo em PDF — o papel que o JP deixa na mão do dono.
+
+    wkhtmltopdf já está na máquina (nada de dependência nova). Se ele falhar, devolve
+    o HTML: pior caso o operador aperta Ctrl+P e imprime igual, em vez de ficar sem
+    material na porta do cliente.
+    """
+    import logging
+    import subprocess
+
+    import precos
+    html = precos.catalogo_html(cliente=cliente)
+    try:
+        pdf = subprocess.run(
+            ["wkhtmltopdf", "--quiet", "--print-media-type", "--encoding", "utf-8", "-", "-"],
+            input=html.encode(), capture_output=True, timeout=60, check=True).stdout
+    except Exception:  # noqa: BLE001 — sem PDF ainda dá pra imprimir o HTML
+        logging.getLogger("painel.precos").warning(
+            "wkhtmltopdf falhou; devolvendo HTML pra impressão", exc_info=True)
+        return Response(html, media_type="text/html; charset=utf-8")
+    return Response(pdf, media_type="application/pdf", headers={
+        "Content-Disposition": 'inline; filename="jpos-catalogo.pdf"'})
+
+
 @app.get("/api/pedi/catalogo")
 def pedi_catalogo_listar() -> JSONResponse:
     import pedi_catalogo

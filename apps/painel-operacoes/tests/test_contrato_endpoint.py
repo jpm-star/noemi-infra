@@ -117,3 +117,43 @@ def test_painel_nao_pode_esquecer_um_estagio_do_motor():
     assert not faltando, (
         f"pipeline.montar_site executa {faltando} e criacao.gerar não — o painel vai "
         f"publicar um site sem esse estágio, calado. Chame a MESMA função no painel.")
+
+
+def test_catalogo_calcula_o_primeiro_pagamento_da_fonte_unica():
+    """R$1.397 (T2) tem que SAIR de precos.json, nunca ser digitado.
+
+    A mesma venda já foi citada como "1.500" e como "1.397" na mesma semana — um era
+    chute de âncora, o outro o primeiro pagamento real (setup 1000 + mensal 397).
+    Preço que muda conforme quem conta não é preço, e o dono percebe.
+    """
+    import precos
+    tiers = {t["id"]: t for t in precos.tudo()["tiers"]}
+    assert precos._primeiro_pagamento(tiers["T2"]) == 1397, \
+        "primeiro pagamento do T2 divergiu de setup+mensal do precos.json"
+    assert precos._primeiro_pagamento(tiers["T1"]) == 500
+
+    html = precos.catalogo_html()
+    assert "1.397,00" in html, "o catálogo não mostra o primeiro pagamento do T2"
+    # a recorrência precisa aparecer SEPARADA: é a confusão que gerou o 1500 vs 1397
+    assert "397,00/mês" in html
+    for t in precos.tudo()["tiers"]:          # nenhum tier some do papel
+        assert t["nome"] in html, f"{t['id']} fora do catálogo"
+
+
+def test_catalogo_nao_inventa_preco_fora_do_json():
+    """Todo valor impresso tem que existir no precos.json ou ser soma de dois que existem."""
+    import re
+
+    import precos
+    d = precos.tudo()
+    validos = {0}
+    for t in d["tiers"]:
+        validos |= {t.get("setup") or 0, t.get("mensal") or 0,
+                    precos._primeiro_pagamento(t) or 0}
+    for u in d["upsells"]:
+        validos |= {u.get("setup") or 0, u.get("mensal") or 0}
+
+    impressos = {int(m.replace(".", "")) for m in
+                 re.findall(r"R\$\s*([\d.]+),00", precos.catalogo_html())}
+    intrusos = sorted(impressos - validos)
+    assert not intrusos, f"o catálogo mostra preço que não existe no precos.json: {intrusos}"

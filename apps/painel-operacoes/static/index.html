@@ -3,7 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Noemi OS · Observabilidade</title>
+<title>JPOS Cabine</title>
+<meta name="color-scheme" content="dark light">
+<meta name="robots" content="noindex,nofollow">
+<!-- favicon embutido: sem isto o navegador pedia /favicon.ico a cada carga e
+     levava 404, e a aba ficava com o ícone genérico no meio de 20 outras. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23060a12'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%2334e2ff'/%3E%3C/svg%3E">
 <style>
 :root{
   --bg:#060a12; --panel:#0c1422; --panel2:#0f1a2c; --line:#1b2942;
@@ -101,15 +106,122 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
 .diag .dica{font-size:.86rem;color:var(--txt);padding:5px 0;border-bottom:1px solid rgba(27,41,66,.5);line-height:1.4}
 .diag .dica:last-child{border:0}
 @media(max-width:640px){.op{flex:1;text-align:center}}
+
+/* === Piso de qualidade do painel inteiro (não só das seções novas) ========= */
+/* Foco visível: sem isto, quem navega por teclado não sabe onde está. O painel
+   inteiro dependia do :focus default do Chrome, invisível sobre fundo escuro. */
+:focus-visible{outline:2px solid var(--cy);outline-offset:2px;border-radius:4px}
+/* Atalho pra quem usa teclado/leitor: pula os ~20 itens do menu. Só aparece
+   quando recebe foco — invisível pro resto. */
+.pular{position:absolute;left:-9999px;top:8px;z-index:100;background:var(--cy);color:#00121a;
+  padding:9px 15px;border-radius:8px;font-weight:700;text-decoration:none}
+.pular:focus{left:8px}
+/* Quem pediu menos movimento no sistema não deve levar um ponto pulsando na cara
+   por horas. Vale pro logo, pro dot da marca e pra qualquer transição. */
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;
+    transition-duration:.001ms!important;scroll-behavior:auto!important}
+}
+/* Tabela responsiva: em telas estreitas, rola dentro do próprio bloco em vez de
+   empurrar a página inteira pro lado. */
+.lux .corpo>div:has(>table){overflow-x:auto}
+
+/* === MOTORES (Motor B + Arbitragem) — tema claro, escopado em .lux ==========
+   Só estas duas seções são brancas. A troca de temperatura é o aviso de que você
+   saiu da observabilidade e entrou num produto que roda sozinho. Nada aqui herda
+   de .card: escopo fechado pra não vazar amarelo pro resto do painel.
+   Assinatura da página: TODO número carrega a fonte de onde veio, e fonte vazia
+   nunca vira 0 — vira tarja. Ver docstring de motores.py. */
+.lux{--l-papel:#fff;--l-tinta:#0a0a0a;--l-am:#ffd400;--l-am2:#fff8d6;
+  --l-regua:#e6e6e6;--l-mut:#6b6b6b;
+  background:var(--l-papel);color:var(--l-tinta);border-radius:14px;overflow:hidden;
+  margin-bottom:14px;box-shadow:0 1px 0 rgba(0,0,0,.04),0 10px 30px -22px rgba(0,0,0,.5)}
+.lux .faixa{background:var(--l-tinta);color:var(--l-papel);padding:13px 18px;
+  display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.lux .faixa b{font-size:1.02rem;letter-spacing:-.01em}
+.lux .faixa .sub{color:#9a9a9a;font-size:.68rem;letter-spacing:.18em;text-transform:uppercase}
+.lux .faixa .selo{margin-left:auto;font-family:var(--mono);font-size:.68rem;
+  background:var(--l-am);color:var(--l-tinta);padding:3px 9px;border-radius:999px;font-weight:700}
+.lux .faixa .selo.off{background:#3a3a3a;color:#cfcfcf}
+.lux .faixa a{color:var(--l-am);text-decoration:none;font-size:.78rem;font-family:var(--mono)}
+/* grade de KPI com fio de cabelo: o gap É a régua, sem border por card */
+.lux .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));
+  gap:1px;background:var(--l-regua);border-bottom:2px solid var(--l-tinta)}
+.lux .kpi{background:var(--l-papel);padding:15px 16px 13px}
+/* `color` é OBRIGATÓRIO aqui: `.kpi .v` do tema escuro pinta #fff e, sem esta
+   linha, o número saía branco no branco — especificidade só resolve disputa
+   entre regras que declaram a MESMA propriedade. Mesma história em `.l`/`small`. */
+.lux .kpi .v{font-size:1.95rem;font-weight:800;letter-spacing:-.035em;line-height:1.05;
+  font-family:inherit;color:var(--l-tinta);font-variant-numeric:tabular-nums}
+.lux .kpi .v small{font-size:.9rem;font-weight:700;color:var(--l-mut);letter-spacing:0}
+.lux .kpi .l{font-size:.62rem;letter-spacing:.16em;text-transform:uppercase;color:var(--l-mut);margin-top:5px}
+.lux .kpi .src{font-family:var(--mono);font-size:.58rem;color:#a3a3a3;margin-top:7px;
+  padding-top:6px;border-top:1px dotted var(--l-regua);word-break:break-all}
+.lux .kpi.mark{background:var(--l-am2)}
+.lux .kpi.mark .v{color:var(--l-tinta)}
+/* tarja: o card que NÃO tem número. Nunca imprimir 0 no lugar de "não sei". */
+.lux .tarja{display:inline-block;background:var(--l-am);color:var(--l-tinta);font-weight:700;
+  font-size:.74rem;padding:4px 9px;border-radius:4px;letter-spacing:-.01em}
+.lux .tarja.mudo{background:#ededed;color:#585858}
+.lux .corpo{padding:16px 18px 18px}
+.lux .corpo h4{font-size:.66rem;letter-spacing:.18em;text-transform:uppercase;color:var(--l-mut);
+  margin:26px 0 11px;display:flex;align-items:center;gap:9px}
+.lux .corpo h4::after{content:"";flex:1;height:1px;background:var(--l-regua)}
+.lux .corpo>h4:first-child{margin-top:0}
+/* formulário no tema claro: os inputs do painel escuro não valem aqui */
+.lux .form label{display:block;font-size:.78rem;color:#3d3d3d;margin-bottom:12px;font-weight:600}
+.lux .form input[type=text],.lux .form input:not([type]),.lux .form input[type=file]{
+  display:block;width:100%;max-width:460px;margin-top:5px;font:inherit;font-size:.86rem;font-weight:400;
+  background:#fafafa;color:var(--l-tinta);border:1.5px solid var(--l-regua);border-radius:8px;padding:9px 11px}
+.lux .form input:focus{outline:0;border-color:var(--l-tinta);background:#fff}
+.lux .form details{margin:4px 0 16px}
+.lux .form summary{cursor:pointer;font-size:.78rem;color:#3d3d3d;font-weight:600;
+  padding:8px 0;border-top:1px solid var(--l-regua);border-bottom:1px solid var(--l-regua)}
+.lux .form .campos{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:9px;padding:13px 0 2px}
+.lux .form .campos input{max-width:none;margin:0}
+.lux .form button[disabled]{opacity:.45;cursor:not-allowed}
+.lux .barra{height:5px;background:var(--l-regua);border-radius:99px;overflow:hidden;max-width:460px;margin-top:12px}
+.lux .barra i{display:block;height:100%;background:var(--l-am);width:0;transition:width .4s}
+.lux video{max-width:min(100%,460px);border-radius:10px;margin-top:12px;display:block}
+.lux table{width:100%;border-collapse:collapse;font-size:.82rem}
+.lux th{text-align:left;font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--l-mut);font-weight:600;padding:0 10px 7px 0;border-bottom:1px solid var(--l-regua)}
+.lux td{padding:8px 10px 8px 0;border-bottom:1px solid #f1f1f1;vertical-align:top}
+.lux td.mono{font-family:var(--mono);font-size:.72rem;color:var(--l-mut)}
+.lux .pin{display:inline-block;font-size:.66rem;font-weight:700;padding:2px 7px;border-radius:3px;
+  background:#f0f0f0;color:#4a4a4a;letter-spacing:.02em}
+.lux .pin.ok{background:var(--l-am);color:var(--l-tinta)}
+.lux .pin.ruim{background:var(--l-tinta);color:var(--l-am)}
+.lux .nota{font-size:.82rem;color:#3d3d3d;line-height:1.55}
+.lux .nota b{border-bottom:2px solid var(--l-am)}
+.lux .vazio{font-size:.82rem;color:var(--l-mut);padding:10px 0}
+.lux .botao{display:inline-block;background:var(--l-tinta);color:var(--l-papel);text-decoration:none;
+  font-size:.8rem;font-weight:600;padding:9px 16px;border-radius:7px;border:0;cursor:pointer}
+.lux .botao:hover{background:var(--l-am);color:var(--l-tinta)}
+.lux .botao.claro{background:var(--l-papel);color:var(--l-tinta);border:1.5px solid var(--l-tinta)}
+.lux .botao.claro:hover{background:var(--l-am);border-color:var(--l-am)}
+.lux a:focus-visible,.lux button:focus-visible{outline:3px solid var(--l-am);outline-offset:2px}
+/* camadas da arbitragem: coluna com fio à esquerda, espessura = maturidade */
+.lux .camada{border-left:3px solid var(--l-regua);padding:2px 0 2px 14px;margin-bottom:16px}
+.lux .camada.viva{border-left-color:var(--l-am)}
+.lux .camada.morta{border-left-color:var(--l-tinta);border-left-style:dashed}
+.lux .camada .nome{font-weight:700;font-size:.92rem}
+.lux .camada .est{font-family:var(--mono);font-size:.7rem;color:var(--l-mut);margin:2px 0 8px}
+.lux .camada .nums{display:flex;gap:18px;flex-wrap:wrap;margin-top:4px}
+.lux .camada .nums div{font-size:.76rem;color:var(--l-mut)}
+.lux .camada .nums b{display:block;font-size:1.25rem;color:var(--l-tinta);font-weight:800;
+  font-variant-numeric:tabular-nums;letter-spacing:-.02em}
 </style>
 </head>
 <body>
-<nav class="side">
+<a href="#conteudo" class="pular">Pular para o conteúdo</a>
+<nav class="side" aria-label="Seções do painel">
   <div class="logo"><span class="dot"></span><div><b>JPOS</b><small>CABINE</small></div></div>
   <a data-go="inicio">🏠 Início</a>
   <a data-go="site">🌐 Site</a>
-  <a href="https://videoshiggs.noemi.digital/" target="_blank" rel="noopener">🎬 Vídeos<span class="ext">↗</span></a>
-  <a href="https://motor.noemi.digital/" target="_blank" rel="noopener">💱 Arbitragem<span class="ext">↗</span></a>
+  <a data-go="video">🎬 Vídeos</a>
+  <a data-go="arbitragem">💱 Arbitragem</a>
+  <a data-go="pedi">🩴 Pé Di</a>
   <a data-go="noemi">💬 Noemi</a>
   <a data-go="crm">👥 CRM</a>
   <a href="/obs/prospeccao">📞 Prospecção do dia</a>
@@ -123,10 +235,11 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
   <a href="/obs/criar">🏗️ Criar site</a>
   <div class="grp">Vendas</div>
   <a href="/obs/leads">🎯 Leads sem site</a>
+  <a href="/api/precos/catalogo.pdf" target="_blank" rel="noopener">📄 Catálogo (PDF)</a>
   <div class="grp">JP</div>
   <a href="/obs/pessoal">🗂️ QG pessoal</a>
 </nav>
-<div class="main">
+<div class="main" id="conteudo" tabindex="-1">
 <div class="top">
   <div class="brand"><span class="dot"></span><div><b id="sec-titulo">Início</b><small id="sec-sub">PAINEL DE CONTROLE</small></div></div>
   <div class="meta"><span id="saude"></span><br><span id="upd">—</span></div>
@@ -154,6 +267,120 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
       <button id="se-go" class="op" style="font-size:.85rem;padding:7px 14px">propor</button>
     </div>
     <div id="se-preview" style="margin-top:8px;font-size:.85rem"></div>
+  </div>
+</div>
+
+<!-- === MOTOR B (vídeo) — era link externo pro videoshiggs; agora é página daqui. === -->
+<div class="lux" data-sec="video">
+  <div class="faixa">
+    <b>Motor B — vídeo</b><span class="sub">produção · fila · credencial</span>
+    <span class="selo off" id="mb-selo">verificando…</span>
+  </div>
+  <div class="kpis" id="mb-kpis"><div class="kpi"><span class="tarja mudo">carregando</span></div></div>
+  <div class="corpo">
+    <h4>Credencial do provider</h4>
+    <div id="mb-cred" class="nota">—</div>
+
+    <h4>Gerar vídeo</h4>
+    <div class="nota" style="margin-bottom:14px">Mande as fotos ou o vídeo bruto, preencha o que quiser que apareça
+      na tela, e o Motor B monta. Leva alguns minutos — pode sair desta aba, o job continua.</div>
+    <div class="form">
+      <label>Seu nome ou do cliente
+        <input id="mb-owner" placeholder="ex.: Rodrigo Imóveis" maxlength="120"></label>
+      <label>Fotos do imóvel (pode escolher várias) ou 1 vídeo
+        <input id="mb-arq" type="file" accept="image/*,video/*" multiple
+               aria-describedby="mb-selecao" onchange="mbResumoArquivos()"></label>
+      <div id="mb-selecao"></div>
+      <details>
+        <summary>Dados do imóvel — opcional, aparecem no vídeo</summary>
+        <div class="campos">
+          <input id="mb-codigo" placeholder="Código (ex.: AP-12)" maxlength="30">
+          <input id="mb-preco" placeholder="Preço (ex.: R$ 850 mil)" maxlength="40">
+          <input id="mb-bairro" placeholder="Bairro / cidade" maxlength="60">
+          <input id="mb-metragem" placeholder="Metragem (ex.: 72m²)" maxlength="30">
+          <input id="mb-dormitorios" placeholder="Dormitórios (ex.: 3 quartos)" maxlength="30">
+          <input id="mb-descricao" placeholder="Descrição curta" maxlength="200">
+        </div>
+      </details>
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <button class="botao" id="mb-gerar" type="button" onclick="mbGerar()">Gerar vídeo</button>
+        <!-- aria-live: a geração leva minutos e o status muda sozinho. Sem isto,
+             quem usa leitor de tela não fica sabendo que terminou. -->
+        <span id="mb-msg" class="nota" role="status" aria-live="polite"></span>
+      </div>
+      <div id="mb-saida"></div>
+    </div>
+
+    <h4>Últimos vídeos</h4>
+    <div id="mb-hist"><div class="vazio">carregando…</div></div>
+  </div>
+</div>
+
+<!-- === ARBITRAGEM — o menu existia e apontava pro motor.noemi.digital (:8082),
+     que só tem POST: dava 404. Agora é página, e mostra as TRÊS camadas separadas. -->
+<div class="lux" data-sec="arbitragem">
+  <div class="faixa">
+    <b>Arbitragem</b><span class="sub">três camadas · estágios diferentes</span>
+    <span class="selo off" id="ab-selo">verificando…</span>
+  </div>
+  <div class="kpis" id="ab-kpis"><div class="kpi"><span class="tarja mudo">carregando</span></div></div>
+  <div class="corpo">
+    <div class="nota" style="margin-bottom:16px">
+      Arbitragem não é um sistema só: são três, em estágios diferentes. Somar os números
+      daria um total que não existe — então aqui eles ficam <b>separados</b>, cada um com a
+      fonte de onde veio.
+    </div>
+    <h4>Camadas</h4>
+    <div id="ab-camadas"><div class="vazio">carregando…</div></div>
+    <h4>Operação</h4>
+    <div id="ab-ops" class="nota">—</div>
+  </div>
+</div>
+
+<!-- === PÉ DI — a loja de chinelo. Métricas vêm do MESMO beacon do jpos, com
+     site=pedi; por isso esta aba não precisou de backend novo. -->
+<div class="card" data-sec="pedi" style="margin-bottom:12px;border-color:rgba(225,29,116,.3);background:linear-gradient(180deg,rgba(225,29,116,.07),var(--panel))">
+  <h3>🩴 Pé Di — chinelospedi.com
+    <a href="https://chinelospedi.com" target="_blank" rel="noopener" style="float:right;font-size:.8rem;color:var(--cy);text-decoration:none">ver loja ↗</a></h3>
+  <div id="pedi-kpis" class="grid" style="margin:8px 0"></div>
+  <div id="pedi-origens" style="margin:10px 0"></div>
+  <div id="pedi-alertas" style="margin-top:10px"></div>
+  <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
+    <div style="font-size:.8rem;color:var(--mut);margin-bottom:8px">FOTOS E VÍDEOS</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <select id="pd-slug" style="background:#0c131d;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:7px 10px;font-size:.85rem"></select>
+      <select id="pd-tipo" style="background:#0c131d;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:7px 10px;font-size:.85rem">
+        <option value="top">foto — de cima</option>
+        <option value="detalhe">foto — detalhe da estampa</option>
+        <option value="perfil">foto — de perfil</option>
+        <option value="lifestyle">foto — em uso</option>
+        <option value="video">vídeo</option>
+      </select>
+      <label class="op" style="font-size:.85rem;padding:7px 14px;cursor:pointer">
+        escolher arquivo<input type="file" id="pd-arq" accept="image/*,video/*" hidden>
+      </label>
+      <span id="pd-msg" style="font-size:.85rem;color:var(--mut)" role="status" aria-live="polite"></span>
+    </div>
+    <div style="font-size:.78rem;color:var(--mut);margin-top:8px">
+      A foto é cortada em quadrado e convertida sozinha (webp + avif). Vídeo de celular
+      vira MP4 que toca em qualquer aparelho. Nada vai ao ar até você publicar.
+    </div>
+    <div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button class="op" id="pd-publicar" style="font-size:.85rem;padding:8px 16px">publicar a loja</button>
+      <span id="pd-pub-msg" style="font-size:.85rem;color:var(--mut)" role="status" aria-live="polite"></span>
+    </div>
+    <pre id="pd-saida" style="display:none;margin-top:10px;max-height:220px;overflow:auto;background:#0a1018;border:1px solid var(--line);border-radius:8px;padding:10px;font-size:.72rem;white-space:pre-wrap"></pre>
+  </div>
+
+  <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
+    <div style="font-size:.8rem;color:var(--mut);margin-bottom:8px">CATÁLOGO — criar e editar sem terminal</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+      <input id="pc-nova" placeholder="nome da estampa nova" style="background:#0c131d;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:7px 10px;font-size:.85rem;min-width:200px">
+      <button class="op" id="pc-criar" style="font-size:.85rem;padding:7px 14px">criar estampa</button>
+      <span id="pc-msg" style="font-size:.85rem;color:var(--mut)" role="status" aria-live="polite"></span>
+    </div>
+    <div id="pc-lista"></div>
+    <div id="pedi-catalogo" class="empty" style="font-size:.85rem;margin-top:10px">carregando…</div>
   </div>
 </div>
 
@@ -351,12 +578,22 @@ a.mot.abrir:hover{transform:translateY(-2px);border-color:var(--cy);box-shadow:0
 const SECS={
   inicio:['Início','PAINEL DE CONTROLE'],
   site:['Site','TRÁFEGO · CONVERSÃO · CONTROLE'],
+  video:['Motor B','VÍDEO · PRODUÇÃO · CREDENCIAL'],
+  arbitragem:['Arbitragem','TRÊS CAMADAS · DADO POR PROCEDÊNCIA'],
+  pedi:['Pé Di','LOJA · TRÁFEGO · CATÁLOGO'],
   noemi:['Noemi','SDR DE IA · PROJETO JPOS'],
   crm:['CRM','LEADS · PROSPECÇÃO · HANDOFF'],
   prospeccao:['Prospecção','FILA DO DIA · AO VIVO'],
   analise:['Análise de Dados','OBSERVABILIDADE · LLM · VPS'],
   config:['Config','PROSPECÇÃO · CONTATOS · CHIP'],
 };
+// Título da aba: quem está fora (urgente) + onde você está (contexto). Um estado
+// só, escrito por dois lugares, pra nenhum sobrescrever o outro.
+const _titulo={down:0,secao:''};
+function aplicarTitulo(){
+  document.title=(_titulo.down?`(${_titulo.down} DOWN) `:'')+
+                 (_titulo.secao?`${_titulo.secao} · `:'')+'JPOS Cabine';
+}
 function secDe(el){
   if(el.dataset.sec) return el.dataset.sec;
   if(el.classList.contains('v-obs')) return 'analise';
@@ -368,12 +605,21 @@ function mostrarSec(nome){
   document.querySelectorAll('.main > .v-qg, .main > .v-obs, .main > [data-sec]').forEach(el=>{
     el.style.display = secDe(el)===nome ? '' : 'none';
   });
-  document.querySelectorAll('.side a[data-go]').forEach(a=>a.classList.toggle('on',a.dataset.go===nome));
+  document.querySelectorAll('.side a[data-go]').forEach(a=>{
+    const ativo=a.dataset.go===nome;
+    a.classList.toggle('on',ativo);
+    // leitor de tela precisa saber ONDE está, não só ver o destaque visual
+    if(ativo) a.setAttribute('aria-current','page'); else a.removeAttribute('aria-current');
+  });
   const [t,s]=SECS[nome];
   const et=document.getElementById('sec-titulo'), es=document.getElementById('sec-sub');
   if(et)et.textContent=t; if(es)es.textContent=s;
+  _titulo.secao = t; aplicarTitulo();   // a aba do navegador seguia sempre "Noemi OS"
   if(location.hash.slice(1)!==nome) history.replaceState(null,'','#'+nome);
   if(nome==='site') siteTab();  // lazy: análise Groq só quando a aba Site abre
+  if(nome==='video') videoTab();          // lazy: só bate no :8010 se abrir
+  if(nome==='arbitragem') arbTab();       // lazy: `docker exec psql` custa, não roda à toa
+  if(nome==='pedi'){ pediTab(); pcCarregar(); }
 }
 let _siteAnaliseFeita=false;
 async function siteTab(){
@@ -391,6 +637,323 @@ async function siteTab(){
     else if(a.achados&&a.achados.length) $('site-analise').innerHTML='<b style="color:var(--mut);font-size:.72rem">ANÁLISE DA IA</b>'+a.achados.map(x=>`<div class="dica">${x.tipo==='risco'?'⚠️':'💡'} ${x.achado}<div style="color:var(--ok);font-size:.85rem">→ ${x.acao||''}</div></div>`).join('');
     else $('site-analise').innerHTML='<div class="empty">sem achado forte ainda</div>';
   }catch(e){$('site-analise').innerHTML='';}
+}
+
+// === MOTORES: Motor B + Arbitragem ========================================
+// Regra desta parte da tela: número null NÃO vira 0. Vira tarja "sem dado".
+// "rodou e deu zero" e "não consegui perguntar" são estados diferentes, e
+// achatar os dois em 0 é como a biblioteca de referências ficou 43% órfã sem
+// ninguém ver. O backend já separa (motores.py); aqui é só não desfazer.
+const esc=s=>String(s??'').replace(/[<>&"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+function kpi(v,rot,fonte,{marca=false,sufixo='',vazio='sem dado'}={}){
+  const corpo=(v===null||v===undefined)
+    ?`<span class="tarja">${esc(vazio)}</span>`
+    :`<div class="v">${esc(v)}${sufixo?`<small>${esc(sufixo)}</small>`:''}</div>`;
+  return `<div class="kpi${marca?' mark':''}">${corpo}<div class="l">${esc(rot)}</div>`+
+         (fonte?`<div class="src">fonte: ${esc(fonte)}</div>`:'')+`</div>`;
+}
+function selo(el,txt,ok){const e=$(el); if(!e)return; e.textContent=txt; e.className='selo'+(ok?'':' off');}
+// Botão de recarregar sem feedback vira clique repetido: a pessoa não sabe se
+// pegou. Desabilita, avisa, e devolve — inclusive se a chamada falhar.
+async function recarregar(bt,fn){
+  const rotulo=bt.textContent; bt.disabled=true; bt.textContent='atualizando…';
+  try{ await fn(true); } finally { bt.disabled=false; bt.textContent=rotulo; }
+}
+
+let _mbFeito=false;
+async function videoTab(force){
+  if(_mbFeito&&!force) return; _mbFeito=true;
+  try{
+    const d=await (await fetch('api/motor-b/resumo')).json();
+    const s=d.servico||{}, p=d.producao||{}, f=d.fila||{};
+    selo('mb-selo', s.estado==='no ar'?(s.mock?'no ar (mock)':'no ar'):'parado', s.estado==='no ar');
+    $('mb-kpis').innerHTML=[
+      kpi(p.videos,'vídeos gerados',p.fonte,{marca:true}),
+      kpi(p.tempo_medio_s,'tempo médio',p.fonte,{sufixo:'s'}),
+      kpi(p.custo_medio_creditos,'créditos por vídeo',p.fonte),
+      kpi(p.taxa_aprovacao==null?null:Math.round(p.taxa_aprovacao*100),'aprovação',
+          p.avaliados!=null?`${p.avaliados} avaliado(s)`:p.fonte,{sufixo:'%'}),
+      kpi(f.ativos,'na fila agora',f.fonte),
+    ].join('');
+    // Credencial: "vencido" só é problema se não houver refresh. Dizer isso
+    // evita o alarme falso diário — o token vence todo dia por design.
+    const c=d.credencial||{}, pinta={valido:'ok',renovavel:'',bloqueado:'ruim',ausente:'ruim',ilegivel:'ruim'};
+    $('mb-cred').innerHTML=`<span class="pin ${pinta[c.estado]||''}">${esc(c.estado||'?')}</span> `+
+      `${esc(c.detalhe||'')}`+(c.expira_em?` <span class="mono" style="color:#8a8a8a;font-size:.74rem">· expira ${esc(c.expira_em)}</span>`:'')+
+      (c.estado==='renovavel'?'<div class="vazio">Não é bloqueio: o token dura 24h e o Motor B renova sozinho no próximo vídeo.</div>':'');
+    const u=d.ultimos||[];
+    $('mb-hist').innerHTML=u.length?
+      '<table><caption class="vazio" style="text-align:left;padding:0 0 8px">Últimos jobs do Motor B, do mais recente para o mais antigo.</caption>'+
+      '<tr><th scope="col">quando</th><th scope="col">estado</th><th scope="col">duração</th>'+
+      '<th scope="col">créditos</th><th scope="col">observação</th></tr>'+
+      u.map(j=>`<tr><td class="mono">${esc((j.criado_em||'').slice(0,16).replace('T',' '))}</td>`+
+        `<td><span class="pin ${j.estado==='completed'?'ok':(j.estado==='failed'?'ruim':'')}">${esc(j.estado)}</span></td>`+
+        `<td>${j.duracao_s!=null?esc(Math.round(j.duracao_s))+'s':'—'}</td>`+
+        `<td>${j.custo_creditos!=null?esc(j.custo_creditos):'—'}</td>`+
+        `<td class="mono">${esc((j.erro||'').slice(0,90))||'—'}</td></tr>`).join('')+'</table>'+
+      '<div style="margin-top:12px"><button class="botao claro" type="button" onclick="recarregar(this,videoTab)">Atualizar métricas</button></div>'
+      :'<div class="vazio">Nenhum vídeo gerado ainda.</div>';
+  }catch(e){ selo('mb-selo','sem resposta',false);
+    $('mb-kpis').innerHTML='<div class="kpi"><span class="tarja">painel não conseguiu ler o Motor B</span><div class="l">falha na leitura</div></div>'; }
+}
+
+// Geração: mesmo fluxo do Motor B (envia mídia → cria job → acompanha), só que
+// as 3 chamadas passam pelo repasse deste painel, então é tudo mesma origem.
+const MB_PUBLICO='https://videoshiggs.noemi.digital';  // só pra servir o vídeo pronto
+// O Motor B recusa acima de 25MB (MAX_UPLOAD_MB). Conferir aqui evita subir 80MB
+// por 40s pra receber 413 no fim. O backend continua sendo a autoridade — isto é
+// cortesia com a banda de quem está num 4G, não validação de segurança.
+const MB_LIMITE_MB=25, MB_MAX_ARQUIVOS=12;
+function mbResumoArquivos(){
+  const fs=$('mb-arq').files, alvo=$('mb-selecao'); if(!alvo) return;
+  if(!fs||!fs.length){ alvo.innerHTML=''; return; }
+  const total=[...fs].reduce((s,f)=>s+f.size,0)/1048576;
+  const grandes=[...fs].filter(f=>f.size/1048576>MB_LIMITE_MB);
+  alvo.innerHTML=`<div class="vazio">${fs.length} arquivo(s), ${total.toFixed(1)} MB no total.</div>`+
+    (grandes.length?`<div class="vazio" style="color:#8a6b00">${grandes.length} passa(m) de ${MB_LIMITE_MB} MB e ${grandes.length>1?'serão recusados':'será recusado'}: `+
+      grandes.map(f=>esc(f.name)).join(', ')+'</div>':'');
+}
+async function mbGerar(){
+  const bt=$('mb-gerar'), msg=$('mb-msg'), saida=$('mb-saida'), fs=$('mb-arq').files;
+  if(!fs||!fs.length){ msg.innerHTML='<span class="pin">Escolha ao menos uma foto ou um vídeo.</span>'; return; }
+  if(fs.length>MB_MAX_ARQUIVOS){
+    msg.innerHTML=`<span class="pin ruim">demais</span> Máximo de ${MB_MAX_ARQUIVOS} arquivos por vídeo — você escolheu ${fs.length}.`; return; }
+  const grande=[...fs].find(f=>f.size/1048576>MB_LIMITE_MB);
+  if(grande){ msg.innerHTML=`<span class="pin ruim">arquivo grande</span> "${esc(grande.name)}" tem `+
+    `${(grande.size/1048576).toFixed(1)} MB e o limite é ${MB_LIMITE_MB} MB. Reduza e tente de novo.`; return; }
+  bt.disabled=true; saida.innerHTML='';
+  try{
+    const owner=$('mb-owner').value.trim()||'cliente', ids=[];
+    for(let i=0;i<fs.length;i++){
+      msg.textContent=fs.length>1?`Enviando ${i+1} de ${fs.length}…`:'Enviando mídia…';
+      const fd=new FormData(); fd.append('file',fs[i]); fd.append('owner',owner);
+      const r=await fetch('api/motor-b/upload',{method:'POST',body:fd}), j=await r.json();
+      if(!r.ok) throw new Error(j.detail||`falha ao enviar ${fs[i].name}`);
+      ids.push(j.asset_id);
+    }
+    const cfg={};
+    for(const k of ['codigo','preco','bairro','metragem','dormitorios','descricao']){
+      const v=($('mb-'+k)?.value||'').trim(); if(v) cfg[k]=v;
+    }
+    if(ids.length>1) cfg.cenas=ids.map(id=>({asset_id:id}));  // >1 foto = walkthrough
+    const r=await fetch('api/motor-b/jobs',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({asset_id:ids[0],config:cfg})});
+    const j=await r.json();
+    if(!r.ok) throw new Error(j.detail||'não deu pra criar o job');
+    await mbAcompanhar(j.job_id);
+  }catch(e){ msg.innerHTML=`<span class="pin ruim">erro</span> ${esc(e.message)}`; }
+  finally{ bt.disabled=false; }
+}
+async function mbAcompanhar(id){
+  const msg=$('mb-msg'), saida=$('mb-saida');
+  saida.innerHTML='<div class="barra" role="progressbar" aria-label="Progresso da geração" '+
+    'aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i></i></div>';
+  const barra=saida.querySelector('.barra i'), trilho=saida.querySelector('.barra');
+  const andar=p=>{barra.style.width=p+'%'; trilho.setAttribute('aria-valuenow',Math.round(p));};
+  let falhas=0;
+  for(let i=0;i<400;i++){
+    try{
+      const r=await fetch('api/motor-b/jobs/'+id);
+      if(r.status===404){ msg.textContent='Job não encontrado no servidor.'; return; }
+      const j=await r.json(); falhas=0;
+      if(j.estado==='completed'){
+        andar(100);
+        msg.innerHTML='<span class="pin ok">pronto</span>';
+        saida.innerHTML+=`<video src="${MB_PUBLICO}${esc(j.video_url)}" controls playsinline></video>`+
+          `<div style="margin-top:10px"><a class="botao claro" href="${MB_PUBLICO}${esc(j.video_url)}" download>Baixar vídeo</a></div>`;
+        videoTab(true);   // o vídeo novo entra nas métricas sem recarregar a página
+        return;
+      }
+      if(j.estado==='failed'||j.estado==='cancelled'){
+        msg.innerHTML=`<span class="pin ruim">${esc(j.estado)}</span> ${esc(j.erro||'')}`; return;
+      }
+      msg.textContent=`${j.estado}… (${i*2}s)`;
+      andar(Math.min(92,4+i*1.6));
+    }catch(e){ if(++falhas>20){ msg.textContent='Servidor não responde — recarregue em instantes.'; return; }
+      msg.textContent='Reconectando…'; }
+    await new Promise(ok=>setTimeout(ok,2000));
+  }
+  msg.textContent='Ainda gerando — acompanhe em Últimos vídeos.';
+}
+
+let _pediFeito=false;
+async function pediTab(force){
+  if(_pediFeito&&!force) return; _pediFeito=true;
+  try{
+    const d=await (await fetch('api/pedi/resumo')).json();
+    const t=d.trafego||{}, c=d.catalogo||{}, dep=d.deploy||{};
+    $('pedi-kpis').innerHTML=[
+      `<div class="card kpi"><div class="v">${t.visitas??0}</div><div class="l">visitas</div></div>`,
+      `<div class="card kpi"><div class="v" style="color:var(--cy)">${t.cliques_cta??0}</div><div class="l">cliques no WhatsApp</div></div>`,
+      `<div class="card kpi"><div class="v" style="color:var(--ok)">${t.conversao_pct??0}%</div><div class="l">conversão</div></div>`,
+      `<div class="card kpi"><div class="v">${c.estampas??'—'}</div><div class="l">estampas no catálogo</div></div>`,
+      // "com foto real" é o número que diz se a loja está pronta pra vender.
+      `<div class="card kpi"><div class="v" style="color:${c.com_foto_real?'var(--ok)':'var(--bad)'}">${c.com_foto_real??'—'}</div><div class="l">com foto real</div></div>`,
+    ].join('');
+    const og=Object.entries(t.origens||{}), mx=Math.max(1,...og.map(x=>x[1]));
+    $('pedi-origens').innerHTML=og.length?'<div style="font-size:.72rem;color:var(--mut);margin-bottom:4px">ORIGEM DO TRÁFEGO</div>'+
+      og.map(([k,v])=>`<div class="bar-row"><span class="lab">${esc(k)}</span><span class="bar"><i style="width:${100*v/mx}%"></i></span><span class="num">${v}</span></div>`).join('')
+      :'<div class="empty" style="font-size:.85rem">sem visita registrada ainda — o beacon acabou de entrar no ar</div>';
+    const cor={bloqueio:'var(--bad)',alto:'var(--warn)',medio:'var(--mut)'};
+    const pend=(d.pendencias||[]);
+    $('pedi-alertas').innerHTML=
+      (dep.estado==='defasado'?`<div class="dica">⚠️ <b style="color:var(--warn)">o que está no ar é ${esc(dep.atraso_h)}h mais velho que o último build</b><div style="color:var(--mut);font-size:.85rem">quem visita a loja agora não vê o que você já construiu</div></div>`:'')+
+      (pend.length?'<div style="font-size:.72rem;color:var(--mut);margin:10px 0 4px">O QUE IMPEDE DE VENDER</div>'+
+        pend.map(p=>`<div class="dica"><b style="color:${cor[p.nivel]||'var(--mut)'}">${esc(p.o_que)}</b>`+
+          `<div style="color:var(--mut);font-size:.85rem">${esc(p.efeito)}</div>`+
+          `<div style="color:var(--ok);font-size:.85rem">→ ${esc(p.resolve)}</div></div>`).join('')
+        :'<div class="dica" style="color:var(--ok)">✓ nada bloqueando a venda</div>');
+    $('pedi-catalogo').innerHTML=`${esc(c.estampas??0)} estampas · linhas: ${(c.linhas||[]).map(esc).join(', ')||'—'}`+
+      `<div style="color:var(--mut);margin-top:4px">Fotos e textos vivem em <span class="mono">pedi-site/src/content/produtos/</span>. `+
+      `Trocar foto = subir o arquivo e publicar (<span class="mono">npm run publicar</span>), que já barra ir ao ar sem número de WhatsApp real.</div>`;
+    // seletor de estampa: nomes vêm do próprio catálogo, então nunca fica velho
+    const sel=$('pd-slug');
+    if(sel && !sel.options.length) sel.innerHTML=(d.estampas||[]).map(e=>
+      `<option value="${esc(e.slug)}">${esc(e.nome)}${e.mock?' (foto gerada)':' ✓'}</option>`).join('');
+  }catch(e){ $('pedi-kpis').innerHTML='<div class="empty">não deu pra ler a loja</div>'; }
+}
+
+// Upload: dispara assim que o arquivo é escolhido. Um passo a menos que
+// "escolher + confirmar", e o estado fica visível o tempo todo.
+document.addEventListener('change', async function(ev){
+  if(ev.target.id!=='pd-arq') return;
+  const arq=ev.target.files[0]; if(!arq) return;
+  const msg=$('pd-msg'), tipo=$('pd-tipo').value, slug=$('pd-slug').value;
+  msg.textContent=`enviando ${arq.name} (${(arq.size/1048576).toFixed(1)} MB)…`;
+  try{
+    const fd=new FormData(); fd.append('file',arq); fd.append('slug',slug); fd.append('tipo',tipo);
+    const r=await fetch('api/pedi/midia',{method:'POST',body:fd}), j=await r.json();
+    if(!r.ok) throw new Error(j.detail||'falhou');
+    msg.innerHTML=`<span style="color:var(--ok)">✓ ${esc(tipo)} de ${esc(slug)} atualizado</span> — publique pra ir ao ar`;
+    pediTab(true);                       // "com foto real" sobe na hora
+  }catch(e){ msg.innerHTML=`<span style="color:var(--bad)">✗ ${esc(e.message)}</span>`; }
+  finally{ ev.target.value=''; }         // permite reenviar o mesmo arquivo
+});
+
+document.addEventListener('click', async function(ev){
+  if(ev.target.id!=='pd-publicar') return;
+  const bt=ev.target, msg=$('pd-pub-msg'), saida=$('pd-saida');
+  bt.disabled=true; msg.textContent='buildando e checando…'; saida.style.display='none';
+  try{
+    const r=await fetch('api/pedi/publicar',{method:'POST'}), j=await r.json();
+    if(j.ok){ msg.innerHTML=`<span style="color:var(--ok)">✓ no ar — ${esc(j.paginas)} páginas</span>`; pediTab(true); }
+    else { msg.innerHTML=`<span style="color:var(--bad)">✗ parou em: ${esc(j.etapa)}</span>`;
+           saida.textContent=j.saida||''; saida.style.display='block'; }
+  }catch(e){ msg.innerHTML=`<span style="color:var(--bad)">✗ ${esc(e.message)}</span>`; }
+  finally{ bt.disabled=false; }
+});
+
+// === CATÁLOGO Pé Di: criar/editar/remover sem terminal =====================
+// Uma LINHA por estampa, com os campos editáveis à mostra. Sem modal: modal
+// esconde o que mudou e obriga a abrir/fechar pra comparar duas estampas —
+// numa lista de 8, ver tudo de uma vez é mais rápido que qualquer formulário.
+const PC_PUB = ['mulher', 'homem', 'crianca'];
+async function pcCarregar(){
+  const alvo=$('pc-lista'); if(!alvo) return;
+  try{
+    const d=await (await fetch('api/pedi/catalogo')).json();
+    alvo.innerHTML=(d.estampas||[]).map(e=>`
+      <div class="dica" data-slug="${esc(e.slug)}" style="display:grid;gap:6px">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <input data-c="nome" value="${esc(e.nome)}" style="flex:1;min-width:140px;background:#0c131d;color:var(--txt);border:1px solid var(--line);border-radius:5px;padding:5px 8px;font-size:.85rem">
+          <input data-c="preco" value="${e.preco??''}" placeholder="preço" style="width:86px;background:#0c131d;color:var(--txt);border:1px solid var(--line);border-radius:5px;padding:5px 8px;font-size:.85rem">
+          <input data-c="colecao" value="${esc(e.colecao||'')}" placeholder="selo de coleção" style="width:140px;background:#0c131d;color:var(--txt);border:1px solid var(--line);border-radius:5px;padding:5px 8px;font-size:.85rem">
+          ${PC_PUB.map(p=>`<label style="font-size:.78rem;color:var(--mut);display:inline-flex;gap:3px;align-items:center">
+            <input type="checkbox" data-pub="${p}" ${(e.publico||[]).includes(p)?'checked':''}>${p==='crianca'?'criança':p}</label>`).join('')}
+          <button class="op" data-salvar style="font-size:.78rem;padding:5px 12px">salvar</button>
+          <button class="op op-ghost" data-remover style="font-size:.78rem;padding:5px 10px">remover</button>
+        </div>
+        <div style="font-size:.72rem;color:var(--mut)">${esc(e.slug)} · ${e.imagens} foto(s)${e.mock?' · <span style="color:var(--warn)">foto gerada</span>':''}</div>
+      </div>`).join('');
+  }catch(err){ alvo.innerHTML='<div class="empty">não deu pra ler o catálogo</div>'; }
+}
+
+document.addEventListener('click', async function(ev){
+  const t=ev.target;
+  if(t.id==='pc-criar'){
+    const nome=$('pc-nova').value.trim(); const msg=$('pc-msg');
+    if(!nome){ msg.textContent='dê um nome primeiro'; return; }
+    t.disabled=true; msg.textContent='criando…';
+    try{
+      const r=await fetch('api/pedi/catalogo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nome})});
+      const j=await r.json(); if(!r.ok) throw new Error(j.detail||'falhou');
+      msg.innerHTML=`<span style="color:var(--ok)">✓ ${esc(j.slug)} criada</span> — suba a foto e publique`;
+      $('pc-nova').value=''; pcCarregar(); pediTab(true);
+    }catch(e){ msg.innerHTML=`<span style="color:var(--bad)">✗ ${esc(e.message)}</span>`; }
+    finally{ t.disabled=false; }
+    return;
+  }
+  const linha=t.closest?.('[data-slug]'); if(!linha) return;
+  const slug=linha.dataset.slug, msg=$('pc-msg');
+  if(t.hasAttribute('data-salvar')){
+    const corpo={slug};
+    linha.querySelectorAll('[data-c]').forEach(i=>corpo[i.dataset.c]=i.value);
+    corpo.publico=[...linha.querySelectorAll('[data-pub]')].filter(c=>c.checked).map(c=>c.dataset.pub);
+    t.disabled=true;
+    try{
+      const r=await fetch('api/pedi/catalogo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(corpo)});
+      const j=await r.json(); if(!r.ok) throw new Error(j.detail||'falhou');
+      msg.innerHTML=`<span style="color:var(--ok)">✓ ${esc(slug)} salva</span> — publique pra ir ao ar`;
+    }catch(e){ msg.innerHTML=`<span style="color:var(--bad)">✗ ${esc(e.message)}</span>`; }
+    finally{ t.disabled=false; }
+  }
+  if(t.hasAttribute('data-remover')){
+    // sem confirm(): diálogo do navegador trava a automação e a página inteira.
+    // A remoção é reversível (vai pra lixeira), então o custo do clique errado é baixo.
+    t.disabled=true;
+    try{
+      const r=await fetch('api/pedi/catalogo/'+encodeURIComponent(slug),{method:'DELETE'});
+      const j=await r.json(); if(!r.ok) throw new Error(j.detail||'falhou');
+      msg.innerHTML=`<span style="color:var(--ok)">✓ ${esc(slug)} foi pra lixeira</span> — publique pra tirar do ar`;
+      pcCarregar(); pediTab(true);
+    }catch(e){ msg.innerHTML=`<span style="color:var(--bad)">✗ ${esc(e.message)}</span>`; }
+    finally{ t.disabled=false; }
+  }
+});
+
+let _abFeito=false;
+async function arbTab(force){
+  if(_abFeito&&!force) return; _abFeito=true;
+  try{
+    const d=await (await fetch('api/arbitragem/resumo')).json();
+    const [v1,cp,ex]=d.camadas||[];
+    const vivas=(d.camadas||[]).filter(c=>c.estado==='no ar').length;
+    // "1 de 3 no ar" e a hora da leitura: o painel é cacheado por ~20s, então
+    // dizer QUANDO isto foi lido evita interpretar dado de 20s atrás como agora.
+    selo('ab-selo',`${vivas} de 3 no ar${d.lido_em?' · '+d.lido_em:''}`, vivas>0);
+    $('ab-kpis').innerHTML=[
+      kpi(v1?.demandas,'demandas (v1)',v1?.fonte,{marca:true}),
+      kpi(v1?.cotacoes,'cotações (v1)',v1?.fonte),
+      kpi(cp?.compradores,'compradores mapeados',cp?.fonte),
+      kpi(cp?.fornecedores,'fornecedores',cp?.fonte),
+      kpi(ex?.total_linhas,'linhas no warehouse',ex?.fonte,
+          {vazio:'schema pronto, sem dado'}),
+    ].join('');
+    const cls=c=>c.estado==='no ar'?'viva':(c.estado&&c.estado.startsWith('schema')?'morta':'');
+    const nums=o=>Object.entries(o).filter(([,v])=>v!=null)
+      .map(([k,v])=>`<div><b>${esc(v)}</b>${esc(k)}</div>`).join('');
+    $('ab-camadas').innerHTML=(d.camadas||[]).map(c=>{
+      const detalhe = c.camada.startsWith('v1')
+          ? {demandas:c.demandas,cotações:c.cotacoes,'itens de fornecedor':c.fornecedor_item,deals:c.deals}
+        : c.camada.startsWith('central')
+          ? {compradores:c.compradores,fornecedores:c.fornecedores,lotes:c.lotes,negociações:c.negociacoes}
+          : {'tabelas criadas':c.tabelas_criadas,'linhas':c.total_linhas};
+      return `<div class="camada ${cls(c)}"><div class="nome">${esc(c.camada)}</div>`+
+        `<div class="est">${esc(c.estado)} · ${esc(c.fonte)}${c.escrito_em?' · escrito em '+esc(c.escrito_em):''}</div>`+
+        `<div class="nums">${nums(detalhe)||'<div class="vazio">sem número disponível</div>'}</div></div>`;
+    }).join('');
+    // O que dá pra fazer daqui hoje — e o que depende de decisão sua.
+    $('ab-ops').innerHTML=
+      `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">`+
+      // /docs e /redoc estão desligados nesse serviço (404) — só /openapi.json responde.
+      // Linkar pro /docs repetiria exatamente o erro que esta página veio corrigir.
+      `<a class="botao" href="https://motor.noemi.digital/openapi.json" target="_blank" rel="noopener">Ver rotas do v1 (JSON)</a>`+
+      `<button class="botao claro" type="button" onclick="recarregar(this,arbTab)">Atualizar</button></div>`+
+      (ex&&ex.total_linhas===0?`<div class="vazio">O Exodia (o refactor com warehouse e cotação) tem as `+
+        `${esc(ex.tabelas_criadas)} tabelas criadas e <b>nenhuma linha</b>: nunca rodou. Subir esse serviço é `+
+        `decisão sua — esta página não liga motor.</div>`:'');
+  }catch(e){ selo('ab-selo','sem resposta',false);
+    $('ab-kpis').innerHTML='<div class="kpi"><span class="tarja">painel não conseguiu ler as fontes</span><div class="l">falha na leitura</div></div>'; }
 }
 // IA nativa de edição (Item 2): propor → confirmar → aplicar
 document.addEventListener('click',async function(ev){
@@ -413,8 +976,15 @@ document.addEventListener('click',async function(ev){
   }
   else if(ev.target && ev.target.id==='se-cancel'){$('se-preview').innerHTML='';}
 });
-document.querySelectorAll('.side a[data-go]').forEach(a=>
-  a.addEventListener('click',e=>{e.preventDefault();mostrarSec(a.dataset.go);}));
+// Item de menu é <a> SEM href — o navegador não põe isso na ordem de tabulação,
+// então metade da navegação do painel era inalcançável por teclado. `tabindex` +
+// Enter/Espaço resolve sem trocar a tag (trocar por <button> mudaria o layout todo).
+document.querySelectorAll('.side a[data-go]').forEach(a=>{
+  a.setAttribute('tabindex','0'); a.setAttribute('role','link');
+  const ir=e=>{e.preventDefault();mostrarSec(a.dataset.go);};
+  a.addEventListener('click',ir);
+  a.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' ') ir(e); });
+});
 window.addEventListener('hashchange',()=>{const h=location.hash.slice(1);if(SECS[h])mostrarSec(h);});
 (function(){  // seção inicial: hash > pathname /obs > início
   const h=location.hash.slice(1);
@@ -454,7 +1024,10 @@ function render(d){
   const cor = down===0?'var(--ok)':(down>=2?'var(--bad)':'var(--warn)');
   $("saude").innerHTML = `<b style="color:${cor}">${mood} ${health}% operacional</b>`
     + (down?` · <span style="color:var(--bad)">${down} fora</span>`:'');
-  document.title = (down?`(${down} DOWN) `:'')+'JPOS · Cabine';
+  // Dois lugares escreviam o título e um apagava o outro: o alerta de serviço fora
+  // (aqui, a cada poll) e o nome da seção (mostrarSec). Agora convivem — alerta na
+  // frente, porque é o que precisa ser visto de outra aba.
+  _titulo.down = down; aplicarTitulo();
   _ultimoTs=Date.now();
   $("upd").textContent = "atualizado agora";
 
@@ -529,7 +1102,11 @@ function render(d){
     kpi(L.online?L.latencia.media+'<small>ms</small>'+spark(_hist.lat,'var(--warn)'):'—',"latência média"),
     kpi(L.online?`<span style="color:${L.latencia.p95<1000?'var(--ok)':L.latencia.p95<2000?'var(--warn)':'var(--bad)'}">${L.latencia.p95}</span><small>ms</small>`:'—',"P95"),
     kpi(L.online?L.cache.hit_rate+'<small>%</small>':'—',"cache hit"),
-    gauge((V.cpu_pct||0)+'<small>%</small>',"CPU · load "+(V.load1||0),V.cpu_pct||0),
+    // cpu_pct null = ainda não há duas leituras espaçadas. Mostrar 0% seria pior
+    // que não mostrar: "0% de CPU" é uma afirmação, "medindo" é a verdade.
+    // O load fica no rótulo porque é a métrica estável — o gauge é o volátil.
+    gauge(V.cpu_pct==null?'<small>medindo…</small>':V.cpu_pct+'<small>%</small>',
+          "CPU · load "+(V.load1||0)+" / "+(V.cpus||1)+" núcleos", V.cpu_pct||0),
     gauge((V.ram_pct||0)+'<small>%</small>'+spark(_hist.ram,'var(--cy)'),"RAM "+(V.ram_gb||0)+"GB",V.ram_pct||0),
     gauge((V.disco_pct||0)+'<small>%</small>',"disco",V.disco_pct||0),
   ].join('');
@@ -721,7 +1298,10 @@ const TKCOLS=[['empresa','Empresa',180],['razao_social','Razão social',170],['c
   ['telefone','Telefone',120],['tier','Tier',62,'tier'],['sinal','Sinal detectado',170],
   ['status','Status',132,'status'],['proxima_acao','Próxima ação',140],['data_proxima_acao','Data próx.',130,'date']];
 const TKST='background:#0c131d;color:var(--txt);border:1px solid var(--line);border-radius:5px;padding:4px 6px;font-size:.78rem';
-const esc=s=>String(s||'').replace(/</g,'&lt;');
+// esc() agora é único, declarado lá em cima (seção Motores). O daqui era um
+// segundo `const esc` no MESMO escopo — SyntaxError que matava o script inteiro
+// assim que os dois passaram a coexistir. A versão que ficou usa `??` no lugar
+// de `||`, então `0` imprime "0" e não string vazia.
 function tkCell(p,c){const[k,,w,tipo]=c;const v=String(p[k]||'').replace(/"/g,'&quot;');const st=`width:${w}px;${TKST}`;
   if(tipo==='tier')return `<select data-k="${k}" style="${st}"><option value=""></option>`+TK.tiers.map(t=>`<option ${p[k]===t?'selected':''}>${t}</option>`).join('')+`</select>`;
   if(tipo==='status')return `<select data-k="${k}" style="${st}">`+TK.status.map(s=>`<option ${p[k]===s?'selected':''}>${s}</option>`).join('')+`</select>`;
