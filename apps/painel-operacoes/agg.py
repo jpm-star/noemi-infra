@@ -26,9 +26,12 @@ _MOTORES = [
     ("LiteLLM", f"{_LITELLM}/health/liveliness", 8),
     ("Motor Vídeo", os.environ.get("MOTORB_URL", "http://127.0.0.1:8010") + "/health", 8),
     ("Motor Site", os.environ.get("STUDIO_URL", "http://127.0.0.1:8020") + "/studio/health", 8),
-    # Motor Arbitragem (Exodia/motor-garimpo): experimental, sem serviço no ar hoje —
-    # aparece 'down' honesto até ganhar deploy. Override a URL quando subir.
-    ("Motor Arbitragem", os.environ.get("GARIMPO_URL", "http://127.0.0.1:8040") + "/health", 8),
+    # Motor Arbitragem: o default era :8040, com a nota "sem serviço no ar hoje, override
+    # a URL quando subir". Subiu — o container `motor-arbitragem` está de pé há 2 semanas
+    # (healthy) publicando em 127.0.0.1:8082, e :8082/health responde 200. O override
+    # nunca veio, e o painel passou 2 semanas mostrando 'down' de um serviço saudável.
+    # Corrigido no DEFAULT de propósito: depender de env que ninguém setou foi a falha.
+    ("Motor Arbitragem", os.environ.get("GARIMPO_URL", "http://127.0.0.1:8082") + "/health", 8),
     ("Noemi SDR", os.environ.get("SDR_URL", "http://127.0.0.1:8007") + "/docs", 8),
     ("Ollama", os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434") + "/api/tags", 8),
 ]

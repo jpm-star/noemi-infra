@@ -1,0 +1,14 @@
+[Unit]
+Description=Dispara o alerta de saúde a cada 2 min
+
+[Timer]
+# 2 min acompanha o ritmo do evolution-watchdog e do whatsapp-watch. O script só
+# manda Telegram nas TRANSIÇÕES (up→down e recuperação), então rodar de 2 em 2 min
+# não vira spam — o estado anterior fica em data/alerta_estado.json.
+OnBootSec=2min
+OnUnitActiveSec=2min
+AccuracySec=15s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

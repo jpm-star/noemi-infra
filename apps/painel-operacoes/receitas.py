@@ -22,9 +22,13 @@ ponytail: dados + funções puras. Sem classe, sem registry, sem framework.
 """
 from __future__ import annotations
 
+import logging
 import json
 import sqlite3
 from datetime import datetime, timezone
+
+log = logging.getLogger("painel.receitas")
+
 
 # Blocos que o motor sabe renderizar (nomes = chaves do template_real).
 BLOCOS = ("sobre", "catalogo_motion", "catalogo", "antesdepois", "preco",
@@ -141,11 +145,53 @@ def pool(segmento: str, con: sqlite3.Connection | None = None) -> list[dict]:
     return fora
 
 
-def escolher(nicho: str, semente: int = 0, con: sqlite3.Connection | None = None) -> dict:
+# Bloco -> campo do BriefingSite que o sustenta. Só entram os que o template deixa
+# VAZIO por falta de dado (`_bloco_preco`, `_bloco_catalogo` e `_bloco_antes_depois`
+# devolvem "" e o bloco some do corpo). `calculadora` e `catalogo_motion` ficam fora
+# de propósito: renderizam sempre, a partir do segmento — não dependem de dado do lead.
+EXIGE_DADO = {"preco": "ancora_preco", "catalogo": "catalogo", "antesdepois": "antes_depois"}
+
+
+def viaveis(nicho: str, dados: dict | None = None,
+            con: sqlite3.Connection | None = None) -> list[dict]:
+    """Receitas do pool que o DADO deste lead sustenta.
+
+    Medido em 2026-08-08 nos 63 sites publicados: `catalogo` e `antesdepois` nunca
+    apareceram, `preco` apareceu em 1 (1%) — porque o briefing que o painel monta
+    (`criacao.py`) não carrega `ancora_preco`, `catalogo` nem `antes_depois`. Não é
+    "às vezes falta": nesse fluxo esses blocos são impossíveis. A receita era sorteada
+    prometendo estrutura que o motor não tinha como entregar, e o bloco sumia calado.
+
+    `dados=None` = "não sei o que existe" → pool inteiro. Filtrar por ignorância seria
+    pior que não filtrar.
+    """
+    p = pool(nicho, con)
+    if dados is None:
+        return p
+    tem = {b for b, campo in EXIGE_DADO.items() if dados.get(campo)}
+
+    def perda(r) -> int:
+        return len({b for b in _norm_ordem(r.get("ordem")) if b in EXIGE_DADO} - tem)
+
+    # Menor PERDA, não "perda zero". Filtro binário seria inútil onde mais dói: medido
+    # em 2026-08-08, com o dado que o funil tem hoje, 3 dos 5 segmentos (academia, salao,
+    # advocacia) não têm UMA receita sequer que não peça preço/catálogo/antes-depois.
+    # Exigir perfeição ali devolveria o pool inteiro e a escolha voltaria a ser cega.
+    # Ranquear entrega a receita que chega mais INTEIRA à página, mesmo sem dado nenhum.
+    melhor = min(perda(r) for r in p)
+    return [r for r in p if perda(r) == melhor]  # nunca vazio: `melhor` veio do próprio pool
+
+
+def escolher(nicho: str, semente: int = 0, con: sqlite3.Connection | None = None,
+             dados: dict | None = None) -> dict:
     """Escolhe UMA receita do pool do segmento. `semente` (ex: id do lead) faz a escolha
     ser determinística e ROTATIVA — leads diferentes do mesmo nicho pegam receitas
-    diferentes, em vez de todo mundo cair na primeira."""
-    p = pool(nicho, con)
+    diferentes, em vez de todo mundo cair na primeira.
+
+    `dados` = campos do briefing já resolvidos. Com ele o sorteio corre só entre as
+    receitas VIÁVEIS, e o fallback é outra receita REAL do segmento — não o esqueleto
+    genérico, que já foi causa de mesmice antes."""
+    p = viaveis(nicho, dados, con)
     r = dict(p[semente % len(p)])
     r["ordem"] = _norm_ordem(r.get("ordem")) or ORDEM_DEFAULT
     return r
@@ -218,8 +264,55 @@ def referencias_aprovadas(segmento: str, con: sqlite3.Connection | None = None) 
         rows = c.execute("SELECT * FROM templates_referencia WHERE segmento=? AND aprovada=1 "
                          "AND tipo='estrutura' ORDER BY id DESC", (seg,))
         return [_linha(r) for r in rows]
-    except Exception:  # noqa: BLE001 — repositório indisponível não pode travar geração
+    except Exception as e:  # noqa: BLE001 — repositório indisponível não pode travar geração
+        # Degradar continua certo; degradar em SILÊNCIO é o que custou caro. Este except
+        # engolia `ModuleNotFoundError: shared_core` quando `packages/` saía do sys.path:
+        # as 91 referências aprovadas sumiam do pool, todo site caía na ordem padrão do
+        # motor, e não havia uma linha em lugar nenhum dizendo por quê. Foi exatamente o
+        # que me enganou ao diagnosticar o "esqueleto genérico" em 2026-08-09.
+        # ModuleNotFoundError é bug de deploy (path errado), não indisponibilidade — por
+        # isso sobe de nível: WARNING some no meio do log, e é o caso mais provável.
+        nivel = log.error if isinstance(e, (ModuleNotFoundError, ImportError)) else log.warning
+        nivel("biblioteca de referências indisponível (%s: %s) — segmento=%r segue só com "
+              "as receitas curadas", type(e).__name__, e, seg)
         return []
+
+
+def diagnostico_biblioteca(con: sqlite3.Connection | None = None) -> dict:
+    """Estado real da biblioteca de estrutura: o que alimenta o gerador e o que é inerte.
+
+    Uma referência só chega ao gerador se `segmento` bate com uma chave de RECEITAS —
+    `pool()` monta o pool a partir do segmento resolvido do nicho. Referência gravada em
+    balde ('servicos', 'generico') fica APROVADA e nunca é consultada por lead nenhum:
+    não contamina, e engana quem olha o total e acha que a biblioteca cresceu.
+
+    Medido em 2026-08-06: 39 das 91 aprovadas (43%) eram órfãs assim."""
+    c = _db(con)
+    linhas = list(c.execute(
+        "SELECT segmento, aprovada, COUNT(*) FROM templates_referencia GROUP BY 1,2"))
+    uteis: dict[str, int] = {}
+    orfas: dict[str, int] = {}
+    pendentes = 0
+    for seg, aprovada, n in linhas:
+        seg = (seg or "?").strip().lower()
+        if not aprovada:
+            pendentes += n
+        elif seg in RECEITAS:
+            uteis[seg] = uteis.get(seg, 0) + n
+        else:
+            orfas[seg] = orfas.get(seg, 0) + n
+    total_ap = sum(uteis.values()) + sum(orfas.values())
+    return {
+        "segmentos_do_motor": sorted(RECEITAS),
+        "aprovadas_uteis": uteis,
+        "aprovadas_orfas": orfas,
+        "pendentes": pendentes,
+        "total_aprovadas": total_ap,
+        "pct_orfas": round(100 * sum(orfas.values()) / total_ap, 1) if total_ap else 0.0,
+        # sem receita própria, a referência é inerte: ou reclassifica pro segmento certo,
+        # ou cria a receita daquele segmento. Deletar não é necessário — só some da conta.
+        "acao": "reclassificar para um segmento do motor, ou criar a receita do segmento",
+    }
 
 
 def referencia_aprovar(rid: int, aprovada: bool = True, con: sqlite3.Connection | None = None) -> dict:

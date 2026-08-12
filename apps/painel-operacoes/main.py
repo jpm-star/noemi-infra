@@ -5,6 +5,8 @@ escrita/ação: só leitura e diagnóstico. Mesmo padrão do dashboard do Motor 
 """
 from __future__ import annotations
 
+import asyncio
+import os
 import re
 import sys
 import time
@@ -35,7 +37,12 @@ def _resumo(snap: dict) -> str:
         f"Falhas agrupadas: {snap['erros']['agrupados'] or 'nenhuma'}.",
         f"Custo hoje: ${L.get('custo', {}).get('hoje', 0)}. Latência P95: {L.get('latencia', {}).get('p95', 0)}ms.",
         f"Cascata de IA (uso): {snap['fallback']}.",
-        f"VPS: CPU {snap['vps'].get('cpu_pct')}%, RAM {snap['vps'].get('ram_pct')}%, disco {snap['vps'].get('disco_pct')}%.",
+        # CPU pode vir None (1ª leitura / janela curta). "CPU None%" no prompt levaria
+        # o LLM a inventar diagnóstico em cima de um valor que não existe.
+        f"VPS: CPU {snap['vps'].get('cpu_pct') if snap['vps'].get('cpu_pct') is not None else 'ainda medindo'}"
+        f"{'%' if snap['vps'].get('cpu_pct') is not None else ''}, "
+        f"RAM {snap['vps'].get('ram_pct')}%, disco {snap['vps'].get('disco_pct')}%, "
+        f"load {snap['vps'].get('load1')} em {snap['vps'].get('cpus')} núcleos.",
     ]
     return " ".join(linhas)
 
@@ -90,9 +97,240 @@ def painel_dados() -> JSONResponse:
     return JSONResponse(agg.snapshot())
 
 
+@app.get("/api/motor-b/resumo")
+def motor_b_resumo() -> JSONResponse:
+    """Motor B (vídeo): serviço, produção, fila e validade da credencial.
+
+    Import lazy porque `motores` fala com serviço externo e com `docker exec` —
+    nada disso pode acontecer no import do painel.
+    """
+    import motores
+    return JSONResponse(motores.video())
+
+
+@app.get("/api/arbitragem/resumo")
+def arbitragem_resumo() -> JSONResponse:
+    """Arbitragem nas TRÊS camadas, sem somar (ver docstring de `motores`)."""
+    import motores
+    return JSONResponse(motores.arbitragem())
+
+
+# --- Motor B: repasse das 3 rotas de geração -------------------------------
+# O formulário mora nesta página, mas quem gera vídeo é o :8010. Repasse em vez
+# de CORS: o navegador fala só com esta origem (que já tem o basic auth do Caddy)
+# e o Motor B não precisa aprender a confiar em outro domínio. TRÊS rotas
+# nomeadas, nunca um proxy curinga — curinga aqui exporia o :8010 inteiro.
+async def _mb(metodo: str, caminho: str, timeout: float = 180, **kw) -> JSONResponse:
+    """Uma chamada ao Motor B, com o erro chegando legível do outro lado.
+
+    `r.json()` cru vira 500 sem explicação quando o Motor B responde HTML (proxy
+    no meio, 502 do Caddy, traceback do uvicorn). Aqui o corpo não-JSON vira uma
+    mensagem que a tela consegue mostrar, preservando o status original.
+    """
+    import httpx
+    import motores
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as c:
+            r = await c.request(metodo, f"{motores._MOTOR_B}{caminho}", **kw)
+    except httpx.TimeoutException:
+        return JSONResponse({"detail": "Motor B demorou demais para responder."}, status_code=504)
+    except httpx.HTTPError as e:
+        return JSONResponse({"detail": f"Motor B fora do ar ({type(e).__name__})."}, status_code=502)
+    try:
+        return JSONResponse(r.json(), status_code=r.status_code)
+    except ValueError:
+        return JSONResponse({"detail": f"Motor B respondeu {r.status_code} em formato inesperado."},
+                            status_code=r.status_code if r.status_code >= 400 else 502)
+
+
+@app.post("/api/motor-b/upload")
+async def motor_b_upload(file: UploadFile = File(...), owner: str = Form("cliente")) -> JSONResponse:
+    """Repassa uma mídia. Tipo e tamanho são checados aqui só pra não gastar banda
+    à toa; o Motor B continua sendo a autoridade e pode recusar de novo."""
+    if not (file.content_type or "").startswith(("image/", "video/")):
+        return JSONResponse({"detail": f"tipo não aceito: {file.content_type or 'desconhecido'} "
+                                       "(mande imagem ou vídeo)"}, status_code=415)
+    dados = await file.read()
+    limite = int(os.environ.get("MAX_UPLOAD_MB", "25")) * 1024 * 1024
+    if len(dados) > limite:
+        return JSONResponse({"detail": f"{file.filename} tem {len(dados)/1048576:.1f} MB e o "
+                                       f"limite é {limite//1048576} MB"}, status_code=413)
+    if not dados:
+        return JSONResponse({"detail": f"{file.filename} está vazio"}, status_code=400)
+    return await _mb("POST", "/api/upload",
+                     files={"file": (file.filename, dados, file.content_type)},
+                     data={"owner": owner})
+
+
+@app.post("/api/motor-b/jobs")
+async def motor_b_criar_job(request: Request) -> JSONResponse:
+    try:
+        corpo = await request.json()
+    except ValueError:
+        return JSONResponse({"detail": "corpo precisa ser JSON"}, status_code=400)
+    return await _mb("POST", "/api/jobs", json=corpo)
+
+
+@app.get("/api/motor-b/jobs/{job_id}")
+async def motor_b_job(job_id: str) -> JSONResponse:
+    # id vem da URL: sem esta trava, qualquer caminho colado aqui vira parte da
+    # URL montada pro :8010 (`../../algo`). Job id é hex, ponto.
+    if not re.fullmatch(r"[A-Za-z0-9._-]{1,80}", job_id):
+        return JSONResponse({"detail": "id de job inválido"}, status_code=400)
+    return await _mb("GET", f"/api/jobs/{job_id}", timeout=30)
+
+
+@app.get("/api/pedi/resumo")
+def pedi_resumo() -> JSONResponse:
+    """Loja Pé Di: tráfego + catálogo + o que impede a loja de vender."""
+    import pedi
+    return JSONResponse(pedi.resumo())
+
+
+@app.post("/api/pedi/midia")
+async def pedi_midia(slug: str = Form(...), tipo: str = Form("top"),
+                     file: UploadFile = File(...)) -> JSONResponse:
+    """Sobe foto ou vídeo de uma estampa e aponta o catálogo pra ela.
+
+    NÃO publica: subir e publicar são ações separadas de propósito, porque
+    publicar é o que o cliente vê. Sobe tudo, confere, aí publica.
+    """
+    import pedi_midia
+    dados = await file.read()
+    if not dados:
+        return JSONResponse({"detail": "arquivo vazio"}, status_code=400)
+    ct = (file.content_type or "").lower()
+    try:
+        if ct.startswith("video/") or tipo == "video":
+            caminhos = await asyncio.to_thread(pedi_midia.salvar_video, slug, dados)
+            await asyncio.to_thread(pedi_midia.apontar_video, slug, caminhos)
+        elif ct.startswith("image/"):
+            caminhos = await asyncio.to_thread(pedi_midia.salvar_foto, slug, tipo, dados)
+            await asyncio.to_thread(pedi_midia.apontar_foto, slug, tipo, caminhos)
+        else:
+            return JSONResponse({"detail": f"mande imagem ou vídeo (veio {ct or 'tipo desconhecido'})"},
+                                status_code=415)
+    except pedi_midia.ErroMidia as e:
+        return JSONResponse({"detail": str(e)}, status_code=400)
+    return JSONResponse({"ok": True, "slug": slug, "tipo": tipo, "caminhos": caminhos})
+
+
+@app.get("/api/precos")
+def precos_listar(cliente: bool = False) -> JSONResponse:
+    """Preço de tiers e upsells. `?cliente=1` esconde o que é provisório.
+
+    Fonte única (`precos.json`). Qualquer material comercial deve ler DAQUI — foi a
+    ausência disso que deixou o T3 sendo vendido com Calendar, uma entrega que o
+    produto não fazia.
+    """
+    import precos
+    d = precos.para_cliente() if cliente else precos.tudo()
+    if not cliente:
+        d["problemas"] = precos.validar()
+    return JSONResponse(d)
+
+
+@app.get("/api/precos/tabela")
+def precos_tabela(cliente: bool = False) -> Response:
+    """A tabela em markdown, pronta pra colar em proposta/apostila."""
+    import precos
+    return Response(precos.tabela_markdown(cliente=cliente), media_type="text/markdown; charset=utf-8")
+
+
+@app.get("/api/pedi/catalogo")
+def pedi_catalogo_listar() -> JSONResponse:
+    import pedi_catalogo
+    return JSONResponse({"estampas": pedi_catalogo.listar(), "publicos": list(pedi_catalogo.PUBLICOS)})
+
+
+@app.post("/api/pedi/catalogo")
+async def pedi_catalogo_salvar(request: Request) -> JSONResponse:
+    """Cria ou edita uma estampa. `slug` ausente = criar.
+
+    NÃO publica: editar e publicar são ações separadas, como no upload de mídia —
+    o operador ajusta várias coisas e decide quando o cliente vê.
+    """
+    import pedi_catalogo
+    import pedi_midia
+    try:
+        d = await request.json()
+    except ValueError:
+        return JSONResponse({"detail": "corpo precisa ser JSON"}, status_code=400)
+    try:
+        if d.get("slug"):
+            r = await asyncio.to_thread(pedi_catalogo.salvar, d["slug"], d)
+        else:
+            r = await asyncio.to_thread(pedi_catalogo.criar, d.get("nome", ""), d)
+    except pedi_midia.ErroMidia as e:
+        return JSONResponse({"detail": str(e)}, status_code=400)
+    return JSONResponse(r)
+
+
+@app.delete("/api/pedi/catalogo/{slug}")
+async def pedi_catalogo_remover(slug: str) -> JSONResponse:
+    """Manda a estampa pra lixeira (reversível) — não apaga."""
+    import pedi_catalogo
+    import pedi_midia
+    try:
+        r = await asyncio.to_thread(pedi_catalogo.remover, slug)
+    except pedi_midia.ErroMidia as e:
+        return JSONResponse({"detail": str(e)}, status_code=400)
+    return JSONResponse(r)
+
+
+@app.post("/api/pedi/publicar")
+async def pedi_publicar() -> JSONResponse:
+    """Build + porteiro + cópia pro diretório servido. Se o porteiro reprovar,
+    nada vai ao ar e a saída dele volta pra tela."""
+    import pedi_midia
+    r = await asyncio.to_thread(pedi_midia.publicar)
+    return JSONResponse(r, status_code=200 if r.get("ok") else 400)
+
+
 @app.get("/api/diagnostico")
 def diagnostico_dados() -> JSONResponse:
     return JSONResponse(_diagnostico())
+
+
+@app.get("/api/qa-visual/sites")
+def qa_visual_sites() -> JSONResponse:
+    """Slugs auditáveis — o front precisa saber o que pode pedir."""
+    import qa_visual
+    return JSONResponse({"slugs": qa_visual.slugs_publicados()})
+
+
+@app.post("/api/qa-visual/auditar")
+def qa_visual_auditar(slug: str = Form(...), com_visao: bool = Form(True)) -> JSONResponse:
+    """Roda o gate visual num site publicado.
+
+    `qa_visual` era CLI puro — zero import fora dele e dos testes. As sondas
+    anti-genérico (hierarquia quebrada, CTA morto, adjetivo sem prova) eram
+    inalcançáveis pela web, então quem não abre terminal não tinha gate nenhum.
+
+    Recebe SLUG, não URL: `auditar()` aceita qualquer endereço e abre um Chromium
+    de verdade nele. Expor a URL seria SSRF — o painel viraria um proxy pra rede
+    interna. O slug é validado contra os publicados antes de virar URL.
+
+    Demora (Chromium + networkidle + 2,5s + LLM da visão). É `def` e não `async def`
+    de propósito: o FastAPI joga numa thread e o event loop segue livre.
+    """
+    import qa_visual
+    if slug not in qa_visual.slugs_publicados():
+        return JSONResponse({"erro": f"slug não publicado: {slug}"}, status_code=404)
+    return JSONResponse(qa_visual.auditar(f"{qa_visual.BASE_URL}/{slug}/", com_visao=com_visao))
+
+
+@app.get("/api/qa-copy/bloqueios")
+def qa_copy_bloqueios(limite: int = 20) -> JSONResponse:
+    """O que o QA de copy barrou, e por quê.
+
+    `qa_copy.bloqueios()` existia com ZERO callers fora do self-check do próprio
+    arquivo. O portão é fail-closed (2 reprovas não publicam), então o operador via a
+    geração falhar sem nenhuma forma de descobrir o motivo pela web — só por terminal.
+    Só leitura. Import lazy: `qa_copy` toca SQLite na importação.
+    """
+    import qa_copy
+    return JSONResponse({"bloqueios": qa_copy.bloqueios(limite=max(1, min(200, limite)))})
 
 
 # Fila de prospecção: demos de site gerados p/ prospects (status manual do JP).
@@ -677,8 +915,10 @@ async def criacao_gerar(nome: str = Form(...), nicho: str = Form(...), whatsapp:
                         estilo: str = Form(""), autofill: str = Form(""),
                         lead_id: int = Form(0), tier: str = Form(""),
                         receita_nome: str = Form(""), cidade: str = Form(""),
-                        email: str = Form("")) -> JSONResponse:
+                        email: str = Form(""),
+                        variacao: int = Form(0)) -> JSONResponse:
     import asyncio
+    import functools
 
     import criacao
     # PROMPT 2: foto/vídeo/copy opcionais (multipart). Sem eles = geração por briefing (fallback).
@@ -693,9 +933,18 @@ async def criacao_gerar(nome: str = Form(...), nicho: str = Form(...), whatsapp:
         af = __import__("json").loads(autofill) if autofill else {}
     except ValueError:
         af = {}
-    res = await asyncio.to_thread(criacao.gerar, nome, nicho, whatsapp, diferenciais,
-                                  publico, cor, 0, f, v, copy_livre, fs, estilo, af, lead_id, tier,
-                                  receita_nome, cidade, email)
+    # POR NOME, NUNCA POSICIONAL. Esta chamada já quebrou a geração em produção com
+    # "gerar() takes 18 positional arguments but 19 were given" — `variacao` entrou no
+    # endpoint e no front, e nunca na assinatura. O TypeError foi o desfecho BOM: com o
+    # parâmetro no meio da lista em vez do fim, `cidade` teria virado `receita_nome`
+    # em silêncio e o site sairia publicado com os campos trocados.
+    res = await asyncio.to_thread(
+        functools.partial(
+            criacao.gerar, nome=nome, nicho=nicho, whatsapp=whatsapp,
+            diferenciais=diferenciais, publico=publico, cor=cor, preset=0,
+            foto=f, video=v, copy_livre=copy_livre, fotos=fs, estilo=estilo,
+            autofill=af, lead_id=lead_id, tier=tier, receita_nome=receita_nome,
+            cidade=cidade, email=email, variacao=variacao))
     return JSONResponse(res, status_code=200 if res.get("ok") else 422)
 
 
@@ -1056,5 +1305,15 @@ def radar_gratis_pagina() -> str:
 @app.get("/obs", response_class=HTMLResponse)
 @app.get("/painel", response_class=HTMLResponse)
 @app.get("/", response_class=HTMLResponse)
-def painel_pagina() -> str:
-    return (_AQUI / "static" / "index.html").read_text(encoding="utf-8")
+def painel_pagina() -> HTMLResponse:
+    """A tela única.
+
+    `no-cache` não é paranoia: o HTML carrega TODO o JS embutido, então uma cópia
+    velha no navegador é um painel velho inteiro — sem asset com hash pra denunciar
+    a diferença. Sem este header a resposta sai sem política nenhuma e o navegador
+    cacheia por heurística própria; foi assim que um deploy anterior "não apareceu"
+    até dar refresh forçado. `no-cache` ainda revalida com ETag, então o custo é um
+    304 vazio, não o HTML de novo a cada carga.
+    """
+    html = (_AQUI / "static" / "index.html").read_text(encoding="utf-8")
+    return HTMLResponse(html, headers={"Cache-Control": "no-cache, must-revalidate"})

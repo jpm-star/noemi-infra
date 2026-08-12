@@ -52,7 +52,45 @@ def _servicos_fora() -> list[str]:
             fora.append(f"disco cheio ({v['disco_pct']}%)")
     except Exception:  # noqa: BLE001
         pass
+    fora += _containers_no_teto()
     return fora
+
+
+def _containers_no_teto(limite_pct: float = 85.0) -> list[str]:
+    """Container perto do PRÓPRIO teto de memória — o que `agg.vps()` não enxerga.
+
+    A RAM da máquina e o limite do container são grandezas diferentes, e é a segunda que
+    mata: em 2026-08-08 o `noemi-litellm` estava em 934 MiB de 1 GiB (91%) com a VPS
+    inteira folgada. Seria OOM-killed sem nenhum alerta disparar — e é ponto único de
+    falha: toda geração de site e toda resposta da Noemi passam por ele.
+
+    Só container COM limite dá sinal. Sem `mem_limit` o docker reporta a % contra a RAM
+    da máquina, que o check acima já cobre — alertar de novo seria ruído duplicado.
+    Best-effort: sem docker, devolve [].
+    """
+    import subprocess
+    try:
+        r = subprocess.run(["docker", "stats", "--no-stream", "--format",
+                            "{{.Name}}\t{{.MemPerc}}\t{{.MemUsage}}"],
+                           capture_output=True, text=True, timeout=20)
+    except Exception:  # noqa: BLE001 — alerta nunca morre por falta de docker
+        return []
+    linhas = []
+    for linha in r.stdout.splitlines():
+        p = linha.split("\t")
+        if len(p) >= 3:
+            try:
+                linhas.append((p[0], float(p[1].strip().rstrip("%")), p[2].strip()))
+            except ValueError:
+                pass
+    # Container SEM limite reporta o teto da máquina. Não dá pra filtrar pela unidade
+    # (o litellm tem teto de "1GiB", legítimo) — o que identifica "sem limite" é o teto
+    # ser o mesmo que quase todo mundo reporta, que é a RAM do host.
+    tetos = [u.split("/")[-1].strip() for _, _, u in linhas]
+    do_host = max(set(tetos), key=tetos.count) if tetos else ""
+    return [f"{nome} memória {v:.0f}% ({uso})"
+            for nome, v, uso in linhas
+            if v >= limite_pct and uso.split("/")[-1].strip() != do_host]
 
 
 def _evolution_estado() -> str | None:

@@ -1,0 +1,11 @@
+[Unit]
+# O script existia pronto e nunca foi agendado — a linha de cron estava na docstring dele.
+Description=Noemi — alerta de saúde out-of-band (Telegram), só nas transições
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/noemi-infra
+EnvironmentFile=/root/noemi-infra/infra/.env
+ExecStart=/root/noemi-infra/.venv/bin/python deploy/alerta_saude.py
+# Sem token configurado o script é no-op e sai 0; falha aqui é falha de verdade.

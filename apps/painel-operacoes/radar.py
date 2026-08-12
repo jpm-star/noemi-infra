@@ -264,6 +264,26 @@ def _contexto_anterior(origem: str, limite: int = 6) -> list[dict]:
     return list(vistos.values())[:limite]
 
 
+def _ate_a_frase(txt: str, limite: int) -> str:
+    """Corta no fim de uma FRASE, nunca no meio de uma palavra.
+
+    Cortar por caractere produzia resumo terminando em "...para obter " e "...e fechar" —
+    e o que sobrava fora era justamente o mecanismo, a parte que dá valor ao Radar.
+    Se não houver pontuação antes do limite, recua até o último espaço e marca com "…"
+    pra deixar EXPLÍCITO que foi cortado — resumo truncado sem marca vira mentira curta.
+    """
+    txt = (txt or "").strip()
+    if len(txt) <= limite:
+        return txt
+    corte = txt[:limite]
+    fim = max(corte.rfind(". "), corte.rfind("! "), corte.rfind("? "),
+              corte.rfind(".\n"), corte.rfind("\n"))
+    if fim > limite * 0.5:            # frase inteira só se sobrar resumo de verdade
+        return corte[:fim + 1].strip()
+    espaco = corte.rfind(" ")
+    return (corte[:espaco] if espaco > 0 else corte).rstrip(" ,;:") + "…"
+
+
 # PASS 1 — raciocínio profundo (prosa, sem formato). Eleva a densidade antes de estruturar.
 _PROMPT_ANALISE = (
     "Você é um Principal Analyst / especialista de domínio dissecando um vídeo de marketing/vendas/produto "
@@ -294,7 +314,18 @@ _PROMPT_BASE = (
     '"objecoes_tratadas" (lista de objeções que o vídeo antecipa/derruba), '
     '"promessa_vs_entrega" (objeto {"promessa":"o que promete","entrega":"o que mostra",'
     '"gap":"lacuna se houver"}), '
-    '"score_replicabilidade" (inteiro 0-10 de quão fácil replicar no negócio do JP), '
+    # RUBRICA ANCORADA. Antes era só "inteiro 0-10 de quão fácil replicar", e sem âncora o
+    # modelo foge dos extremos: medido em 448 análises, 45% receberam 8 e 63% caíram em 7-8.
+    # Escala colapsada em duas notas não prioriza nada — o Radar deixa de responder "o que
+    # eu vejo primeiro?", que é a única pergunta que ele existe pra responder.
+    '"score_replicabilidade" (inteiro 0-10, USE A ESCALA INTEIRA e seja severo — '
+    '9-10 = o JP replica ESTA SEMANA com o que já tem (Noemi/Motor Site/Motor B/Garimpo), '
+    'sem ferramenta nova, sem verba, sem audiência; '
+    '7-8 = replicável em semanas, exige montar algo (página, fluxo, criativo) mas nada novo comprar; '
+    '5-6 = exige recurso que o JP NÃO tem hoje (verba de tráfego, audiência, equipe, ferramenta paga); '
+    '3-4 = depende do contexto específico do criador (nicho, fama, base) e não transfere; '
+    '0-2 = não aplicável ao negócio do JP, ou é conteúdo de entretenimento sem mecanismo. '
+    'Se você hesitar entre duas notas, escolha a MENOR. 8 não é a nota padrão), '
     '"hooks" (lista de frases/ângulos de abertura reutilizáveis, verbatim ou adaptados), '
     '"ctas" (lista de chamadas pra ação reutilizáveis), '
     f'"aplicar_em" (subconjunto EXATO de {sorted(MOTORES)} — arbitragem=garimpo/revenda, '
@@ -380,8 +411,9 @@ def _insight(transcricao: str, contexto: list[dict], instrucao: str = "") -> dic
     bruto = _extrair_json(txt) if txt else None
     if not bruto:  # proxy fora / saída ilegível → resumo extrativo honesto
         frase = re.split(r"(?<=[.!?])\s+", transcricao.strip())[:2]
-        resumo = (frase[0] if frase else "")[:200]
-        return {**_INSIGHT_VAZIO, "insight": " ".join(frase)[:400] or "(sem insight — LLM indisponível)",
+        resumo = _ate_a_frase(frase[0] if frase else "", 420)
+        return {**_INSIGHT_VAZIO,
+                "insight": _ate_a_frase(" ".join(frase), 600) or "(sem insight — LLM indisponível)",
                 "resumo": resumo, "fonte": "extrativo"}
 
     def _lista(v, n=8, cap=200):
@@ -413,7 +445,11 @@ def _insight(transcricao: str, contexto: list[dict], instrucao: str = "") -> dic
               for x in (bruto.get("estrutura_narrativa") or []) if isinstance(x, dict)][:8]
     pve_in = bruto.get("promessa_vs_entrega") if isinstance(bruto.get("promessa_vs_entrega"), dict) else {}
     pve = {k: str(pve_in.get(k, "")).strip()[:200] for k in ("promessa", "entrega", "gap")}
-    resumo = str(bruto.get("resumo", "")).strip()[:200]
+    # Corte por FRASE, não por caractere. O `[:200]` decepava a oração do MECANISMO — a
+    # parte cara. Medido em 2026-08-09 nas 448 análises: 87 tinham EXATAMENTE 200 chars
+    # (cortadas no limite) e 415 de 448 vinham com ≤205; uma terminava em "...para obter "
+    # — com espaço, no meio da frase. Aumentar o teto sozinho só MOVE o lugar do corte.
+    resumo = _ate_a_frase(str(bruto.get("resumo", "")).strip(), 420)
     _ass = bruto.get("assinatura_tema", "")  # o LLM às vezes devolve LISTA — junta em vez de str(list)
     if isinstance(_ass, list):
         _ass = ", ".join(str(x).strip() for x in _ass if str(x).strip())

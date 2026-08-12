@@ -23,9 +23,17 @@ from pathlib import Path
 _PACOTES = str(Path(__file__).resolve().parents[2] / "packages")  # shared_core
 if _PACOTES not in sys.path:
     sys.path.insert(0, _PACOTES)
+# receitas/diversificador vivem no painel. Sem este path o Studio gerava TODO site na
+# ordem padrão do motor — o "esqueleto genérico" — porque nunca escolhia estrutura.
+_PAINEL = str(Path(__file__).resolve().parents[1] / "painel-operacoes")
+if _PAINEL not in sys.path:
+    sys.path.insert(0, _PAINEL)
 _MOTOR_SITE = os.environ.get("MOTOR_SITE_DIR", "/root/motor-site")
 if _MOTOR_SITE not in sys.path:
     sys.path.insert(0, _MOTOR_SITE)
+
+import hashlib
+import logging
 
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -191,6 +199,38 @@ def login_form(request: Request):
     return HTMLResponse(_tela_login())
 
 
+log = logging.getLogger("motor_isca.builder")
+
+
+def _estrutura(nome: str, nicho: str, cidade: str = "") -> dict:
+    """Escolhe a estrutura do site — o passo que este arquivo simplesmente não dava.
+
+    O Studio montava o briefing com 6 campos e nenhum era `receita_ordem`; no template
+    `ordem = brief.receita_ordem or _DEFAULT`, então TODO site saía na ordem padrão do
+    motor. É esse o "esqueleto genérico": não era escolha errada, era escolha nenhuma.
+    O painel (`criacao.py`) já fazia certo — medido em 40 leads reais, 27 estruturas
+    distintas. Aqui é a mesma mecânica: pool do segmento + rotação por semente estável +
+    anti-mesmice contra o que já foi publicado na mesma cidade.
+
+    Fallback pro genérico SÓ quando a escolha falha de verdade, e sempre com o motivo no
+    log. Fallback silencioso é o que escondeu este bug por todo esse tempo.
+    """
+    try:
+        import receitas as _rec
+        import diversificador
+        sem = int(hashlib.md5((nome or "").encode()).hexdigest()[:8], 16) % 997
+        r = _rec.escolher(nicho, semente=sem)
+        r = diversificador.diversificar(nicho, cidade, r, semente=sem)
+        log.info("estrutura escolhida: nicho=%r origem=%s nome=%s ordem=%s",
+                 nicho, r.get("origem"), r.get("nome"), r.get("ordem"))
+        return {"receita_ordem": r.get("ordem") or [], "receita_hero": r.get("hero", "")}
+    except Exception as e:  # noqa: BLE001
+        # NÃO engolir: o genérico agora diz por que apareceu.
+        log.warning("estrutura indisponivel (%s: %s) — caindo na ordem padrao do motor "
+                    "para nicho=%r", type(e).__name__, e, nicho)
+        return {}
+
+
 @app.post("/studio/login")
 def login(usuario: str = Form(...), senha: str = Form(...)):
     if not auth.verificar_senha(usuario.strip(), senha):
@@ -237,10 +277,14 @@ def gerar(request: Request, nome: str = Form(...), nicho: str = Form(...), whats
         "nome_empresa": nome.strip(), "nicho": nicho.strip(), "whatsapp": whatsapp.strip(),
         "diferenciais": [d.strip() for d in diferenciais.splitlines() if d.strip()],
         "publico": publico.strip(), "cor_primaria": cor_final,
+        **_estrutura(nome.strip(), nicho.strip()),
     }
     try:
         r = montar_site(briefing)
     except Exception:
+        # O usuário vê recado simples; o operador precisa do stack, senão "não deu pra
+        # gerar" é tudo que sobra pra diagnosticar uma geração que falhou em produção.
+        log.exception("montar_site falhou (nome=%r nicho=%r)", nome, nicho)
         bloco = "<div class='res err'>Não deu pra gerar o site agora. Confira os campos e tente de novo.</div>"
         return HTMLResponse(_tela_principal(bloco))
     url = r.deploy.url
@@ -354,15 +398,17 @@ def _aplicar_og(r, nicho: str, slug: str) -> None:
                    os.environ.get("SITE_OUT_DIR", "/var/www/sites"),
                    os.environ.get("SITE_BASE_URL", "https://p.jpos.com.br"))
     except Exception:
-        pass
+        log.warning("passo best-effort falhou", exc_info=True)
 
 
 def _combo_gerar(nome: str, servico: str, whatsapp: str) -> HTMLResponse:
     briefing = {"nome_empresa": nome, "nicho": servico, "whatsapp": whatsapp,
-                "diferenciais": [], "publico": "", "cor_primaria": None}
+                "diferenciais": [], "publico": "", "cor_primaria": None,
+                **_estrutura(nome, servico)}
     try:
         r = montar_site(briefing)
-    except Exception as e:  # mostra recado simples, sem stack técnico
+    except Exception as e:  # usuário vê recado simples; o log guarda o stack
+        log.exception("combo: montar_site falhou (nome=%r servico=%r)", nome, servico)
         corpo = (f"{_COMBO_CSS}<div class='pronto'><div class='ok'>😕</div>"
                  f"<h1>Deu um probleminha</h1><p>Tenta de novo em instantes.</p>"
                  f"<a class='link' href='/studio/combo'>Recomeçar</a></div>")

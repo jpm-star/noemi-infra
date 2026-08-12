@@ -294,15 +294,20 @@ def registrar_demo(prospect_id: int, url: str) -> dict:
     return {"ok": cur.rowcount > 0, "prospect_id": prospect_id, "url": url.strip()}
 
 
-def _semente(nome: str, lead_id: int = 0) -> int:
+def _semente(nome: str, lead_id: int = 0, variacao: int = 0) -> int:
     """Semente ESTÁVEL da escolha automática (estrutura + acento de morfismo).
 
     hash() do Python é randomizado por processo — usar ele faria a estrutura mudar a
     cada regeração do MESMO site (péssimo pra iterar numa demo). md5 do nome é estável
     entre processos, então o preview do Studio mostra o que a geração vai fazer de
     verdade. É por isso que isto é uma função e não duas linhas repetidas: preview e
-    geração TÊM que usar a mesma conta, senão o preview mente."""
-    return lead_id or (int(hashlib.md5((nome or "").encode()).hexdigest()[:8], 16) % 997)
+    geração TÊM que usar a mesma conta, senão o preview mente.
+
+    `variacao` é o "Gerar outro": anda N casas na semente. Fica FORA do md5 de
+    propósito — somar depois preserva a estabilidade e deixa a distância previsível,
+    então voltar pra variacao=0 traz de volta exatamente o site que o operador viu."""
+    base = lead_id or (int(hashlib.md5((nome or "").encode()).hexdigest()[:8], 16) % 997)
+    return base + max(0, int(variacao or 0))
 
 
 def modelos(nicho: str = "", tier: str = "", nome: str = "", lead_id: int = 0) -> dict:
@@ -339,7 +344,8 @@ def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | s
           foto: tuple | None = None, video: tuple | None = None, copy_livre: str = "",
           fotos: list[tuple] | None = None, estilo: str = "",
           autofill: dict | None = None, lead_id: int = 0, tier: str = "",
-          receita_nome: str = "", cidade: str = "", email: str = "") -> dict:
+          receita_nome: str = "", cidade: str = "", email: str = "",
+          variacao: int = 0) -> dict:
     """Dispara o motor REAL com o briefing. `foto`/`video` = (bytes, nome_arquivo) opcionais
     (PROMPT 2): salvos em <slug>/{img,vid} e embutidos no hero via contrato estendido do motor.
     `fotos` = lista (bytes, nome) do acervo do cliente (C3): passam por OCR (contexto pra copy)
@@ -371,7 +377,7 @@ def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | s
     import receitas as _rec
     # semente ESTÁVEL: hash() do Python é randomizado por processo — usar ele faria a
     # estrutura mudar a cada regeração do MESMO site (péssimo pra iterar numa demo).
-    _sem = _semente(nome, lead_id)
+    _sem = _semente(nome, lead_id, variacao)
     # STUDIO #2: o JP pode ESCOLHER a estrutura na galeria; vazio segue automático.
     # Nome que não existe no pool cai no automático em vez de gerar site sem ordem.
     receita = next((r for r in _rec.pool(nicho) if r["nome"] == receita_nome.strip()),
@@ -386,6 +392,10 @@ def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | s
     receita = diversificador.diversificar(nicho, cidade, receita, semente=_sem)
     briefing = {"nome_empresa": nome, "nicho": nicho.strip(), "whatsapp": (whatsapp or "").strip(),
                 "diferenciais": diferenciais, "publico": (publico or "").strip(),
+                # TIER: é o que liga as páginas irmãs no motor. Sem isto, T2 vendido
+                # saía publicado como página única e ninguém via — o painel é o único
+                # lugar que sabe o que o cliente PAGOU.
+                "tier": (tier or "").strip().upper(),
                 "cor_primaria": (cor or "").strip() or None,
                 "cidade": (cidade or "").strip(), "email": (email or "").strip(),
                 # ESTRUTURA: ordem das seções + tipo de hero (vazio = default do motor)
@@ -425,6 +435,9 @@ def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | s
     # publicar), com o portão no meio. `analisar` é local (sem LLM): a copy segue custando
     # 1 chamada Groq por tentativa, + 1 da revisão.
     # ponytail: se o motor ganhar um 4º estágio, este trecho precisa acompanhar.
+    # E GANHOU: o T2 (páginas irmãs) entrou no `montar_site` e este trecho ficou pra
+    # trás — o painel vendia multi-página e publicava uma só, calado. O guard que
+    # trava a próxima divergência está em tests/test_contrato_endpoint.py.
     import qa_copy
     _orq = orquestrador_ativo()
     copy_ok, _vered = qa_copy.portao(
@@ -433,6 +446,12 @@ def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | s
         return {"ok": False, "qa": _vered.dict(),
                 "erro": "QA de copy bloqueou (2 tentativas): "
                         + ("; ".join(_vered.problemas) or _vered.severidade)}
+    # T2: as páginas irmãs entram no brief ANTES de virar HTML. Mesma função que o
+    # `montar_site` usa — o painel não pode ter a sua própria versão da regra.
+    from app.pipeline import paginas_t2
+    copy_ok.paginas, _t2_erros = paginas_t2(briefing)
+    if _t2_erros:
+        log.warning("T2 de %r degradou pra página única: %s", nome, "; ".join(_t2_erros[:3]))
     try:
         url = deploy_ativo().publicar(gerador_ativo().gerar(copy_ok, _slug(nome))).url
     except Exception as e:  # noqa: BLE001 — falha de geração vira erro legível, não site vazio
@@ -506,8 +525,32 @@ def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | s
         "copy_livre": bool((copy_livre or "").strip()),
         "dono": dono, "qa_copy": _vered.dict(),
     })
+    # SITEMAP a partir do DISCO. O motor só emite sitemap.xml quando SITE_URL está no
+    # ambiente, e o painel não define — então o robots.txt saía apontando pra um
+    # /sitemap.xml que dava 404, num tier vendido como "SEO técnico". Aqui a URL final
+    # já é conhecida e os arquivos já existem: a verdade do disco vale mais que a
+    # promessa do motor, e não há env global pra duas gerações simultâneas disputarem.
+    try:
+        from app.seo.sitemap import sitemap_xml
+        _urls = [url] + sorted(url + d.name + "/" for d in site_dir.iterdir()
+                               if d.is_dir() and (d / "index.html").is_file())
+        if len(_urls) > 1:
+            (site_dir / "sitemap.xml").write_text(
+                sitemap_xml(_urls, lastmod=_t.strftime("%Y-%m-%d")), encoding="utf-8")
+            (site_dir / "robots.txt").write_text(
+                f"User-agent: *\nAllow: /\nSitemap: {url}sitemap.xml\n", encoding="utf-8")
+    except Exception:  # noqa: BLE001 — sitemap é SEO, não pode derrubar site já publicado
+        log.warning("sitemap de %r não saiu", slug, exc_info=True)
+
+    # PÁGINAS PUBLICADAS, contadas em disco — não o que o motor prometeu devolver.
+    # Se o tier vendeu multi-página e saiu uma só, isto é o que denuncia.
+    _pgs = len(list(site_dir.glob("*.html"))) + len(list(site_dir.glob("*/index.html")))
+    _aviso = ("tier {} vendeu multi-página e o site saiu com 1 página — "
+              "confira o log do motor antes de mostrar ao cliente").format(tier.upper()) \
+        if (tier or "").strip().upper() in ("T2", "T3", "T4") and _pgs <= 1 else ""
     return {"ok": True, "url": url, "slug": slug, "fotos": len(rels), "estilo": _est_desc,
             "estrutura": receita.get("nome"), "estrutura_origem": receita.get("origem"),
+            "paginas": _pgs, "tier": (tier or "").strip().upper(), "aviso": _aviso,
             "ficha": ficha, "segundos": round(_t.time() - t_inicio, 1),
             "ocr": (ocr_txt[:180] + "…") if len(ocr_txt) > 180 else ocr_txt}
 
