@@ -172,6 +172,12 @@ img{animation:thumb-zoom linear both;animation-timeline:view()}
 # CONCEITOS estruturais (camada 2): catálogo por segmento. NÃO são aplicáveis via
 # overlay — cada um é template/esqueleto novo. Aqui vive a fila priorizada de build.
 CONCEITOS: dict[str, list[str]] = {
+    "servicos": [
+        "foto do trabalho PRONTO como hero, não da equipe posando",
+        "raio de atendimento em km, não lista de cidades",
+        "prazo de resposta explícito ('respondo em até 2h') no lugar de 'fale conosco'",
+        "orçamento em 2 campos: o que precisa e o telefone",
+    ],
     "academia": [
         "contador de resultados da comunidade (kg perdidos, PRs)",
         "aula experimental grátis como CTA único, sem menu distraindo",
@@ -299,6 +305,38 @@ def compativel(principal: str, acento: str) -> tuple[bool, str]:
 # São ALTERNATIVAS DEFENSÁVEIS do segmento, nunca os 9 em sorteio: as duas comunicam
 # a mesma coisa por caminhos diferentes.
 PERFIS: dict[str, dict] = {
+    # 49 dos 128 nichos caem aqui — a família mais populosa do vocabulário, e a última
+    # a ganhar opinião. São coisas que parecem não ter nada a ver entre si (marmoraria,
+    # desentupidora, fotógrafo, energia solar, mudança, escola de idiomas), mas vendem
+    # a MESMA transação: ninguém "compra" e ninguém "agenda" — todo mundo PEDE ORÇAMENTO.
+    #
+    # E a decisão do cliente final é sempre a mesma dupla: essa pessoa APARECE, e o
+    # trabalho fica LIMPO? É por isso que o perfil não gira em torno de preço nem de
+    # catálogo: gira em torno de prova de trabalho feito e de facilidade de chamar.
+    "servicos": {
+        "principais": [
+            ("neumorphism",
+             "em serviço de acabamento o produto É o acabamento: superfície com relevo "
+             "diz 'trabalho bem feito' antes de qualquer texto ser lido"),
+            ("minimal",
+             "a outra metade da família chega com urgência (entupiu, quebrou, travou): "
+             "página limpa faz o telefone e o orçamento acharem o olho primeiro"),
+        ],
+        "acentos": [
+            {"secao": "cta-final", "estilo": "brutalism",
+             "porque": "orçamento é o único evento da página — e em serviço de urgência "
+                       "quem responde primeiro leva, então o pedido tem que gritar"},
+            {"secao": "jpos-galeria", "estilo": "cinetico",
+             "porque": "o portfólio É a prova; revelar peça por peça no scroll faz o olho "
+                       "parar em cada uma em vez de varrer a grade inteira"},
+            {"secao": "depo", "estilo": "skeuomorphism",
+             "porque": "quem vai deixar um estranho entrar em casa lê depoimento como "
+                       "referência de vizinho, não como review de aplicativo"},
+            {"secao": "lead", "estilo": "brutalism",
+             "porque": "o formulário de orçamento é o fim da jornada inteira: borda dura "
+                       "separa ele do conteúdo e diz que ali a conversa começa"},
+        ],
+    },
     "academia": {
         "principais": [
             ("spatial", "academia vende transformação — profundidade dá a sensação de progresso"),

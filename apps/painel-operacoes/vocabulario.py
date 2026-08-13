@@ -91,7 +91,6 @@ NICHOS: dict[str, tuple[str, ...]] = {
         "paisagismo",
         "corretor de imóveis",
         "empresa de mudanças",
-        "energia solar",
         "segurança eletrônica",
     ),
     "restaurante": (
@@ -129,6 +128,7 @@ NICHOS: dict[str, tuple[str, ...]] = {
         "implementos agricolas",
         "maquinario agricola",
         "usina fotovoltaica",
+        "energia solar",
         "marmoraria",
         "vidracaria",
         "gesso e drywall",
