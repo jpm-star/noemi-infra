@@ -110,12 +110,31 @@ _ALIAS = {
 
 
 def segmento_de(nicho: str) -> str:
-    """Nicho livre ('clínica odontológica em Bauru') → chave de segmento. '' se nenhum."""
+    """Nicho livre ('clínica odontológica em Bauru') → chave de segmento. '' se nenhum.
+
+    Duas passadas, nesta ordem:
+      1. `_ALIAS` — os termos curtos e históricos deste módulo, que já vinham
+         casando (e que `referencias_scrap` precisa continuar resolvendo igual).
+      2. `vocabulario.NICHOS` — os 91 nomes de nicho do JP, casados do termo MAIS
+         LONGO pro mais curto. A ordem importa: "clínica veterinária" tem que
+         resolver como clinica antes de "veterin" puxar pra petshop.
+
+    Por que o vocabulário vem DEPOIS e não substitui: `_ALIAS` tem entradas que o
+    scraper produz e que não são nome de nicho ("pet ", "food"). Trocar uma lista
+    pela outra quebraria o casamento que já funciona; somar não quebra nada.
+
+    Continua devolvendo "" pro que ninguém mapeou — é assim que `catalogo_vivo`
+    conta o nicho novo em vez de forçá-lo num segmento que não serve.
+    """
     n = (nicho or "").strip().lower()
     for chave, termos in _ALIAS.items():
         if any(t in n for t in termos):
             return chave
-    return ""
+    try:
+        import vocabulario
+        return vocabulario.segmento_do_nicho(nicho)
+    except Exception:  # noqa: BLE001 — vocabulário é enriquecimento, não caminho crítico
+        return ""
 
 
 def _norm_ordem(ordem) -> list[str]:

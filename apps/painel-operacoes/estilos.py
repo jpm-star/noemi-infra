@@ -423,8 +423,20 @@ def escolher(segmento: str, tier: str = "", semente: int = 0,
     proibição: se sobrar nada, a decisão volta a valer e o motivo fica registrado.
     """
     seg = _ascii(segmento)
-    perfil = next((p for chave, p in PERFIS.items() if chave in seg), None)
-    perfil = perfil or {"principais": [], "acentos": []}
+    chave_perfil = next((k for k in PERFIS if k in seg), "")
+    if not chave_perfil:
+        # SEGUNDA PASSADA pelo vocabulário: "podólogo" não contém "clinica", mas é
+        # clínica. Sem isto o painel exibia "perfil: clinica" (que lê o vocabulário)
+        # ao lado de uma composição VAZIA (que não lia) — a tela afirmando um perfil
+        # que o motor não estava usando. Uma UI que mente é pior que uma UI que
+        # admite não saber.
+        try:
+            import vocabulario
+            fam = vocabulario.segmento_do_nicho(segmento)
+            chave_perfil = fam if fam in PERFIS else ""
+        except Exception:  # noqa: BLE001 — vocabulário enriquece, não é crítico
+            chave_perfil = ""
+    perfil = PERFIS.get(chave_perfil) or {"principais": [], "acentos": []}
     t = (tier or "").strip().upper()
 
     opcoes = perfil["principais"]

@@ -79,7 +79,15 @@ def conhecido(segmento: str) -> str:
     try:
         import estilos
         seg = normalizar(segmento)
-        return next((k for k in estilos.PERFIS if k in seg), "")
+        direto = next((k for k in estilos.PERFIS if k in seg), "")
+        if direto:
+            return direto
+        # o vocabulário resolve "podólogo" -> clinica. Sem esta segunda passada, um
+        # nicho JÁ mapeado seria contado como candidato pra sempre e o operador veria
+        # aviso de "sem perfil" numa tela que o motor sabe vestir.
+        import vocabulario
+        fam = vocabulario.segmento_do_nicho(segmento)
+        return fam if fam in estilos.PERFIS else ""
     except Exception:  # noqa: BLE001
         return ""
 
@@ -253,8 +261,11 @@ if __name__ == "__main__":  # self-check em banco TEMPORÁRIO
     r2 = registrar_nicho("Loja de Bicicletas")          # caixa/acento diferente
     assert r2["ocorrencias"] == 2 and r2["pronto"], r2  # mesma chave, não duplicou
     assert len(candidatos_nicho()) == 1
-    # digitado uma vez só NÃO entra na fila
-    registrar_nicho("floricultura")
+    # digitado uma vez só NÃO entra na fila. Precisa ser um nicho REALMENTE fora do
+    # mapa: "floricultura" servia até o vocabulário do JP entrar e passar a resolvê-lo
+    # como ecommerce — o fixture envelheceu porque o mecanismo funcionou.
+    assert conhecido("luthier") == "", "escolha outro nicho: este ganhou família"
+    registrar_nicho("luthier")
     assert len(candidatos_nicho()) == 1, candidatos_nicho()
     assert len(candidatos_nicho(incluir_todos=True)) == 2
     # nome de estrutura legível
