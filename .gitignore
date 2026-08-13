@@ -18,3 +18,16 @@ cookies.txt
 # de 2026-08-05 a 2026-08-11 e a chave foi rotacionada por causa disso. Sem barra
 # final, pra pegar também um symlink com esse nome.
 infra/watchdog.env
+
+# Chave PRIVADA do service account do Google (Calendar). Estava untracked e NÃO
+# ignorada: um `git add -A` de qualquer sessão a commitaria, e o push deste repo já
+# está bloqueado por um segredo que vazou pro histórico. Ignorar é mais barato que
+# rotacionar.
+infra/jpos-sa.json
+infra/*-sa.json
+
+# Os .bak de cookie escapavam do padrão acima (infra/cookies.txt não casa com
+# cookies.txt.bak.20260728). O arquivo que bloqueia o push hoje é exatamente um
+# desses.
+infra/cookies*.bak*
+infra/cookies.full.bak
