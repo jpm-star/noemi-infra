@@ -61,9 +61,44 @@ h1{font-size:1.45rem;letter-spacing:-.02em}
   padding:7px 11px;font-size:.78rem;color:#7f1d1d;margin-top:9px}
 .vazio{color:var(--mut);padding:30px 0;text-align:center}
 
+/* ── registrar venda ───────────────────────────────────────────────────
+   Fica no TOPO e sempre aberto: se estiver escondido atrás de um clique, o
+   JP fecha a venda, guarda o celular e o dado some — que é exatamente o
+   problema de hoje (1.532 prospects, 0 com valor). Alvos grandes porque
+   isto é usado em pé, na calçada, com uma mão. */
+.venda{background:var(--glass);backdrop-filter:blur(16px) saturate(150%);
+  border:1px solid var(--esm);border-radius:16px;padding:14px 16px;margin-bottom:16px;
+  box-shadow:0 6px 22px rgba(5,150,105,.18)}
+.venda h2{font-size:1rem;letter-spacing:-.01em;margin-bottom:2px}
+.venda .hint{font-size:.76rem;color:var(--mut);margin-bottom:10px}
+.venda input,.venda select{font:inherit;font-size:.95rem;padding:10px 12px;border-radius:11px;
+  border:1px solid var(--gb);background:rgba(255,255,255,.85);color:var(--ink);width:100%;
+  min-height:44px}
+.venda input:focus,.venda select:focus{outline:2px solid var(--esm);outline-offset:1px}
+.vlinha{display:grid;grid-template-columns:1fr 92px 130px auto;gap:8px;align-items:center}
+@media(max-width:640px){.vlinha{grid-template-columns:1fr 1fr}
+  .vlinha .vbtn{grid-column:1/-1}}
+.vbtn{cursor:pointer;font:inherit;font-weight:800;font-size:.9rem;padding:11px 20px;
+  border-radius:22px;border:0;background:var(--esm);color:#fff;min-height:44px;white-space:nowrap}
+.vbtn:disabled{opacity:.5}
+.sug{position:relative}
+.sugl{position:absolute;z-index:9;left:0;right:0;top:calc(100% + 4px);background:#fff;
+  border:1px solid var(--gb);border-radius:12px;box-shadow:0 10px 30px rgba(6,95,70,.2);
+  max-height:240px;overflow:auto}
+.sugl div{padding:10px 13px;cursor:pointer;font-size:.9rem;border-bottom:1px solid var(--line)}
+.sugl div:last-child{border-bottom:0}
+.sugl div:hover,.sugl div.sel{background:rgba(5,150,105,.12)}
+.sugl .m{color:var(--mut);font-size:.75rem}
+.sugl .novo{color:var(--esc);font-weight:700}
+.vmsg{margin-top:9px;font-size:.85rem;padding:9px 12px;border-radius:11px;display:none}
+.vmsg.ok{display:block;background:rgba(5,150,105,.14);color:var(--esc)}
+.vmsg.erro{display:block;background:rgba(185,28,28,.11);color:#7f1d1d}
+.vmsg button{margin-left:8px;font:inherit;font-size:.78rem;font-weight:700;cursor:pointer;
+  border:1px solid currentColor;background:transparent;color:inherit;border-radius:9px;padding:3px 9px}
+
 @media print{
   body{background:#fff;color:#000;padding:0;max-width:none;font-size:11.5pt}
-  .top,.btn,.ritmo{display:none}
+  .top,.btn,.ritmo,.venda{display:none}
   .lead,.card{background:#fff;box-shadow:none;border:1px solid #999;backdrop-filter:none}
   .fala{background:#f4f4f4}
   .cidade{page-break-after:avoid}
@@ -79,6 +114,27 @@ h1{font-size:1.45rem;letter-spacing:-.02em}
     <button class="btn" onclick="window.print()">Imprimir</button>
     <a class="btn" href="/obs/prospeccao">Fila completa</a>
   </div>
+</div>
+
+<div class="venda">
+  <h2>Fechei uma venda</h2>
+  <div class="hint">Digite o nome do cliente. Não está na lista? Digite mesmo assim —
+    ele é criado já como fechado.</div>
+  <div class="vlinha">
+    <div class="sug">
+      <input id="vq" placeholder="Nome do cliente" autocomplete="off"
+             aria-label="Nome do cliente">
+      <div class="sugl" id="vsug" hidden></div>
+    </div>
+    <select id="vtier" aria-label="Tier">
+      <option value="">tier</option>
+      <option>T1</option><option>T2</option><option>T3</option><option>T4</option>
+    </select>
+    <input id="vvalor" type="number" inputmode="decimal" min="1" step="1"
+           placeholder="R$ valor" aria-label="Valor fechado">
+    <button class="vbtn" id="vbtn">Registrar</button>
+  </div>
+  <div class="vmsg" id="vmsg"></div>
 </div>
 
 <div class="ritmo" id="ritmo"></div>
@@ -178,6 +234,87 @@ document.querySelectorAll('#filtros .btn').forEach(b => b.onclick = () => {
   b.classList.add('on');
   carregar(b.dataset.tier);
 });
+// ── registrar venda ────────────────────────────────────────────────────
+// Guarda o id do prospect escolhido. null = nome novo, o backend cria.
+let vSel = null;
+
+function vMsg(txt, tipo, extra) {
+  const m = $('#vmsg');
+  m.className = 'vmsg ' + tipo;
+  m.innerHTML = txt + (extra || '');
+}
+
+async function vBuscar() {
+  const q = $('#vq').value.trim();
+  vSel = null;                       // digitou de novo = a escolha anterior não vale
+  if (q.length < 2) { $('#vsug').hidden = true; return; }
+  let r;
+  try { r = await (await fetch('/api/campo/buscar?q=' + encodeURIComponent(q))).json(); }
+  catch (e) { return; }
+  const itens = (r.resultados || []).map(p => `
+    <div data-id="${p.id}" data-tier="${esc(p.tier)}">
+      ${esc(p.empresa)}
+      <div class="m">${esc(p.tier || 'sem tier')}${p.cidade ? ' · ' + esc(p.cidade) : ''}
+        · ${esc(p.status || '')}${p.valor_fechado ? ' · já fechado ' + brl(p.valor_fechado) : ''}</div>
+    </div>`).join('');
+  // A opção "criar" aparece SEMPRE, não só quando a busca vem vazia: o cliente novo
+  // pode ter nome parecido com um da base, e forçar a escolha de um homônimo grava
+  // a venda no prospect errado.
+  $('#vsug').innerHTML = itens + `
+    <div data-id="" class="novo">+ Criar "${esc(q)}" como cliente novo</div>`;
+  $('#vsug').hidden = false;
+}
+
+$('#vsug').onclick = e => {
+  const d = e.target.closest('[data-id]');
+  if (!d) return;
+  vSel = d.dataset.id ? Number(d.dataset.id) : null;
+  if (d.dataset.id) {
+    $('#vq').value = d.firstChild.textContent.trim();
+    if (d.dataset.tier && !$('#vtier').value) $('#vtier').value = d.dataset.tier;
+  }
+  $('#vsug').hidden = true;
+};
+
+let vTimer;
+$('#vq').oninput = () => { clearTimeout(vTimer); vTimer = setTimeout(vBuscar, 220); };
+
+$('#vbtn').onclick = async () => {
+  const empresa = $('#vq').value.trim();
+  const valor = Number($('#vvalor').value || 0);
+  if (!empresa) return vMsg('Falta o nome do cliente.', 'erro');
+  if (!(valor > 0)) return vMsg('Falta o valor da venda.', 'erro');
+  $('#vbtn').disabled = true;
+  try {
+    const r = await (await fetch('/api/campo/venda', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({prospect_id: vSel || 0, empresa,
+                            tier: $('#vtier').value, valor})
+    })).json();
+    if (!r.ok) { vMsg(esc(r.erro || 'não deu pra registrar'), 'erro'); return; }
+    const p = r.prospect;
+    vMsg(`Registrado: <b>${esc(p.empresa)}</b> · ${esc(p.tier || 'sem tier')} · ${brl(p.valor_fechado)}` +
+         (r.criado ? ' (cliente novo, criado agora)' : ''),
+         'ok', ` <button onclick="vDesfazer(${p.id})">desfazer</button>`);
+    $('#vq').value = ''; $('#vvalor').value = ''; $('#vtier').value = ''; vSel = null;
+    carregarRitmo();                 // o card "Fechado" atualiza na hora
+  } catch (e) {
+    // Falha de rede na calçada é o caso provável. A mensagem diz o que fazer.
+    vMsg('Sem conexão — o registro NÃO foi salvo. Tente de novo com sinal.', 'erro');
+  } finally { $('#vbtn').disabled = false; }
+};
+
+async function vDesfazer(id) {
+  try {
+    const r = await (await fetch('/api/campo/venda/desfazer', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({prospect_id: id})
+    })).json();
+    vMsg(r.ok ? 'Desfeito.' : esc(r.erro || 'não deu pra desfazer'), r.ok ? 'ok' : 'erro');
+    carregarRitmo();
+  } catch (e) { vMsg('Sem conexão pra desfazer.', 'erro'); }
+}
+
 carregarRitmo();
 carregar('');
 </script>

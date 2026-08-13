@@ -1,0 +1,145 @@
+{
+  "_leia_antes": "FONTE ÚNICA DE PREÇO da JPOS. Edite este arquivo à mão e salve — o painel e qualquer material comercial leem daqui. Valores em reais. `null` = sem cobrança nessa coluna. Depois de editar, rode: systemctl restart noemi-painel-obs",
+  "_atualizado_em": "2026-08-13",
+  "moeda": "R$",
+  "tiers": [
+    {
+      "id": "T1",
+      "nome": "Isca",
+      "setup": 500,
+      "mensal": null,
+      "entrega": [
+        "landing única",
+        "IA monitorando por trás",
+        "relatório periódico"
+      ],
+      "fecha": "por telefone, no mesmo dial"
+    },
+    {
+      "id": "T2",
+      "nome": "Presença",
+      "setup": 1000,
+      "mensal": 397,
+      "entrega": [
+        "tudo do T1",
+        "site multi-página",
+        "SEO técnico",
+        "AEO",
+        "GEO (SEO local)"
+      ],
+      "fecha": "por telefone, com comparação na tela"
+    },
+    {
+      "id": "T3",
+      "nome": "Atendimento",
+      "setup": 1500,
+      "mensal": 697,
+      "entrega": [
+        "tudo do T2",
+        "IA nativa no site: responde, qualifica e agenda dentro do próprio painel",
+        "Google Calendar: o agendamento cai na agenda do dono",
+        "e-mail: notifica e relata"
+      ],
+      "fecha": "por telefone, com demo ao vivo",
+      "_nota": "Calendar/e-mail VOLTARAM a ser entrega core em 2026-08-13. A remoção de 11/08 dizia 'a integração não existe no código' — hoje existe e foi provada ao vivo: SERVICE ACCOUNT (sem OAuth por cliente), sdr-motor/backend/app/google_calendar.py, ligada no caminho da IA em webhook._mandar_pro_calendar (thread separada, degrada calado se o tenant não tiver agenda). Ativar por cliente = provisionar_agenda() -> GCAL_AGENDA_ID."
+    },
+    {
+      "id": "T4",
+      "nome": "Operação",
+      "setup": 2500,
+      "mensal": 1297,
+      "entrega": [
+        "tudo do T3",
+        "painel de operações do cliente (catálogo, preço, atendimento)"
+      ],
+      "fecha": "em reunião — nunca no primeiro dial"
+    }
+  ],
+  "upsells": [
+    {
+      "id": "whatsapp_24h",
+      "nome": "WhatsApp com resposta automática 24h",
+      "setup": 150,
+      "mensal": 97,
+      "provisorio": false,
+      "resumo": "Noemi light no WhatsApp do cliente — reaproveita a stack Evolution que já roda.",
+      "disponivel_em": [
+        "T1",
+        "T2",
+        "T3",
+        "T4"
+      ]
+    },
+    {
+      "id": "dominio_email",
+      "nome": "Domínio próprio + e-mail profissional",
+      "setup": 150,
+      "mensal": 29,
+      "provisorio": false,
+      "resumo": "@empresa.com.br, DNS e renovação gerenciados.",
+      "disponivel_em": [
+        "T1",
+        "T2",
+        "T3",
+        "T4"
+      ]
+    },
+    {
+      "id": "radar_uptime",
+      "nome": "Radar de disponibilidade + backup",
+      "setup": null,
+      "mensal": 47,
+      "provisorio": false,
+      "resumo": "Monitora se o site caiu, avisa, e faz backup periódico.",
+      "disponivel_em": [
+        "T1",
+        "T2",
+        "T3",
+        "T4"
+      ]
+    },
+    {
+      "id": "landing_extra",
+      "nome": "Landing extra avulsa",
+      "setup": 250,
+      "mensal": null,
+      "provisorio": false,
+      "resumo": "Campanha sazonal, promoção ou evento. Geração pontual, sem assinatura.",
+      "disponivel_em": [
+        "T1",
+        "T2",
+        "T3",
+        "T4"
+      ]
+    },
+    {
+      "id": "video_ia",
+      "nome": "Pacote de vídeo IA (2 por mês)",
+      "setup": null,
+      "mensal": 197,
+      "provisorio": false,
+      "resumo": "2 vídeos curtos por mês pelo Motor B, para redes sociais.",
+      "disponivel_em": [
+        "T1",
+        "T2",
+        "T3",
+        "T4"
+      ],
+      "_cogs": "Custo CONFIRMADO 2026-08-11: 1 vídeo = 60 créditos (único job real medido, 591s). Crédito a US$0,039 (plano PLUS anual) a US$0,0475 (top-up). 2 vídeos/mês = R$25 a R$31 (dólar 5,40). Margem 84% a R$197. Mesmo triplicando o custo por vídeo, margem fica em 73%. O plano plus atual (1.000 créd/mês) cobre 8 clientes sem gasto extra. Ressalva: n=1 — revisar se surgir job muito mais caro."
+    },
+    {
+      "id": "calendar_email",
+      "nome": "Google Calendar + e-mail (para T1/T2)",
+      "setup": 97,
+      "mensal": 97,
+      "provisorio": false,
+      "resumo": "A IA agenda direto na agenda do dono e notifica por e-mail. Já vem incluso no T3/T4 — este item é para quem está no T1/T2 e quer só essa peça, sem subir de plano.",
+      "disponivel_em": [
+        "T1",
+        "T2"
+      ],
+      "_por_que_esse_preco": "Mesma lógica de custo do whatsapp_24h: infra leve, service account, ZERO custo por cliente (não há cota paga por evento). Mensal R$97 = a sugestão do JP e o mesmo ancoramento do whatsapp_24h. Setup R$97 (simbólico, abaixo dos R$150 do WhatsApp) cobre a chamada de provisionar_agenda + acompanhar o dono aceitando o convite — menos trabalho que subir instância Evolution com QR. NÚMERO A CONFIRMAR PELO JP: mudar aqui e reiniciar o painel.",
+      "_por_que_so_t1_t2": "T3/T4 já entregam Calendar+e-mail no core. Oferecer o upsell a eles seria cobrar duas vezes pela mesma coisa — o teste test_catalogo_sincronizado trava isso."
+    }
+  ]
+}

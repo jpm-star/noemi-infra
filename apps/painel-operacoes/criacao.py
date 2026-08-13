@@ -556,6 +556,11 @@ def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | s
             if _pg.parent == site_dir:      # a HOME é a que vai pra ficha e pro painel
                 _decisoes, _est_desc = _comp["decisoes"], _comp["porque"]
     _mem.registrar(slug, nicho, str(tier or ""), _sem, int(variacao or 0), _decisoes)
+    # Nicho fora de estilos.PERFIS não trava a geração (o site sai), mas fica CONTADO.
+    # Sem isto o catálogo só cresce quando alguém lembra de crescer — e um cliente de
+    # "loja de bicicletas" recebe composição genérica pra sempre, calado.
+    import catalogo_vivo as _cat
+    _cat.registrar_nicho(nicho)
     # QA PÓS-GERAÇÃO (JP 2026-08-05): telefone de mentira NÃO passa. Marcar depois não
     # basta — 14 sites já tinham subido assim e o lead clica antes de alguém revisar.
     # Não apaga o site (o JP pode querer olhar), mas devolve ok=False: o painel mostra

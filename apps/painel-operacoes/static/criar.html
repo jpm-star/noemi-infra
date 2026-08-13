@@ -123,6 +123,16 @@ input[type=file]{padding:7px 10px;font-size:.82rem}
 .vb .uso{position:absolute;top:5px;right:5px;font-size:.55rem;font-weight:800;
   background:var(--esmeralda);color:#fff;padding:2px 6px;border-radius:8px;letter-spacing:.04em}
 .memo{font-size:.72rem;color:var(--mut);margin-top:9px;line-height:1.45}
+/* catálogo vivo: fila do que o uso real descobriu e ainda não virou vocabulário */
+.cresce{margin-top:12px;border-top:1px solid var(--linha,rgba(255,255,255,.1));padding-top:10px}
+.cresce h4{font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);
+  margin:0 0 6px;font-weight:700}
+.cresce .fila{display:flex;flex-wrap:wrap;gap:6px}
+.cresce .cand{font-size:.74rem;padding:3px 9px;border-radius:11px;
+  background:rgba(180,83,9,.15);color:#e0a45f;font-weight:600}
+.cresce .cand b{color:#fff}
+.cresce .leitura{font-size:.71rem;color:var(--mut);margin-top:7px;line-height:1.45}
+.cresce .zero{font-size:.72rem;color:var(--mut)}
 .memo b{color:var(--ink)}
 .memo .frag{background:rgba(180,83,9,.13);color:var(--warn);padding:1px 7px;
   border-radius:7px;font-weight:700;font-size:.66rem}
@@ -195,6 +205,7 @@ td{padding:7px 8px;border-top:1px solid var(--line)}
       <div><label>Cor primária (opcional)</label><input id="cor" placeholder="#00e6a2 ou vazio = tema"></div>
     </div>
     <div id="escopo" class="falta"></div>
+    <div class="cresce" id="cresce" hidden></div>
     <label>Diferenciais / conteúdo pesquisado</label>
     <textarea id="diferenciais" placeholder="um por linha"></textarea>
     <label>Copy livre (opcional — sobrescreve a copy gerada)</label>
@@ -316,4 +327,32 @@ td{padding:7px 8px;border-top:1px solid var(--line)}
 
 <div class="toast" id="toast"></div>
 <script src="/obs/criar.js"></script>
+<script>
+// ── catálogo vivo ──────────────────────────────────────────────────────────
+// Mostra o que o USO REAL descobriu e o vocabulário ainda não tem. Fica na tela de
+// criação de propósito: é aqui que o JP digita o nicho, e é aqui que ele descobre
+// que aquele nicho ainda não tem perfil — antes de gerar, não depois de estranhar
+// o resultado.
+async function carregarCrescimento() {
+  const box = document.getElementById('cresce');
+  if (!box) return;
+  let d;
+  try { d = await (await fetch('/api/catalogo/crescimento')).json(); }
+  catch (e) { return; }                       // silencioso: é observabilidade
+  const prontos = d.nichos_prontos || [];
+  const estr = d.estruturas_candidatas || [];
+  if (!prontos.length && !estr.length && !d.nichos_vistos_fora) { box.hidden = true; return; }
+  const chip = (t, n) => `<span class="cand"><b>${t}</b> ${n}x</span>`;
+  box.innerHTML = `
+    <h4>Catálogo vivo — ${d.nichos_no_catalogo} nichos com perfil</h4>
+    ${prontos.length ? `<div class="fila">${
+        prontos.map(n => chip(n.rotulo || n.chave, n.ocorrencias)).join('')}</div>`
+      : '<div class="zero">nenhum nicho novo bateu o mínimo ainda</div>'}
+    ${estr.length ? `<div class="fila" style="margin-top:6px">${
+        estr.slice(0, 4).map(e => chip(e.nome, e.ocorrencias)).join('')}</div>` : ''}
+    <div class="leitura">${d.leitura || ''}</div>`;
+  box.hidden = false;
+}
+carregarCrescimento();
+</script>
 </body></html>

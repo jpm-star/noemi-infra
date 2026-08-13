@@ -17,7 +17,25 @@ import inspect
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+RAIZ = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(RAIZ))
+
+
+def _main_do_painel():
+    """Carrega `main.py` DESTE app pelo caminho, nunca por `import main`.
+
+    `apps/motor-b-video/main.py` e `apps/painel-operacoes/main.py` disputam a mesma
+    chave em sys.modules. Rodando as duas suítes no mesmo processo, quem importasse
+    primeiro vencia, e este teste passava a inspecionar o endpoint do app ERRADO.
+    Deu AttributeError e ficou óbvio — mas o desfecho ruim era pior e silencioso: se os
+    dois módulos tivessem um atributo de mesmo nome, o guard aprovaria a comparação de
+    um arquivo com outro que não tem nada a ver, e continuaria verde para sempre.
+    """
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("main_painel_operacoes", RAIZ / "main.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 
 def _campos_do_endpoint(fn) -> set[str]:
@@ -27,8 +45,8 @@ def _campos_do_endpoint(fn) -> set[str]:
 
 def test_gerar_aceita_tudo_que_o_endpoint_recebe():
     import criacao
-    import main
 
+    main = _main_do_painel()
     endpoint = _campos_do_endpoint(main.criacao_gerar)
     alvo = set(inspect.signature(criacao.gerar).parameters)
 

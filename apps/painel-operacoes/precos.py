@@ -34,6 +34,24 @@ def moeda(v: float | None) -> str:
     return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
+TODOS_OS_TIERS = ("T1", "T2", "T3", "T4")
+
+
+def escopo_upsell(u: dict) -> str:
+    """Para quem o upsell vale. "" quando vale pra todo mundo.
+
+    `disponivel_em` existia em todo upsell desde o começo e NENHUM renderizador lia
+    — passou despercebido porque todos valiam pros 4 tiers. O primeiro upsell restrito
+    (Calendar, que o T3/T4 já tem no core) transforma o campo decorativo em erro de
+    cobrança: oferecer a um T3 uma peça que ele já paga. Por isso a leitura mora aqui,
+    uma vez, e não em cada material.
+    """
+    em = tuple(u.get("disponivel_em") or TODOS_OS_TIERS)
+    if set(em) >= set(TODOS_OS_TIERS):
+        return ""
+    return "só " + " e ".join(x for x in TODOS_OS_TIERS if x in em)
+
+
 def tudo() -> dict:
     """Tudo, inclusive provisório. Uso INTERNO (painel do JP)."""
     d = _bruto()
@@ -61,10 +79,11 @@ def tabela_markdown(cliente: bool = True) -> str:
     for t in d["tiers"]:
         linhas.append(f"| **{t['id']} — {t['nome']}** | {'; '.join(t['entrega'])} "
                       f"| {moeda(t['setup'])} | {moeda(t['mensal'])} |")
-    linhas += ["", "| Upsell (qualquer tier) | Setup | Mensal |", "|---|---|---|"]
+    linhas += ["", "| Upsell | Para quem | Setup | Mensal |", "|---|---|---|---|"]
     for u in d["upsells"]:
         marca = "" if cliente else (" ⚠️ provisório" if u.get("provisorio") else "")
-        linhas.append(f"| {u['nome']}{marca} | {moeda(u.get('setup'))} | {moeda(u.get('mensal'))} |")
+        linhas.append(f"| {u['nome']}{marca} | {escopo_upsell(u) or 'qualquer plano'} "
+                      f"| {moeda(u.get('setup'))} | {moeda(u.get('mensal'))} |")
     return "\n".join(linhas)
 
 
@@ -144,7 +163,9 @@ def catalogo_html(cliente: bool = True) -> str:
       </article>""")
 
     ups = "".join(
-        f"<tr><td>{_e(u['nome'])}</td><td>{moeda(u.get('setup'))}</td>"
+        f"<tr><td>{_e(u['nome'])}"
+        f"{f'<span class=\'so\'>{_e(escopo_upsell(u))}</span>' if escopo_upsell(u) else ''}</td>"
+        f"<td>{moeda(u.get('setup'))}</td>"
         f"<td>{moeda(u.get('mensal'))}{'/mês' if u.get('mensal') else ''}</td></tr>"
         for u in d["upsells"])
 
@@ -184,6 +205,9 @@ def catalogo_html(cliente: bool = True) -> str:
   td {{ padding: 1.8mm 0; border-bottom: 1px solid #e6e6e6; }}
   /* nowrap: sem isto "R$ 97,00/mês" quebra em duas linhas e o preço fica ilegível */
   td + td, th + th {{ text-align: right; width: 30mm; white-space: nowrap; }}
+  /* escopo do upsell: cinza e menor, ao lado do nome. Sem isto o catálogo impresso
+     oferece ao T3 uma peça que ele já paga no plano. */
+  .so {{ display: block; font-size: 9pt; color: #666; }}
   .pe {{ margin-top: 8mm; padding-top: 4mm; border-top: 1px solid #bbb;
         font-size: 9.5pt; color: #555; display: flex; justify-content: space-between; }}
 </style></head>

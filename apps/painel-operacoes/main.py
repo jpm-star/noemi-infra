@@ -1284,6 +1284,66 @@ async def campo_fechamento(request: Request) -> JSONResponse:
                          "ritmo": ritmo.painel()})
 
 
+@app.get("/api/catalogo/crescimento")
+def catalogo_crescimento() -> JSONResponse:
+    """Quanto o catálogo cresceu com o uso real: nichos vistos fora da lista,
+    composições que sobreviveram, e o que está esperando alguém escrever o perfil."""
+    import catalogo_vivo
+    return JSONResponse(catalogo_vivo.crescimento())
+
+
+@app.post("/api/catalogo/promover")
+async def catalogo_promover(request: Request) -> JSONResponse:
+    """Tira o candidato da fila DEPOIS que o perfil foi escrito à mão em estilos.PERFIS.
+
+    Não escreve o perfil: perfil é justificativa comercial por morfismo, texto que uma
+    contagem não sabe produzir. Promover automático encheria o vocabulário de entradas
+    sem porquê — que é o mesmo que a composição genérica que isto veio resolver.
+    """
+    import catalogo_vivo
+    c = await request.json()
+    r = catalogo_vivo.promover(str(c.get("tipo") or "nicho"), str(c.get("chave") or ""))
+    return JSONResponse(r, status_code=200 if r.get("ok") else 400)
+
+
+@app.get("/api/campo/buscar")
+def campo_buscar(q: str = "") -> JSONResponse:
+    """Acha o prospect pelo nome pra registrar a venda. `q` vazio lista os já fechados.
+
+    Existe porque a fila da /obs/campo é só T3/T4 (68 leads) e o funil tem 1.462 em
+    T1/T2 — fechar um T1 na porta e não achar o nome na tela é o caso comum."""
+    import venda
+    return JSONResponse({"resultados": venda.buscar(q)})
+
+
+@app.post("/api/campo/venda")
+async def campo_venda(request: Request) -> JSONResponse:
+    """Registra a venda fechada. Aceita prospect existente OU nome novo (cria na hora).
+
+    Substitui o /api/campo/fechamento, que exigia `prospect_id` e não gravava tier —
+    e que nenhuma tela chamava, e por isso o funil ficou com valor_fechado vazio em
+    100% das 1.532 linhas."""
+    import venda
+    c = await request.json()
+    r = venda.registrar(prospect_id=int(c.get("prospect_id") or 0),
+                        empresa=str(c.get("empresa") or ""),
+                        tier=str(c.get("tier") or ""),
+                        valor=c.get("valor") or 0,
+                        quando=str(c.get("quando") or ""),
+                        notas=str(c.get("notas") or ""))
+    return JSONResponse(r, status_code=200 if r.get("ok") else 400)
+
+
+@app.post("/api/campo/venda/desfazer")
+async def campo_venda_desfazer(request: Request) -> JSONResponse:
+    """Digitou o valor errado ou marcou o cliente errado. Sem isto a correção seria
+    no banco na mão — e no campo isso não acontece, o erro só fica lá."""
+    import venda
+    c = await request.json()
+    r = venda.desfazer(int(c.get("prospect_id") or 0))
+    return JSONResponse(r, status_code=200 if r.get("ok") else 400)
+
+
 @app.get("/api/prospeccao/dia")
 def prospeccao_dia_listar(tier: str = "", limite: int = 200) -> JSONResponse:
     """Leads ainda sem contato (T1 primeiro), com gancho honesto pronto por tier."""

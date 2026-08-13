@@ -147,6 +147,25 @@ button, .cta, .btn, a.botao{{font-weight:900!important;text-transform:uppercase;
   font-size:1.05rem!important}}
 """,
     },
+    "cinetico": {
+        "rotulo": "Cinético (scroll)",
+        "desc": "a seção se revela conforme a página rola — motion como acento, não como camada",
+        # POR QUE ESTE CSS NÃO DECLARA NENHUM @keyframes: os três nomes usados aqui
+        # (cortina, card-fundo, thumb-zoom) já são emitidos por TODO site do motor, dentro
+        # de @supports (animation-timeline: view()) + @media (prefers-reduced-motion:
+        # no-preference) — ver design.css_motion_scroll. Referenciar em vez de redeclarar dá
+        # de graça as duas travas que mais se esquece: navegador sem scroll-timeline e
+        # visitante com reduced-motion simplesmente não têm as keyframes, o animation-name
+        # fica órfão e o bloco renderiza estático, sem um byte de JS.
+        # E nada de @ aqui dentro é obrigatório, não estético: css(escopo=...) descarta
+        # regras @ ao escopar um acento numa seção — um @media aqui sumiria calado.
+        "css": """
+section{animation:cortina linear both;animation-timeline:view();animation-range:entry 4% cover 44%}
+.card, article, .faq-item, .sv-card, .preco-card, .cat-card{animation:card-fundo linear both;
+  animation-timeline:view();animation-range:entry 2% cover 30%}
+img{animation:thumb-zoom linear both;animation-timeline:view()}
+""",
+    },
 }
 
 
@@ -236,7 +255,7 @@ PRECISA_TEXTURA = {"glassmorphism", "liquid-glass", "spatial"}
 # Densidade visual. Acento com o MESMO peso do principal não acentua nada — é troca
 # lateral que o visitante não percebe e o operador não sabe explicar.
 PESO = {"minimal": 0, "spatial": 1, "glassmorphism": 1, "neumorphism": 1,
-        "claymorphism": 2, "skeuomorphism": 2, "liquid-glass": 2,
+        "claymorphism": 2, "skeuomorphism": 2, "liquid-glass": 2, "cinetico": 2,
         "brutalism": 3, "maximal": 3}
 
 # O que cada morfismo COMUNICA. É daqui que sai a justificativa que vai pra ficha —
@@ -251,6 +270,7 @@ COMUNICA = {
     "spatial":       "profundidade e modernidade",
     "minimal":       "autoridade e sofisticação pelo espaço vazio",
     "maximal":       "fartura e energia, muita coisa acontecendo",
+    "cinetico":      "cuidado de produção — a página responde a quem rola",
 }
 
 
@@ -289,6 +309,8 @@ PERFIS: dict[str, dict] = {
              "porque": "a matrícula é a única coisa que precisa gritar num site leve"},
             {"secao": "servicos", "estilo": "claymorphism",
              "porque": "modalidade é escolha pessoal — cards com corpo convidam a tocar"},
+            {"secao": "servicos", "estilo": "cinetico",
+             "porque": "treino é movimento — a grade se revela conforme o visitante rola"},
         ],
     },
     "clinica": {
@@ -325,6 +347,8 @@ PERFIS: dict[str, dict] = {
              "porque": "card de imóvel ganha corpo e convida ao toque na listagem"},
             {"secao": "cta-final", "estilo": "brutalism",
              "porque": "agendar visita é o único momento de pressa do site"},
+            {"secao": "servicos", "estilo": "cinetico",
+             "porque": "imóvel se vende pela foto: revelar cada uma no scroll segura o olho"},
         ],
     },
     "advocacia": {
@@ -363,6 +387,8 @@ PERFIS: dict[str, dict] = {
              "porque": "comprar é decisão de segundos: o botão não pode ser elegante demais"},
             {"secao": "servicos", "estilo": "minimal",
              "porque": "a vitrine precisa de silêncio em volta pro produto aparecer"},
+            {"secao": "servicos", "estilo": "cinetico",
+             "porque": "loja online compete por desejo — produto que entra em cena vende mais que produto parado"},
         ],
     },
 }
@@ -655,5 +681,17 @@ if __name__ == "__main__":  # self-check
     _h = '<section class="faq reveal">x</section>'
     assert "faq" in compor(escolher("advocacia", "T3", 0), _h)["acento"]
     assert compor(escolher("advocacia", "T3", 0), "<p>nada</p>")["acento"] == {}
+    # MOTION COMO ACENTO: T2 paga com o único slot que tem; T1 não tem slot nenhum
+    assert "cinetico" in ESTILOS and PESO["cinetico"] == 2
+    _cin = css("cinetico", escopo="servicos")
+    # o escopador joga fora QUALQUER regra @ — um @keyframes/@media aqui sumiria calado
+    # e o acento não animaria nada. Por isso o CSS do cinetico só REFERENCIA keyframes
+    # que o motor já emite (design.css_motion_scroll), sem declarar nenhuma.
+    assert "@" not in _cin, "acento escopado com regra @ é acento que some"
+    assert "section.servicos" in _cin and "cortina" in _cin
+    assert escolher("academia", "T1")["acento"] == {}, "T1 não recebe acento nenhum"
+    _t2 = [escolher("academia", "T2", _s)["acento"] for _s in range(6)]
+    assert all(len(a) <= 1 for a in _t2), "T2 tem teto de 1 acento"
+    assert any("cinetico" in a.values() for a in _t2), "cinetico nunca entra em T2"
     print(f"estilos OK — {len(ESTILOS)-1} morfismos, composição por segmento/tier com "
           f"justificativa, alvo verificado no HTML, degrada sem estilo")

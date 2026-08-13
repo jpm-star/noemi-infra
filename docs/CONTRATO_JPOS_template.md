@@ -1,5 +1,12 @@
 # CONTRATO DE LICENÇA DE USO DE SOFTWARE (SaaS) E PRESTAÇÃO DE SUPORTE
 
+> **Revisado em 13/08/2026.** A versão anterior prometia, no Tier 1, "integra Google
+> Calendar e planilha de controle" — Calendar NÃO é entrega do Tier 1 (é core do T3/T4
+> e módulo pago no T1/T2), e planilha de controle **não existe no produto**. Assinar
+> aquele texto criava obrigação de entregar duas coisas fora do escopo de um contrato
+> de R$500 sem mensalidade. Se você tem uma cópia impressa anterior a esta data,
+> **descarte**.
+>
 > **Template JPOS — 2 prazos (6 e 12 meses).** Preencha os campos `[[ ... ]]`. Escolha o
 > bloco de PRAZO/RENOVAÇÃO conforme o plano vendido. **Não é peça jurídica final** — revise
 > com contador/advogado antes de assinar (especialmente CNAE, tributação e Fator R).
@@ -26,14 +33,46 @@ com sede em [[ENDEREÇO DO CLIENTE]], doravante **CONTRATANTE**.
 A JPOS concede à CONTRATANTE **licença de uso, não exclusiva e intransferível**, de sua
 plataforma de software (site institucional gerado + camada de inteligência artificial de apoio
 à operação), na modalidade **SaaS (software como serviço)**, acompanhada de **suporte técnico**
-durante a vigência. O escopo contratado é:
-- [[ ]] **Tier 1 — Site + IA:** site profissional publicado + IA que monitora dados e integra
-  Google Calendar e planilha de controle.
-- [[ ]] **Tier 2 — SEO/AEO:** camada de dados estruturados (schema.org), sitemap/robots e
-  presença para busca/IA, ativada em rollout após publicação do Tier 1.
-- [[ ]] Outros: [[DESCREVER]].
+durante a vigência. Os tiers são **cumulativos**: cada um inclui integralmente o
+anterior. Marque **um** tier e, se houver, os módulos adicionais da cláusula 1.1.
+
+- [[ ]] **Tier 1 — Isca:** landing única publicada + IA monitorando os dados por trás +
+  relatório periódico.
+- [[ ]] **Tier 2 — Presença:** tudo do Tier 1 + site multi-página + SEO técnico + AEO +
+  GEO (SEO local). A camada de busca é ativada em rollout após a publicação.
+- [[ ]] **Tier 3 — Atendimento:** tudo do Tier 2 + IA nativa no site (responde, qualifica e
+  agenda) + agendamento espelhado no Google Calendar do CONTRATANTE + notificação e
+  relatório por e-mail.
+- [[ ]] **Tier 4 — Operação:** tudo do Tier 3 + painel de operações do CONTRATANTE
+  (catálogo, preço e atendimento).
 
 A licença é **de uso da plataforma**, não cessão de código-fonte (ver cláusula 8).
+
+> **Sobre indexação e posicionamento (Tier 2+):** a JPOS entrega a ESTRUTURA técnica que
+> torna o site encontrável (dados estruturados, sitemap, robots, conteúdo citável). O
+> posicionamento em buscadores depende de indexação por terceiros e **não é garantido**
+> por esta licença.
+
+## 1.1 MÓDULOS ADICIONAIS (opcionais, cobrados à parte)
+
+Só valem se marcados aqui. Nenhum módulo abaixo integra os tiers da cláusula 1 — a
+exceção está indicada em cada linha.
+
+- [[ ]] **Google Calendar + e-mail** — R$ [[97]] de implantação + R$ [[97]]/mês.
+  A IA registra o agendamento na agenda Google do CONTRATANTE e notifica por e-mail.
+  *Já incluso, sem custo adicional, nos Tiers 3 e 4 — contratar aqui apenas para Tier 1 ou 2.*
+  Requisito do CONTRATANTE: aceitar o compartilhamento da agenda criada pela JPOS.
+- [[ ]] **WhatsApp com resposta automática 24h** — R$ [[150]] + R$ [[97]]/mês.
+- [[ ]] **Domínio próprio + e-mail profissional** — R$ [[150]] + R$ [[29]]/mês.
+  Registro e renovação do domínio correm por conta do CONTRATANTE quando repassados.
+- [[ ]] **Radar de disponibilidade + backup** — R$ [[47]]/mês.
+- [[ ]] **Landing extra avulsa** — R$ [[250]], sem mensalidade.
+- [[ ]] **Pacote de vídeo por IA (2 por mês)** — R$ [[197]]/mês.
+- [[ ]] Outros: [[DESCREVER]].
+
+> Valores conferidos com o catálogo vigente na data desta minuta. **Confira em
+> `precos.json` antes de imprimir** — é a fonte única de preço da JPOS, e é ela que
+> prevalece em caso de divergência com este template.
 
 ## 2. VALOR E FORMA DE PAGAMENTO
 - Valor mensal: **R$ [[VALOR]]** por mês, na modalidade [[assinatura recorrente]].
