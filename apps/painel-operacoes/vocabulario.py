@@ -29,6 +29,15 @@ from __future__ import annotations
 
 NICHOS: dict[str, tuple[str, ...]] = {
     "clinica": (
+        "casa de repouso",
+        "geriatria",
+        "reabilitacao esportiva",
+        "psicologia infantil",
+        "pilates",
+        "otica",
+        "farmacia de manipulacao",
+        "veterinaria de grandes animais",
+        "haras",
         "oftalmologista",
         "clínica de olhos",
         "ortodontista",
@@ -51,6 +60,8 @@ NICHOS: dict[str, tuple[str, ...]] = {
         "dentista",
     ),
     "advocacia": (
+        "advocacia previdenciaria",
+        "aposentadoria",
         "advocacia trabalhista",
         "advocacia criminal",
         "cartório",
@@ -66,6 +77,7 @@ NICHOS: dict[str, tuple[str, ...]] = {
         "ateliê de costura",
     ),
     "academia": (
+        "escola de natacao",
         "personal trainer",
         "crossfit",
         "box",
@@ -83,6 +95,7 @@ NICHOS: dict[str, tuple[str, ...]] = {
         "segurança eletrônica",
     ),
     "restaurante": (
+        "buffet infantil",
         "personal chef",
         "buffet",
         "eventos",
@@ -95,6 +108,9 @@ NICHOS: dict[str, tuple[str, ...]] = {
         "pet shop",
     ),
     "ecommerce": (
+        "bercario",
+        "creche",
+        "reforco escolar",
         "e-commerce",
         "ecommerce",
         "loja de moda",
@@ -109,6 +125,27 @@ NICHOS: dict[str, tuple[str, ...]] = {
         "curso online",
     ),
     "servicos": (
+        "revenda de tratores",
+        "implementos agricolas",
+        "maquinario agricola",
+        "usina fotovoltaica",
+        "marmoraria",
+        "vidracaria",
+        "gesso e drywall",
+        "locacao de cacambas",
+        "loja de tintas",
+        "moveis planejados",
+        "desentupidora",
+        "pocos artesianos",
+        "ar-condicionado",
+        "cercas eletricas",
+        "martelinho de ouro",
+        "estetica automotiva",
+        "blindagem",
+        "som e acessorios",
+        "despachante imobiliario",
+        "regularizacao de terras",
+        "funeraria",
         "fotógrafo",
         "videomaker",
         "fotógrafo de casamento",
@@ -141,6 +178,21 @@ NICHOS: dict[str, tuple[str, ...]] = {
 
 # (chave, nome, família, o que é)
 ESTRUTURAS: tuple[tuple[str, str, str, str], ...] = (
+    ("pix-qr", "QR Code PIX com copiar chave", "pagamento", "chave estática, sem gateway"),
+    ("parcelamento", "Calculadora de parcelamento", "pagamento", "12x de R$ — como o brasileiro decide"),
+    ("bandeiras", "Selos de bandeira e vale-refeição", "pagamento", "aceita VR/VA muda a decisão do almoço"),
+    ("convenios", "Convênios aceitos", "confianca", "carrossel de planos — a 1ª pergunta em clínica"),
+    ("regiao-atendida", "Atendemos toda a região", "confianca", "cidade + raio, para busca local"),
+    ("cnpj-rodape", "CNPJ e endereço no rodapé", "confianca", "contra o medo de golpe, não por lei"),
+    ("humano-garantido", "Você fala com uma pessoa", "confianca", "selo anti-robô — vale mais em T1/T2"),
+    ("abrir-waze", "Abrir no Waze / Maps", "local", "botão de rota, não endereço em texto"),
+    ("aberto-agora", "Status aberto agora", "local", "calculado do horário, não escrito à mão"),
+    ("ligar-agora", "Ligar agora (tel:)", "cta", "no interior, ligação ainda fecha mais que form"),
+    ("print-whatsapp", "Print de elogio no WhatsApp", "prova", "a prova social que o dono REALMENTE tem"),
+    ("feed-gmn", "Avaliações do Google Meu Negócio", "prova", "puxa do GMN, com filtro de data"),
+    ("cardapio-pdf", "Catálogo ou cardápio em PDF", "conteudo", "o que o dono já manda no WhatsApp"),
+    ("retire-na-loja", "Retire na loja", "objecao", "para quem não entrega — no lugar de frete grátis"),
+    ("horario-detalhado", "Horários por dia da semana", "local", "com folga marcada, não '9h-18h'"),
     ("hero-full-cta", "Hero full + CTA único", "hero", "tela inteira, título grande, um botão só"),
     ("hero-3-beneficios", "Hero + 3 benefícios em cards", "hero", "três cards que viram coluna no mobile"),
     ("hero-prova-social", "Hero + prova social imediata", "hero", "logo de clientes ou estrelas na dobra"),
@@ -239,6 +291,7 @@ PRINCIPIOS: dict[str, tuple[str, ...]] = {
         "feedback tátil ao tocar",
     ),
     "performance": (
+        "consciência de 3G/4G instável (texto antes de imagem)",
         "velocidade de carregamento",
         "lazy load de imagens",
         "Core Web Vitals",
@@ -259,6 +312,9 @@ PRINCIPIOS: dict[str, tuple[str, ...]] = {
         "teste de hierarquia na dobra",
     ),
     "persuasao": (
+        "fluxo WhatsApp-first (mensagem já preenchida)",
+        "gaze cuing (o olhar da foto aponta pro CTA)",
+        "micro-copy regionalista (falar como a região fala)",
         "CTA único por tela",
         "prova social acima da dobra",
         "microcopy",
@@ -283,6 +339,7 @@ PRINCIPIOS: dict[str, tuple[str, ...]] = {
         "Fitts's Law",
     ),
     "acessibilidade": (
+        "prova de autoridade física (CNPJ e endereço visíveis)",
         "acessibilidade (WCAG)",
         "contraste de cor",
         "tamanho de fonte mínimo",
@@ -316,6 +373,58 @@ PRINCIPIOS: dict[str, tuple[str, ...]] = {
     ),
 }
 
+
+
+# ── ANTIPADRÕES ────────────────────────────────────────────────────────────
+# A categoria que faltava, e a mais acionável das três: as outras descrevem o que
+# PODE existir; esta descreve o que o gerador não pode produzir sozinho. Um gerador
+# automático reproduz esses erros justamente por ser automático — ele preenche a
+# seção porque a seção existe no template, não porque o cliente tem o dado.
+#
+# Cada entrada é (chave, o erro, a regra que o gerador deve seguir). A regra é
+# escrita como CONDIÇÃO, não como conselho: "não gerar X sem Y" é verificável;
+# "usar bom senso" não é.
+ANTIPADROES: tuple[tuple[str, str, str], ...] = (
+    ("form-longo", "formulário com 8+ campos na primeira dobra",
+     "no máximo 2 campos (nome e telefone); o CTA primário é WhatsApp ou ligar"),
+    ("form-duplicado", "formulário repetido no hero, no meio e no rodapé",
+     "um formulário por página; os outros pontos viram link pro mesmo destino"),
+    ("depo-generico", "depoimento sem nome, foto ou cidade",
+     "não gerar a seção sem depoimento real; melhor ausente que inventado"),
+    ("logo-imprensa-falso", "'como visto em' com logo que o cliente não tem",
+     "só com logo enviado pelo cliente; nunca preencher por conta"),
+    ("telefone-escondido", "telefone só no rodapé, em texto, sem link tel:",
+     "botão fixo com tel: e alvo de 48px"),
+    ("endereco-texto", "endereço como texto plano, sem rota",
+     "sem CEP e número estruturados, não gerar a seção de mapa"),
+    ("promo-sem-prazo", "'desconto de 10%' sem data de validade",
+     "contador só com data real; sem data, oferta sem contador"),
+    ("frete-gratis-sem-entrega", "'frete grátis' em negócio que não entrega",
+     "checar se o negócio entrega; se não, 'retire na loja'"),
+    ("menu-generico", "Sobre/Serviços/Blog/Contato em quem só precisa agendar",
+     "menu derivado do objetivo do nicho; sem blog, sem página de blog"),
+    ("foto-stock", "foto genérica de gente sorrindo que não é o negócio",
+     "placeholder que PEDE a foto, com instrução do que fotografar"),
+    ("cta-conflitante", "dois botões primários na mesma dobra",
+     "um CTA primário por dobra; o resto vira link de texto"),
+    ("cta-errado-pro-nicho", "'Comprar' em clínica, 'Agendar' em loja",
+     "verbo do CTA vem do objetivo do nicho, não do template"),
+    ("sobre-duplicado", "o mesmo parágrafo institucional em 3 lugares",
+     "um bloco 'sobre' por site; na home, só o resumo"),
+    ("horario-sem-folga", "'9h-18h' sem dizer que dia fecha",
+     "tabela por dia da semana, com folga explícita"),
+    ("lgpd-ausente", "coleta dados sem política nem consentimento",
+     "página com coleta gera aviso de privacidade legível (14px+)"),
+)
+_POR_ANTI = {a[0]: {"erro": a[1], "regra": a[2]} for a in ANTIPADROES}
+
+
+def antipadrao(chave: str) -> dict | None:
+    return _POR_ANTI.get(chave)
+
+
+def antipadroes() -> list[dict]:
+    return [{"chave": c, "erro": e, "regra": r} for c, e, r in ANTIPADROES]
 
 def _sem_acento(txt: str) -> str:
     import unicodedata
@@ -364,6 +473,7 @@ def resumo() -> dict:
             "familias": sorted(NICHOS),
             "estruturas": len(ESTRUTURAS_LISTA),
             "familias_de_estrutura": sorted({e["familia"] for e in ESTRUTURAS_LISTA}),
+            "antipadroes": len(ANTIPADROES),
             "principios": len(principios()),
             "categorias_de_principio": sorted(PRINCIPIOS)}
 
@@ -373,6 +483,16 @@ if __name__ == "__main__":  # self-check
     assert r["nichos"] >= 80, r
     assert r["estruturas"] >= 75, r
     assert r["principios"] >= 75, r
+    assert r["antipadroes"] >= 15, r
+    # a regra do antipadrão tem que ser CONDIÇÃO verificável, não conselho
+    for a in antipadroes():
+        assert a["regra"] and len(a["regra"]) > 12, a
+    assert antipadrao("form-longo")["regra"].startswith("no máximo")
+    # os nichos do interior entraram e resolvem
+    assert segmento_do_nicho("marmoraria em Lins") == "servicos"
+    assert segmento_do_nicho("casa de repouso") == "clinica"
+    assert segmento_do_nicho("revenda de tratores") == "servicos"
+    assert estrutura("pix-qr")["familia"] == "pagamento"
     # o mapeamento resolve os casos que antes caíam no vazio
     assert segmento_do_nicho("podólogo em Bauru") == "clinica"
     assert segmento_do_nicho("Chaveiro 24h") == "servicos"
@@ -392,5 +512,5 @@ if __name__ == "__main__":  # self-check
     assert len(estruturas_da_familia("hero")) >= 10
     assert "mobile-first" in principios("mobile")
     print(f"vocabulario OK — {r['nichos']} nichos em {len(r['familias'])} famílias, "
-          f"{r['estruturas']} estruturas, {r['principios']} princípios em "
-          f"{len(r['categorias_de_principio'])} categorias")
+          f"{r['estruturas']} estruturas, {r['principios']} princípios, "
+          f"{r['antipadroes']} antipadrões")
