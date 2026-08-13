@@ -55,16 +55,37 @@ function usarDoCRM(id) {
 /* Sugestão de leads no campo nome (datalist). Sem isto o JP digita o nome inteiro e
    erra a grafia — e aí o autofill não casa com o CRM. */
 const LEADCAT = {};
+/* O endpoint /api/leads-alvo JÁ aceitava cidade/categoria/tier/q desde sempre — o
+   front é que pedia tudo. Com 1.500 nomes o autocomplete vira uma parede: o JP
+   digita o nome inteiro, erra a grafia, e aí o autofill não casa com o CRM. Filtrar
+   por cidade e nicho devolve a lista a um tamanho que dá pra escolher com o dedo. */
 async function carregarLeads() {
+  const cid = ($("fCidade") || {}).value || "";
+  const cat = ($("fNicho") || {}).value || "";
   try {
-    const d = await (await fetch("/api/leads-alvo")).json();
+    const qs = new URLSearchParams();
+    if (cid) qs.set("cidade", cid);
+    if (cat) qs.set("categoria", cat);
+    const d = await (await fetch("/api/leads-alvo?" + qs)).json();
     const visto = new Set();
-    $("leads").innerHTML = (d.leads || []).filter(l => {
+    const opcoes = (d.leads || []).filter(l => {
       if (visto.has(l.nome)) return false;
       visto.add(l.nome); LEADCAT[l.nome] = l.categoria; return true;
-    }).map(l => `<option value="${esc(l.nome)}">`).join("");
+    });
+    $("leads").innerHTML = opcoes.map(l => `<option value="${esc(l.nome)}">`).join("");
+    if ($("fCont")) $("fCont").textContent = opcoes.length
+      ? `${opcoes.length} lead(s)` : "nenhum lead com esse filtro";
+    // dropdowns só na 1ª carga: recarregar a cada filtro apagaria a opção escolhida
+    if ($("fCidade") && $("fCidade").options.length <= 1 && d.resumo) {
+      for (const c of (d.resumo.cidades || []).slice(0, 60))
+        $("fCidade").insertAdjacentHTML("beforeend", `<option>${esc(c)}</option>`);
+      for (const c of (d.resumo.categorias || []).slice(0, 60))
+        $("fNicho").insertAdjacentHTML("beforeend", `<option>${esc(c)}</option>`);
+    }
   } catch (e) { }
 }
+for (const id of ["fCidade", "fNicho"])
+  if ($(id)) $(id).addEventListener("change", carregarLeads);
 
 $("nome").addEventListener("change", autofill);
 $("nome").addEventListener("blur", autofill);
@@ -129,6 +150,26 @@ async function carregarModelos() {
       </div>
     </div>`).join("")
     : '<div class="vazio">segmento fora do mapa — sai com o tema do motor, sem morfismo</div>';
+
+  /* AVISO DE NICHO SEM PERFIL — antes de gerar, não depois de estranhar o resultado.
+     Não dá pra ler isto de `dec.length`: no T1 o tier FORÇA um principal, então a
+     composição tem 1 item mesmo quando o segmento é desconhecido, e o "fora do mapa"
+     acima nunca aparece. Foi assim que dois clientes de "loja de bicicletas" saíram
+     com composição genérica sem ninguém ver aviso nenhum.
+     AVISA, NUNCA BLOQUEIA: barrar a geração na véspera de uma venda é pior que gerar
+     genérico — o JP decide, e o motor registra o nicho pra virar perfil depois. */
+  const perf = MOD.perfil || {};
+  const av = document.getElementById("m-semperfil");
+  if (av) {
+    av.innerHTML = (nicho && !perf.conhecido)
+      ? `O motor <b>não tem opinião estética</b> sobre “${esc(nicho)}”. O site sai —
+         mas com a composição padrão, não com uma escolhida pra esse segmento.
+         O nicho fica registrado: a partir da <b>2ª vez</b> ele entra na fila do
+         catálogo vivo, ali embaixo. Perfis que existem hoje:
+         ${(perf.catalogo || []).map(esc).join(" · ")}.`
+      : "";
+    av.hidden = !av.innerHTML;
+  }
 
   /* VOCABULÁRIO: os 9 como referência, com marca de quem entrou. Não é checkbox —
      clicar aqui não seleciona nada; a escolha manual mora no <details> de exceção. */

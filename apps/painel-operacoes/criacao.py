@@ -366,7 +366,14 @@ def modelos(nicho: str = "", tier: str = "", nome: str = "", lead_id: int = 0) -
     for e in estilos_:
         e["usado_em"] = usados.get(e["valor"], [])
     import memoria_estilo as _mem
+    # O motor SABE vestir este nicho, ou vai cair no perfil vazio? Sem isto o operador
+    # descobre depois, olhando um site genérico e achando que o motor "não caprichou" —
+    # quando na verdade ninguém nunca escreveu a opinião estética daquele segmento.
+    import catalogo_vivo as _cat
+    _perfil = _cat.conhecido(nicho)
     return {"segmento": _rec.segmento_de(nicho), "estilos": estilos_, "receitas": receitas_,
+            "perfil": {"conhecido": bool(_perfil), "chave": _perfil,
+                       "catalogo": sorted(_est.PERFIS)},
             "auto": {"estilo": auto_e["principal"], "porque": auto_e["porque"],
                      "acento": acento, "receita": auto_r["nome"],
                      "decisoes": auto_e.get("decisoes", []),
