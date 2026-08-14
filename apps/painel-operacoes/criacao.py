@@ -388,7 +388,7 @@ def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | s
           fotos: list[tuple] | None = None, estilo: str = "",
           autofill: dict | None = None, lead_id: int = 0, tier: str = "",
           receita_nome: str = "", cidade: str = "", email: str = "",
-          variacao: int = 0) -> dict:
+          variacao: int = 0, origem_captacao: str = "") -> dict:
     """Dispara o motor REAL com o briefing. `foto`/`video` = (bytes, nome_arquivo) opcionais
     (PROMPT 2): salvos em <slug>/{img,vid} e embutidos no hero via contrato estendido do motor.
     `fotos` = lista (bytes, nome) do acervo do cliente (C3): passam por OCR (contexto pra copy)
@@ -578,11 +578,25 @@ def gerar(nome: str, nicho: str, whatsapp: str = "", diferenciais: list[str] | s
         return {"ok": False, "url": url, "slug": slug,
                 "erro": f"QA bloqueou: telefone placeholder no site ({', '.join(_tel_ruins)}). "
                         f"Corrija o WhatsApp do briefing e gere de novo."}
+    # TELEMETRIA: sem isto o site nasce mudo e nunca aparece no relatório periódico.
+    # Vale pra home e pras páginas irmãs do T2. `site` = slug, que é a chave que o
+    # relatório usa. Nunca derruba a geração — o site já está no disco.
+    try:
+        import beacon_snippet
+        for _pg in _paginas_do_site(site_dir):
+            beacon_snippet.injetar(_pg, slug)
+    except Exception:  # noqa: BLE001
+        log.warning("beacon não injetado em %s", slug, exc_info=True)
+
     try:
         with _db_noemi() as c:
-            c.execute("INSERT INTO sites_gerados (cliente,segmento,slug,url,criado_em) VALUES (?,?,?,?,?)",
+            import captacao
+            captacao.garantir_coluna(c)
+            c.execute("INSERT INTO sites_gerados (cliente,segmento,slug,url,criado_em,origem_captacao) "
+                      "VALUES (?,?,?,?,?,?)",
                       (nome, nicho.strip(), slug, url,
-                       __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()))
+                       __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+                       captacao.normalizar(origem_captacao)))
             c.commit()
     except Exception:  # noqa: BLE001 — registro é secundário; o site já está no disco
         pass

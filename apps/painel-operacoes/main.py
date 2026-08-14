@@ -941,7 +941,8 @@ async def criacao_gerar(nome: str = Form(...), nicho: str = Form(...), whatsapp:
                         lead_id: int = Form(0), tier: str = Form(""),
                         receita_nome: str = Form(""), cidade: str = Form(""),
                         email: str = Form(""),
-                        variacao: int = Form(0)) -> JSONResponse:
+                        variacao: int = Form(0),
+                        origem_captacao: str = Form("")) -> JSONResponse:
     import asyncio
     import functools
 
@@ -969,7 +970,8 @@ async def criacao_gerar(nome: str = Form(...), nicho: str = Form(...), whatsapp:
             diferenciais=diferenciais, publico=publico, cor=cor, preset=0,
             foto=f, video=v, copy_livre=copy_livre, fotos=fs, estilo=estilo,
             autofill=af, lead_id=lead_id, tier=tier, receita_nome=receita_nome,
-            cidade=cidade, email=email, variacao=variacao))
+            cidade=cidade, email=email, variacao=variacao,
+            origem_captacao=origem_captacao))
     return JSONResponse(res, status_code=200 if res.get("ok") else 422)
 
 

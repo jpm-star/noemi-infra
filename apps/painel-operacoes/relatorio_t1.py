@@ -34,16 +34,38 @@ def sites_com_trafego() -> list[str]:
             "SELECT site FROM site_trafego GROUP BY site ORDER BY COUNT(*) DESC") if r[0]]
 
 
+def sites_do_relatorio() -> list[str]:
+    """Quem entra no relatório: quem tem tráfego MAIS quem foi provisionado.
+
+    Só tráfego não bastava: um T1 recém-instalado tem 0 evento e sumiria da saída
+    justamente na semana em que o JP precisa saber se ele já virou indicação."""
+    from shared_core.storage import db
+    vistos = list(sites_com_trafego())
+    tem = set(vistos)
+    with db.conn() as c:
+        c.execute("CREATE TABLE IF NOT EXISTS sites_gerados (id INTEGER PRIMARY KEY "
+                  "AUTOINCREMENT, cliente TEXT NOT NULL, segmento TEXT, slug TEXT NOT NULL, "
+                  "url TEXT NOT NULL, criado_em TEXT NOT NULL, prospect_id INTEGER)")
+        for (slug,) in c.execute("SELECT DISTINCT slug FROM sites_gerados "
+                                 "WHERE slug IS NOT NULL ORDER BY slug"):
+            if slug and slug not in tem:
+                tem.add(slug)
+                vistos.append(slug)
+    return vistos
+
+
 def rodar(site: str) -> dict:
     """Analisa o tráfego de 1 site e grava os achados NOVOS em insights_cliente."""
     import beacon
+    import captacao
     import insight_engine
     from shared_core.storage import db
 
+    origem = captacao.de_cliente(site)  # nunca levanta: site sem tag => "desconhecida"
     r = beacon.analise(site, minimo=MIN_VISITAS)
     achados = r.get("achados") or []
     if r.get("status") != "ok" or not achados:
-        fora = {"site": site, "status": r.get("status", "sem-achado"),
+        fora = {"site": site, "origem": origem, "status": r.get("status", "sem-achado"),
                 "visitas": r.get("visitas", 0), "novos": 0}
         if r.get("motivo"):  # diz POR QUE não houve entrega, em vez de sumir calado
             fora["motivo"] = r["motivo"]
@@ -68,12 +90,12 @@ def rodar(site: str) -> dict:
                       "VALUES (?,?,?,?,?,?,?,?)", (site, ts, tipo, ins, acao, 0, "", "beacon"))
             novos += 1
         c.commit()
-    return {"site": site, "status": "ok", "visitas": r.get("visitas", 0),
+    return {"site": site, "origem": origem, "status": "ok", "visitas": r.get("visitas", 0),
             "cliques_cta": r.get("cliques_cta", 0), "novos": novos}
 
 
 def rodar_todos() -> list[dict]:
-    return [rodar(s) for s in sites_com_trafego()]
+    return [rodar(s) for s in sites_do_relatorio()]
 
 
 if __name__ == "__main__":
@@ -121,8 +143,32 @@ if __name__ == "__main__":
 
         # 5) a varredura enxerga o site
         assert "cliente_x" in sites_com_trafego()
-        print("relatorio_t1 OK — piso de 20 visitas respeitado, grava, chega no render, "
-              "não duplica, proveniência=beacon")
+
+        # 6) RETROCOMPAT: cliente sem a tag roda igual e reporta "desconhecida", nunca erro
+        import captacao
+        assert rodar("cliente_x")["origem"] == captacao.PADRAO, "site sem tag deveria ser desconhecida"
+
+        # 7) cliente PROVISIONADO e marcado aparece no relatório mesmo com ZERO tráfego
+        with db.conn() as c:
+            c.execute("CREATE TABLE IF NOT EXISTS sites_gerados (id INTEGER PRIMARY KEY "
+                      "AUTOINCREMENT, cliente TEXT NOT NULL, segmento TEXT, slug TEXT NOT NULL, "
+                      "url TEXT NOT NULL, criado_em TEXT NOT NULL, prospect_id INTEGER)")
+            c.execute("INSERT INTO sites_gerados (cliente,segmento,slug,url,criado_em) VALUES "
+                      "('Auto Center do Lins','oficina','auto-center-lins','http://x','2026-08-15')")
+            c.commit()
+        assert captacao.marcar("auto-center-lins", "indicacao_pessoal")["ok"] is True
+        assert "auto-center-lins" in sites_do_relatorio(), "T1 recém-instalado sumiu do relatório"
+        r = rodar("auto-center-lins")
+        assert r["origem"] == "indicacao_pessoal" and r["visitas"] == 0, r
+        assert r["status"] == "acumulando" and r["novos"] == 0, r
+
+        # 8) os dois convivem na MESMA saída — é isso que torna a taxa por via calculável
+        saida = {x["site"]: x["origem"] for x in rodar_todos()}
+        assert saida["auto-center-lins"] == "indicacao_pessoal", saida
+        assert saida["cliente_x"] == captacao.PADRAO, saida
+
+        print("relatorio_t1 OK — piso de 20 visitas, grava, chega no render, não duplica, "
+              "proveniência=beacon; origem exposta com e sem tag, T1 sem tráfego aparece")
     else:
         for x in rodar_todos():
             print(x)
