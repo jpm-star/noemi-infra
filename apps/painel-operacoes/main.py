@@ -712,6 +712,23 @@ def criacao_sites() -> JSONResponse:
     return JSONResponse({"sites": criacao.listar_sites()})
 
 
+@app.get("/api/captacao/origens")
+def captacao_origens() -> JSONResponse:
+    """Vocabulário FECHADO, servido da fonte da verdade. A UI monta o select com isto
+    em vez de repetir a lista no front — lista repetida é lista que diverge."""
+    import captacao
+    return JSONResponse({"origens": list(captacao.ORIGENS), "padrao": captacao.PADRAO})
+
+
+@app.post("/api/captacao/marcar")
+async def captacao_marcar(slug: str = Form(...), origem: str = Form(...)) -> JSONResponse:
+    """Corrige a origem de um cliente já criado. Toda a validação é do captacao.marcar:
+    valor fora do vocabulário, slug vazio e site sem registro são recusados LÁ, não aqui."""
+    import captacao
+    r = captacao.marcar(slug, origem)
+    return JSONResponse(r, status_code=200 if r.get("ok") else 422)
+
+
 @app.get("/api/criacao/lead")
 def criacao_lead(nome: str = "") -> JSONResponse:
     """C1 — autofill: devolve o que a pesquisa já sabe do lead (tracker + leads-alvo)."""

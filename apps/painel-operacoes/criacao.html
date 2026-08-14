@@ -29,6 +29,7 @@ label{display:block;font-size:.8rem;color:var(--mut);margin:10px 0 4px}
 input,textarea,select{width:100%;font:inherit;border-radius:9px;border:1px solid var(--line);background:#08101d;color:var(--txt);padding:9px 11px}
 input:focus,textarea:focus{outline:1px solid var(--cy)}
 textarea{min-height:64px;resize:vertical}
+select.orig{width:auto;padding:4px 7px;font-size:.8rem;cursor:pointer}
 .row{display:flex;gap:12px;flex-wrap:wrap}.row>div{flex:1 1 200px}
 .hint{font-size:.72rem;color:var(--mut);margin-top:3px}
 button.gerar{margin-top:14px;background:var(--op);color:#04140d;font-weight:800;border:0;border-radius:10px;padding:11px 20px;cursor:pointer;font-size:.95rem}
@@ -122,7 +123,7 @@ button.orf:hover{color:var(--txt);border-color:var(--cy)}
 <h2>Sites gerados</h2>
 <div class="cnt" id="cnt"></div>
 <div style="margin:2px 0 6px"><button class="orf" onclick="limparOrfaos()">🧹 limpar órfãos do registro</button></div>
-<table><thead><tr><th>Site</th><th>Nicho</th><th>Status</th><th>Qualidade</th><th>Criado</th><th></th></tr></thead>
+<table><thead><tr><th>Site</th><th>Nicho</th><th>Origem</th><th>Status</th><th>Qualidade</th><th>Criado</th><th></th></tr></thead>
 <tbody id="tb"></tbody></table>
 
 <script>
@@ -159,14 +160,46 @@ $("nome").addEventListener("change",autofill);
 $("nome").addEventListener("blur",autofill);
 const stCls=s=>s.startsWith("no ar")?"noar":s==="stub"?"stub":"orfao";
 const dot=(on,txt)=>`<span class="${on?'on':'off'}">${on?'●':'○'} ${txt}</span>`;
+// ORIGEM DE CAPTAÇÃO — mesma regra do CLI: o vocabulário vem do backend, o front
+// nunca decide o que é válido. Rótulo é só apresentação; o value é o valor fechado.
+let ORIGENS=[], ORIGEM_PADRAO="desconhecida";
+const ROTULO={desconhecida:"— não marcada",indicacao_pessoal:"indicação pessoal",
+              prospeccao_fria:"prospecção fria"};
+async function carregarOrigens(){
+  try{const d=await(await fetch("/api/captacao/origens")).json();
+      ORIGENS=d.origens||[];ORIGEM_PADRAO=d.padrao||"desconhecida";}catch(e){}
+}
+function selOrigem(x){
+  if(!x.marcavel)return '<span class="flag" title="sem linha em sites_gerados (site criado fora do painel) — não dá pra marcar">sem registro</span>';
+  const v=x.origem||ORIGEM_PADRAO;
+  return `<select class="orig" data-slug="${esc(x.slug)}" data-antes="${esc(v)}" onchange="marcarOrigem(this)">`
+    +ORIGENS.map(o=>`<option value="${esc(o)}"${o===v?" selected":""}>${esc(ROTULO[o]||o)}</option>`).join("")
+    +`</select>`;
+}
+async function marcarOrigem(sel){
+  const slug=sel.dataset.slug, origem=sel.value, antes=sel.dataset.antes||ORIGEM_PADRAO;
+  const fd=new FormData();fd.append("slug",slug);fd.append("origem",origem);
+  try{
+    const d=await(await fetch("/api/captacao/marcar",{method:"POST",body:fd})).json();
+    if(d.ok){sel.dataset.antes=origem;
+      $("res").innerHTML=`<div class="ok">✓ <b>${esc(slug)}</b> agora é <b>${esc(ROTULO[origem]||origem)}</b></div>`;
+      carregarSites();}
+    else{sel.value=antes;  // recusa do backend => volta ao valor anterior, não finge que gravou
+      $("res").innerHTML=`<div class="err">${esc(d.erro||"não deu pra marcar")}</div>`;}
+  }catch(e){sel.value=antes;$("res").innerHTML=`<div class="err">Erro de rede: ${esc(e.message)}</div>`;}
+}
 async function carregarSites(){
+  if(!ORIGENS.length)await carregarOrigens();
   const d=await(await fetch("/api/criacao/sites")).json();
   const S=d.sites||[];
   const noar=S.filter(x=>x.status.startsWith("no ar")).length, stub=S.filter(x=>x.status==="stub").length;
-  $("cnt").textContent=`${S.length} sites · ${noar} no ar · ${stub} stub/incompleto · dedup por slug`;
+  const pv={};S.forEach(x=>{if(x.marcavel){const o=x.origem||ORIGEM_PADRAO;pv[o]=(pv[o]||0)+1;}});
+  const placar=Object.keys(pv).length?" · "+ORIGENS.filter(o=>pv[o]).map(o=>`${pv[o]} ${ROTULO[o]||o}`).join(" · "):"";
+  $("cnt").textContent=`${S.length} sites · ${noar} no ar · ${stub} stub/incompleto${placar}`;
   $("tb").innerHTML=S.map(x=>`<tr>
     <td><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.slug)}</a></td>
     <td>${esc(x.segmento||"—")}</td>
+    <td>${selOrigem(x)}</td>
     <td><span class="st ${stCls(x.status)}">${esc(x.status)}</span></td>
     <td class="flag">${dot(x.motion,"motion")} · ${dot(x.video,"vídeo")} · <b>${x.kb||0}kb</b>${x.tem_stub?' · <span class="off">stub!</span>':''}</td>
     <td class="flag">${(x.criado_em||"").slice(0,10)||"—"}</td>

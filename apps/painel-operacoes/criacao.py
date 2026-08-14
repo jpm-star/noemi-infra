@@ -829,12 +829,20 @@ def listar_sites() -> list[dict]:
                 reg[d.name] = {"cliente": d.name, "segmento": "", "slug": d.name,
                                "url": f"{os.environ.get('SITE_BASE_URL','https://p.jpos.com.br')}/{d.name}/",
                                "criado_em": ""}
+    # origem de captação: UMA consulta pro lote todo (não uma por site). Slug ausente
+    # do dict = site órfão de disco, sem linha em sites_gerados -> não dá pra marcar,
+    # e a UI mostra isso em vez de oferecer um botão que falharia.
+    try:
+        import captacao
+        origens = captacao.por_slug()
+    except Exception:  # noqa: BLE001 — a galeria não morre por causa da atribuição
+        origens = {}
     out = []
     for slug, d in reg.items():
         idx = SITES_DIR / slug / "index.html"
         g = _gate(idx) if idx.exists() else {"status": "órfão (sem arquivo)", "tem_stub": False,
                                              "motion": False, "video": False, "kb": 0}
-        out.append({**d, **g})
+        out.append({**d, **g, "origem": origens.get(slug), "marcavel": slug in origens})
     out.sort(key=lambda x: (x.get("criado_em") or ""), reverse=True)
     return out
 
