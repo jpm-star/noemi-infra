@@ -627,7 +627,7 @@ async function siteTab(){
     $('site-kpis').innerHTML=[
       `<div class="card kpi"><div class="v">${r.visitas}</div><div class="l">visitas</div></div>`,
       `<div class="card kpi"><div class="v" style="color:var(--cy)">${r.cliques_cta}</div><div class="l">cliques no CTA</div></div>`,
-      `<div class="card kpi"><div class="v" style="color:var(--ok)">${r.conversao_pct}%</div><div class="l">conversão (CTA/visita)</div></div>`].join('');
+      `<div class="card kpi"><div class="v" style="color:var(--ok)">${r.conversao_pct==null?'—':r.conversao_pct+'%'}</div><div class="l">conversão (CTA/visita)${r.conversao_pct==null?' — sem clique medido ainda':''}</div></div>`].join('');
     const og=Object.entries(r.origens||{}), mx=Math.max(1,...og.map(x=>x[1]));
     $('site-origens').innerHTML=og.length?'<div style="font-size:.72rem;color:var(--mut);margin-bottom:4px">ORIGEM DO TRÁFEGO</div>'+og.map(([k,v])=>`<div class="bar-row"><span class="lab">${k}</span><span class="bar"><i style="width:${100*v/mx}%"></i></span><span class="num">${v}</span></div>`).join(''):'';
   }catch(e){}
@@ -785,7 +785,7 @@ async function pediTab(force){
     $('pedi-kpis').innerHTML=[
       `<div class="card kpi"><div class="v">${t.visitas??0}</div><div class="l">visitas</div></div>`,
       `<div class="card kpi"><div class="v" style="color:var(--cy)">${t.cliques_cta??0}</div><div class="l">cliques no WhatsApp</div></div>`,
-      `<div class="card kpi"><div class="v" style="color:var(--ok)">${t.conversao_pct??0}%</div><div class="l">conversão</div></div>`,
+      `<div class="card kpi"><div class="v" style="color:var(--ok)">${t.conversao_pct==null?'—':t.conversao_pct+'%'}</div><div class="l">conversão${t.conversao_pct==null?' — sem clique medido ainda':''}</div></div>`,
       `<div class="card kpi"><div class="v">${c.estampas??'—'}</div><div class="l">estampas no catálogo</div></div>`,
       // "com foto real" é o número que diz se a loja está pronta pra vender.
       `<div class="card kpi"><div class="v" style="color:${c.com_foto_real?'var(--ok)':'var(--bad)'}">${c.com_foto_real??'—'}</div><div class="l">com foto real</div></div>`,
