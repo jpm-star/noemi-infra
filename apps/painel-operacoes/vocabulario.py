@@ -60,6 +60,10 @@ NICHOS: dict[str, tuple[str, ...]] = {
         "dentista",
     ),
     "advocacia": (
+        "contabilidade",
+        "escritório de contabilidade",
+        "assessoria contábil",
+        "corretora de seguros",
         "advocacia previdenciaria",
         "aposentadoria",
         "advocacia trabalhista",
@@ -94,6 +98,21 @@ NICHOS: dict[str, tuple[str, ...]] = {
         "segurança eletrônica",
     ),
     "restaurante": (
+        "pizzaria",
+        "padaria",
+        "lanchonete",
+        "hamburgueria",
+        "sorveteria",
+        "acaiteria",
+        "açaí",
+        "cafeteria",
+        "pastelaria",
+        "marmitaria",
+        "churrascaria",
+        "espetinho",
+        "food truck",
+        "bar",
+        "rotisseria",
         "buffet infantil",
         "personal chef",
         "buffet",
@@ -107,6 +126,14 @@ NICHOS: dict[str, tuple[str, ...]] = {
         "pet shop",
     ),
     "ecommerce": (
+        "mercado",
+        "supermercado",
+        "mercearia",
+        "loja de roupas",
+        "loja de calçados",
+        "loja de chinelos",
+        "tabacaria",
+        "loja de presentes",
         "bercario",
         "creche",
         "reforco escolar",
@@ -124,6 +151,11 @@ NICHOS: dict[str, tuple[str, ...]] = {
         "curso online",
     ),
     "servicos": (
+        "auto center",
+        "auto peças",
+        "borracharia",
+        "funilaria",
+        "lavanderia",
         "revenda de tratores",
         "implementos agricolas",
         "maquinario agricola",
@@ -433,8 +465,14 @@ def _sem_acento(txt: str) -> str:
 
 
 # termo -> família, do MAIS LONGO pro mais curto (ver segmento_do_nicho)
+# A CHAVE DA FAMÍLIA TAMBÉM É TERMO. Sem isso (até 2026-08-15), "academia",
+# "advocacia" e "restaurante" não casavam com as famílias de mesmo nome: as listas
+# guardavam só as variações exóticas ("personal chef", "buffet infantil") e o nome
+# genérico ficava de fora. O nicho mais óbvio do ramo caía no estilo genérico
+# calado — e são justamente os que mais aparecem (14 academias no acervo).
 _POR_TERMO = sorted(
-    ((_sem_acento(t), seg) for seg, termos in NICHOS.items() for t in termos),
+    ({(_sem_acento(t), seg) for seg, termos in NICHOS.items() for t in termos}
+     | {(_sem_acento(seg), seg) for seg in NICHOS}),
     key=lambda x: -len(x[0]))
 
 
