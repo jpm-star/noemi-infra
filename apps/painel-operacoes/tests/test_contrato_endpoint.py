@@ -148,7 +148,11 @@ def test_catalogo_calcula_o_primeiro_pagamento_da_fonte_unica():
     tiers = {t["id"]: t for t in precos.tudo()["tiers"]}
     assert precos._primeiro_pagamento(tiers["T2"]) == 1397, \
         "primeiro pagamento do T2 divergiu de setup+mensal do precos.json"
-    assert precos._primeiro_pagamento(tiers["T1"]) == 500
+    # T1 não tem mensalidade: o primeiro pagamento É o setup. Testar a REGRA e não o
+    # número — este teste existe justamente contra preço digitado à mão (o 497 de
+    # 2026-08-15 quebrou a versão que trazia "500" cravado aqui).
+    assert tiers["T1"]["mensal"] is None
+    assert precos._primeiro_pagamento(tiers["T1"]) == tiers["T1"]["setup"]
 
     html = precos.catalogo_html()
     assert "1.397,00" in html, "o catálogo não mostra o primeiro pagamento do T2"

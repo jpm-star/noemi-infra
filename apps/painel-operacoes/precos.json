@@ -1,12 +1,12 @@
 {
   "_leia_antes": "FONTE ÚNICA DE PREÇO da JPOS. Edite este arquivo à mão e salve — o painel e qualquer material comercial leem daqui. Valores em reais. `null` = sem cobrança nessa coluna. Depois de editar, rode: systemctl restart noemi-painel-obs",
-  "_atualizado_em": "2026-08-13",
+  "_atualizado_em": "2026-08-15",
   "moeda": "R$",
   "tiers": [
     {
       "id": "T1",
       "nome": "Isca",
-      "setup": 500,
+      "setup": 497,
       "mensal": null,
       "entrega": [
         "landing única",
