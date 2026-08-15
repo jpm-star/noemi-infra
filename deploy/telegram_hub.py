@@ -254,6 +254,13 @@ def _processar_msg(m: dict, chat_alvo: str) -> str | None:
                 _responder(chat, pref + f"✗ {str(e)[:160]}{dica}")
                 radar.registrar_job(False, origem=conta or "", url=url, motivo=str(e)[:150])
         return f"links {oks}/{len(urls)} ok"
+    # 3) texto SEM link: antes sumia calado — indistinguível de bot morto. Ecoa o que
+    # dá pra fazer. Só pra texto de verdade (sticker/msg de sistema seguem em silêncio).
+    if txt.strip():
+        _responder(chat, "👋 tô de pé. Me manda um LINK (reel/YouTube/Drive), um VÍDEO "
+                         "(até 20MB), PRINTS de carrossel ou uma NOTA DE VOZ que eu "
+                         "analiso. Texto solto eu ainda não analiso.")
+        return "texto_sem_link"
     return None
 
 
@@ -292,7 +299,10 @@ def rodar(*, buscar=None) -> dict:
         off = json.loads(_ESTADO.read_text()).get("offset", 0)
     except (OSError, ValueError):
         off = 0
-    upd = (buscar or (lambda o: _get("getUpdates", {"offset": o, "timeout": 0}))) (off + 1)
+    # long polling: o Telegram SEGURA a conexão até chegar mensagem (devolve na hora
+    # em que ela chega). Com timeout=0 o ACK "recebi, analisando" só saía no próximo
+    # tique do timer — até 30s de silêncio total, que lê como "o bot morreu".
+    upd = (buscar or (lambda o: _get("getUpdates", {"offset": o, "timeout": 25}))) (off + 1)
     resultados = _agrupar_album(upd.get("result", []) if isinstance(upd, dict) else [])
     feitos = []
     maior = off
@@ -323,11 +333,15 @@ if __name__ == "__main__":
         sys.modules["radar"] = mod
         globals()["_responder"] = lambda c, t: vistos.append(t)
         globals()["_baixar_arquivo"] = lambda fid, d: (Path("/tmp/fake.mp4"), "")
-        assert "link ok" in _processar_msg({"chat": {"id": "1"}, "text": "olha https://youtu.be/x"}, "1")
+        assert "links 1/1 ok" == _processar_msg({"chat": {"id": "1"}, "text": "olha https://youtu.be/x"}, "1")
         assert "video ok" in _processar_msg({"chat": {"id": "1"}, "video": {"file_id": "F"}}, "1")
         assert "imagem ok" in _processar_msg({"chat": {"id": "1"}, "photo": [{"file_id": "s"}, {"file_id": "L"}]}, "1")
         assert _processar_msg({"chat": {"id": "9"}, "text": "https://x.com"}, "1") is None  # outro chat
-        assert _processar_msg({"chat": {"id": "1"}, "text": "oi sem link"}, "1") is None
-        print("telegram_hub OK — roteia link/vídeo, ignora outro chat e texto sem link")
+        assert not vistos[len(vistos):]  # outro chat: nunca responde
+        # texto sem link: responde (antes sumia calado = indistinguível de bot morto)
+        assert _processar_msg({"chat": {"id": "1"}, "text": "oi sem link"}, "1") == "texto_sem_link"
+        assert "tô de pé" in vistos[-1]
+        assert _processar_msg({"chat": {"id": "1"}, "sticker": {"file_id": "s"}}, "1") is None  # sem texto: calado
+        print("telegram_hub OK — roteia link/vídeo/texto, ignora outro chat e sticker")
     else:
         print(json.dumps(rodar(), ensure_ascii=False))

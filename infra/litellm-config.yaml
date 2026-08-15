@@ -277,6 +277,13 @@ litellm_settings:
   cache: true                # cache de prompt em memória (hit rate era 0%) — corta
   cache_params:              # custo/latência em chamadas repetidas (ex: diagnóstico)
     type: local
+    # SEM ttl/cap o InMemoryCache só cresce. Em 2026-08-08 o container estava com
+    # 957MB de heap anônimo em 38h de uptime — e a visão manda IMAGEM EM BASE64 pelo
+    # gateway, então cada entrada cacheada pesa centenas de KB, não bytes.
+    # 10 min cobre a chamada repetida que o cache existe pra pegar (diagnóstico,
+    # regerar o mesmo site) sem guardar nada por horas.
+    ttl: 600
+    max_size_in_memory: 50
   # observabilidade nativa: custo/latência/modelo/erro por chamada no dashboard /ui
   # (Langfuse é plug de 3 linhas aqui — success_callback: ["langfuse"] — quando o
   #  trace-UI dedicado valer o container extra; ver infra/README.md)

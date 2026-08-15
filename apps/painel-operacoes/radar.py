@@ -765,7 +765,14 @@ def analisar_arquivo(caminho: str, origem: str = "telegram", url_ref: str = "",
             texto_audio = trans.transcrever(str(audio)) or ""
         except Exception:  # noqa: BLE001 — vídeo mudo/áudio ruim: a visão carrega
             texto_audio = ""
-        visao_txt, _ = visao.analisar_frames(_frames(caminho, Path(td)))
+        # VÍDEO NATIVO primeiro: frames mostram ESTADOS, o vídeo mostra MOVIMENTO
+        # (ordem, velocidade, easing). Pra screen-recording de site ou reel, é a
+        # diferença entre "o que tinha na tela" e "o que aconteceu". Se não houver
+        # crédito/chave, devolve vazio e o caminho de frames assume — que é grátis.
+        if os.environ.get("RADAR_VIDEO_NATIVO", "1") == "1":
+            visao_txt, _fv = visao.analisar_video(caminho)
+        if not visao_txt:
+            visao_txt, _ = visao.analisar_frames(_frames(caminho, Path(td)))
     texto = _combinar(visao_txt, "", texto_audio)
     if not texto.strip():
         raise RuntimeError("nem visão nem áudio legíveis (sem chave Gemini/Groq?)")

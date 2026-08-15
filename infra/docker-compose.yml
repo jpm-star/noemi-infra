@@ -25,7 +25,7 @@ services:
     image: ghcr.io/berriai/litellm-database:main-stable
     container_name: noemi-litellm
     restart: unless-stopped
-    mem_limit: 1g
+    mem_limit: 2g   # era 1g e vivia em 91% (934MiB). Ver cache_params abaixo.
     depends_on:
       litellm-db:
         condition: service_healthy

@@ -1,8 +1,11 @@
 [Unit]
-Description=Roda o hub do Telegram a cada 30s
+Description=Roda o hub do Telegram (long polling de 25s, quase contínuo)
 [Timer]
 OnBootSec=30
-OnUnitActiveSec=30
+# OnUnitActiveSec conta da ATIVAÇÃO, e o ciclo agora dura ~25s (long polling).
+# Com 30 sobrava uma janela morta de ~5-15s por ciclo em que ninguém escutava —
+# justo o que o long polling veio matar. 26 = próximo ciclo ~1s após o anterior.
+OnUnitActiveSec=26
 Persistent=true
 [Install]
 WantedBy=timers.target
