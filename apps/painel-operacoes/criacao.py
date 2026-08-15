@@ -825,7 +825,9 @@ def listar_sites() -> list[dict]:
     # sites no disco que não estão na tabela (órfãos de disco) também aparecem
     if SITES_DIR.exists():
         for d in sorted(SITES_DIR.iterdir()):
-            if d.is_dir() and d.name not in reg:
+            # `_acervo` (fotos por nicho) e `_lib` (assets) são infraestrutura do motor,
+            # não site de cliente: apareciam na galeria como "sem registro" pra sempre.
+            if d.is_dir() and not d.name.startswith("_") and d.name not in reg:
                 reg[d.name] = {"cliente": d.name, "segmento": "", "slug": d.name,
                                "url": f"{os.environ.get('SITE_BASE_URL','https://p.jpos.com.br')}/{d.name}/",
                                "criado_em": ""}
