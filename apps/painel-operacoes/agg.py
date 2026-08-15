@@ -283,19 +283,40 @@ def fallback_hist() -> dict:
 
 
 # -- VPS (/proc, stdlib) ----------------------------------------------------
-_cpu_prev = {"t": 0.0, "idle": 0.0, "total": 0.0}
+_cpu_prev = {"t": 0.0, "idle": 0.0, "total": 0.0, "ultimo": None}
+_CPU_JANELA_MIN = 2.0  # segundos
 
 
-def _cpu_pct() -> float:
+def _cpu_pct() -> float | None:
+    """Uso de CPU entre ESTA leitura e a anterior. None = ainda não dá pra dizer.
+
+    Duas armadilhas que faziam este número mentir, as duas corrigidas aqui:
+
+    1. `_cpu_prev` zerado na 1ª chamada fazia o cálculo virar "média desde o boot",
+       que não é a carga de agora. Agora a 1ª chamada devolve None (o painel mostra
+       "medindo…") em vez de um número que ninguém deveria acreditar.
+    2. O estado é GLOBAL e compartilhado por todo chamador. Dois refreshes quase
+       simultâneos deixavam `dt` na casa dos milissegundos, e aí qualquer rajada
+       de um único processo vira 90%+ — foi assim que o painel exibiu "88,8%" com
+       a máquina real em ~20%. Abaixo da janela mínima, devolve a ÚLTIMA medição
+       válida em vez de recalcular sobre um intervalo curto demais pra ter sentido.
+    """
     try:
+        agora = time.time()
+        if _cpu_prev["ultimo"] is not None and (agora - _cpu_prev["t"]) < _CPU_JANELA_MIN:
+            return _cpu_prev["ultimo"]
         with open("/proc/stat") as f:
             campos = [float(x) for x in f.readline().split()[1:]]
         idle, total = campos[3] + campos[4], sum(campos)
         di, dt = idle - _cpu_prev["idle"], total - _cpu_prev["total"]
-        _cpu_prev.update(idle=idle, total=total)
-        return round(100 * (1 - di / dt), 1) if dt > 0 else 0.0
+        primeira = _cpu_prev["t"] == 0.0
+        _cpu_prev.update(idle=idle, total=total, t=agora)
+        if primeira or dt <= 0:
+            return _cpu_prev["ultimo"]          # None na 1ª: honesto > chute
+        _cpu_prev["ultimo"] = round(100 * (1 - di / dt), 1)
+        return _cpu_prev["ultimo"]
     except (OSError, IndexError, ZeroDivisionError):
-        return 0.0
+        return None
 
 
 def vps() -> dict:

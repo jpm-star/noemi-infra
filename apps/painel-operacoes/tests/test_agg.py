@@ -35,3 +35,17 @@ def test_snapshot_shape_nao_crasha(monkeypatch):
     assert all(m["status"] == "down" for m in s["motores"])   # todos down, sem crashar
     assert s["llm"]["online"] is False and s["fila"]["online"] is False
     assert "cpu_pct" in s["vps"]  # VPS (/proc) sempre responde
+
+
+def test_cpu_primeira_leitura_nao_chuta():
+    """1ª leitura não tem intervalo anterior: None, nunca a média-desde-o-boot."""
+    agg._cpu_prev.update(t=0.0, idle=0.0, total=0.0, ultimo=None)
+    assert agg._cpu_pct() is None
+
+
+def test_cpu_ignora_janela_curta():
+    """Duas leituras coladas: repete a última medição em vez de recalcular sobre
+    um dt de milissegundos — a origem do falso '88,8%' no painel."""
+    import time
+    agg._cpu_prev.update(t=time.time(), idle=1.0, total=2.0, ultimo=17.5)
+    assert agg._cpu_pct() == 17.5
