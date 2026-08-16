@@ -85,14 +85,14 @@ def buscar(termo: str, quantas: int = CANDIDATAS) -> list[str]:
     return [r["url"] for r in d.get("results", []) if r.get("url")]
 
 
+# Curto porque o juiz é modelo de raciocínio com teto de tokens: instrução longa faz o
+# <think> comer a resposta inteira e a chamada volta muda. 19 das 136 tentativas do acervo
+# morreram assim ("SEM JUIZ após 3 tentativas"), sem nunca serem julgadas — mesma causa do
+# prompt do gate visual, medida em 2026-08-16. Ver qa_visual._PROMPT_VISAO.
 _PROMPT = (
-    "Você avalia se uma FOTO serve de ilustração para o site de um negócio.\n"
-    "A foto deve ilustrar: {servico} — num(a) {nicho}.\n"
-    "Responda APROVADO se for uma fotografia real, nítida, do assunto certo, que caiba "
-    "num site profissional. Responda REPROVADO se for desenho/clipart/ilustração, se o "
-    "assunto estiver errado, se for escura, borrada, amadora, ou se tiver texto/marca "
-    "d'água por cima. Na dúvida, REPROVADO.\n"
-    "Formato: uma palavra (APROVADO ou REPROVADO), depois 5 palavras de motivo.")
+    "Esta foto serve pro site de um(a) {nicho}, ilustrando {servico}? "
+    "REPROVE se for desenho, assunto errado, escura, borrada, amadora, ou com texto/marca "
+    "d'água. Responda APROVADO ou REPROVADO e 5 palavras de motivo.")
 
 
 def _visao_aprova(imagem: bytes, servico: str, nicho: str) -> tuple[bool, str]:
