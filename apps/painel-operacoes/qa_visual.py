@@ -117,24 +117,38 @@ _SONDAS_JS = r"""
 }
 """
 
+# CURTO DE PROPÓSITO, e isto foi MEDIDO (2026-08-16), não estilo.
+#
+# O juiz é o qwen3.6, modelo de raciocínio, e `_orcamento()` do `visao.py` lhe dá 5.100
+# tokens pra PENSAR E RESPONDER — o mesmo bolso pras duas coisas. A versão anterior deste
+# prompt listava 5 categorias de defeito e 2 proibições; o modelo gastava o bolso inteiro
+# deliberando e a resposta saía truncada. Medição, mesma foto, 2 tentativas cada:
+#     prompt longo -> 19.734 chars de <think>, resposta VAZIA, 2/2 (sempre o mesmo número:
+#                     era determinístico, não instabilidade)
+#     prompt curto -> resposta JSON válida, 2/2, e achou defeito real que as sondas não pegam
+# Ou seja: com o prompt longo o juiz de visão NUNCA respondeu em site nenhum. Cada defeito
+# só detectável por visão passou batido desde que o gate existe.
+# Se for pra acrescentar categoria aqui, meça de novo — cada linha a mais custa resposta.
 _PROMPT_VISAO = (
-    "Você audita a captura de tela de uma LANDING PAGE que será enviada a um dono de "
-    "negócio como demonstração paga. Procure APENAS defeitos visíveis:\n"
-    "- texto sobreposto, cortado ou ilegível;\n"
-    "- elemento gigante/desproporcional, ou espaço vazio enorme no meio do conteúdo;\n"
-    "- imagem que claramente não tem relação com o ramo do negócio;\n"
-    "- contraste ruim (texto quase invisível sobre o fundo);\n"
-    "- qualquer coisa que pareça QUEBRADA ou inacabada.\n"
-    "NÃO comente gosto pessoal, escolha de cor ou de fonte. Só defeito.\n"
-    'Responda SOMENTE JSON: {"ok": true|false, "defeitos": ["frase curta", ...]}. '
-    "Sem defeito: ok=true e defeitos=[]."
+    "Esta imagem é a tela de um site que vai ser mostrado a um cliente. "
+    "Há algum DEFEITO VISÍVEL (texto cortado, ilegível ou sobreposto; elemento "
+    "desproporcional; buraco vazio enorme; algo quebrado)? Ignore gosto de cor e fonte. "
+    'Responda só JSON: {"ok":true|false,"defeitos":["frase curta"]}'
 )
 
 
-def _visao_julga(png: bytes) -> tuple[bool, list[str], str]:
-    """(ok, defeitos, fonte). Sem visão disponível devolve (True, [], 'sem_visao') — as
-    sondas já rodaram e reprovaram o que sabem; a visão é camada ADICIONAL, e travar tudo
-    porque o LLM caiu tornaria o gate inútil justamente no dia de pico."""
+def _visao_julga(png: bytes) -> tuple[str, list[str], str]:
+    """(veredito, defeitos, fonte) — veredito ∈ 'ok' | 'defeito' | 'indeterminado'.
+
+    ATÉ 2026-08-16 ISTO DEVOLVIA `True` QUANDO O JUIZ FALHAVA, e `auditar()` publicava
+    "aprovado: true" pra uma página que ninguém olhou. Não é detalhe de log: é o gate
+    afirmando um fato que não apurou, e qualquer relatório citando "passou no QA visual"
+    herdando a mentira.
+
+    Nem por isso vira reprovação: reprovar por indisponibilidade transforma queda de
+    provider em fila de site travado sem defeito nenhum. O terceiro estado é o honesto —
+    'indeterminado' diz o que houve e devolve a decisão pra quem lê.
+    """
     raiz = str(Path(__file__).resolve().parents[2] / "packages")
     if raiz not in sys.path:
         sys.path.insert(0, raiz)
@@ -142,24 +156,41 @@ def _visao_julga(png: bytes) -> tuple[bool, list[str], str]:
         from shared_core.ai import visao
         txt, fonte = visao.analisar_frames([png], prompt=_PROMPT_VISAO)
     except Exception as e:  # noqa: BLE001
-        return True, [], f"erro:{type(e).__name__}"
+        return "indeterminado", [], f"erro:{type(e).__name__}"
     if fonte != "groq" or not (txt or "").strip():
-        return True, [], f"sem_juiz:{fonte}"
+        # resposta vazia = estourou o teto de tokens no raciocínio e não sobrou veredito
+        return "indeterminado", [], f"sem_juiz:{fonte}"
     import re
     m = re.search(r"\{.*\}", txt, re.S)
     try:
         d = json.loads(m.group(0)) if m else {}
     except ValueError:
-        return True, [], "json_invalido"
+        return "indeterminado", [], "json_invalido"
     defeitos = [str(x)[:140] for x in (d.get("defeitos") or [])][:6]
-    return (not defeitos), defeitos, fonte
+    # a EVIDÊNCIA ganha da autodeclaração: listou defeito, reprovou — mesmo com ok=true
+    # (mesma regra de auditor_copy.py, onde o modelo já se contradisse na prática)
+    return ("defeito" if defeitos else "ok"), defeitos, fonte
+
+
+def _veredito(r: dict) -> str:
+    """'aprovado' | 'reprovado' | 'indeterminado', a partir das duas camadas.
+
+    `aprovado` exige que alguém TENHA OLHADO e não achado defeito. Juiz que não respondeu
+    não vira aval. `--sem-visao` é escolha consciente de quem roda, então aprova pelas
+    sondas — mas o campo `visao` guarda que ninguém olhou, e é isso que distingue
+    "não pedi juiz" de "pedi e ele caiu".
+    """
+    if r["erro"] or r["sondas"] or r["defeitos_visao"]:
+        return "reprovado"
+    return "indeterminado" if r["visao"] == "indeterminado" else "aprovado"
 
 
 def auditar(url: str, com_visao: bool = True, largura: int = LARGURA) -> dict:
     """Abre a URL, roda as sondas e (se passarem) a visão. Nunca levanta."""
     from playwright.sync_api import sync_playwright
 
-    r = {"url": url, "sondas": [], "defeitos_visao": [], "fonte_visao": "-", "erro": ""}
+    r = {"url": url, "sondas": [], "defeitos_visao": [], "fonte_visao": "-", "erro": "",
+         "visao": "nao_pedida"}
     try:
         with sync_playwright() as p:
             b = p.chromium.launch()
@@ -171,13 +202,13 @@ def auditar(url: str, com_visao: bool = True, largura: int = LARGURA) -> dict:
             b.close()
     except Exception as e:  # noqa: BLE001 — página que nem abre é reprovação, não crash
         r["erro"] = f"{type(e).__name__}: {e}"[:160]
-        r["aprovado"] = False
+        r["veredito"], r["aprovado"] = "reprovado", False
         return r
     # visão só depois das sondas: se já reprovou por regra, não gasta LLM pra confirmar
     if com_visao and not r["sondas"]:
-        _ok, defs, fonte = _visao_julga(png)
-        r["defeitos_visao"], r["fonte_visao"] = defs, fonte
-    r["aprovado"] = not r["sondas"] and not r["defeitos_visao"]
+        r["visao"], r["defeitos_visao"], r["fonte_visao"] = _visao_julga(png)
+    r["veredito"] = _veredito(r)
+    r["aprovado"] = r["veredito"] == "aprovado"   # derivado; nunca a fonte da verdade
     return r
 
 
@@ -193,36 +224,77 @@ def auditar_todos(slugs: list[str] | None = None, com_visao: bool = True) -> dic
         r = auditar(f"{BASE_URL}/{s}/", com_visao=com_visao)
         r["slug"] = s
         itens.append(r)
-        log.info("%s %s", "OK  " if r["aprovado"] else "REPROVA", s)
-    aprov = [i for i in itens if i["aprovado"]]
+        log.info("%-13s %s", r["veredito"].upper(), s)
+    conta = {"aprovado": 0, "reprovado": 0, "indeterminado": 0}
     tipos: dict[str, int] = {}
     for i in itens:
+        conta[i["veredito"]] += 1
         for s in i["sondas"]:
             tipos[s["sonda"]] = tipos.get(s["sonda"], 0) + 1
         if i["defeitos_visao"]:
             tipos["visao"] = tipos.get("visao", 0) + len(i["defeitos_visao"])
-    return {"total": len(itens), "aprovados": len(aprov), "reprovados": len(itens) - len(aprov),
+    return {"total": len(itens), "aprovados": conta["aprovado"],
+            "reprovados": conta["reprovado"], "indeterminados": conta["indeterminado"],
             "por_tipo": tipos, "itens": itens}
 
 
 def markdown(r: dict) -> str:
+    """O indeterminado aparece SEPARADO, nunca somado aos aprovados.
+
+    Se ele fosse contado como ok, o relatório voltaria a dizer '74/74 aprovados' num dia
+    em que o juiz de visão não respondeu nenhuma vez — que é exatamente o defeito que a
+    separação existe pra impedir."""
+    ind = r.get("indeterminados", 0)
     L = [f"# QA visual — {r['aprovados']}/{r['total']} aprovados", "",
          f"- **Reprovados:** {r['reprovados']}",
+         f"- **Sem veredito (juiz de visão não respondeu):** {ind}"
+         + ("  ← não são aprovados: ninguém olhou" if ind else ""),
          f"- **Por tipo de defeito:** " + (", ".join(f"`{k}` ×{v}" for k, v in
                                                      sorted(r["por_tipo"].items(), key=lambda x: -x[1])) or "nenhum"),
          ""]
     for i in r["itens"]:
-        if i["aprovado"]:
+        if i["veredito"] == "aprovado":
             continue
-        L.append(f"### ⛔ {i['slug']}")
+        L.append(f"### {'⛔' if i['veredito'] == 'reprovado' else '⚠️'} {i['slug']}"
+                 + ("" if i["veredito"] == "reprovado" else "  — sem veredito visual"))
         if i["erro"]:
             L.append(f"- não abriu: `{i['erro']}`")
         for s in i["sondas"][:6]:
             L.append(f"- `{s['sonda']}` — {s['el']}: {s['txt']}")
         for d in i["defeitos_visao"]:
             L.append(f"- visão: {d}")
+        if i["veredito"] == "indeterminado":
+            L.append(f"- sondas passaram, mas a visão não julgou (`{i['fonte_visao']}`) — "
+                     "olhe você, ou rode de novo quando o provider voltar")
         L.append("")
     return "\n".join(L)
+
+
+def _autoteste() -> None:
+    """A trava do falso verde. Se alguém reescrever `_veredito` pra 'simplificar' e
+    voltar a tratar juiz ausente como aval, isto quebra."""
+    base = {"erro": "", "sondas": [], "defeitos_visao": [], "visao": "ok"}
+    assert _veredito(base) == "aprovado"
+    assert _veredito({**base, "visao": "indeterminado"}) == "indeterminado", \
+        "juiz que não respondeu virou aprovação — é o bug de 2026-08-16 de volta"
+    assert _veredito({**base, "visao": "nao_pedida"}) == "aprovado", "--sem-visao é escolha"
+    assert _veredito({**base, "sondas": [{"sonda": "sem_h1"}]}) == "reprovado"
+    assert _veredito({**base, "defeitos_visao": ["texto cortado"]}) == "reprovado"
+    # defeito achado ganha de juiz ausente: reprovar é mais forte que não saber
+    assert _veredito({**base, "visao": "indeterminado",
+                      "sondas": [{"sonda": "x"}]}) == "reprovado"
+    assert _veredito({**base, "erro": "TimeoutError"}) == "reprovado", "página que não abre"
+    # e o contrato de _visao_julga: o texto vazio do juiz não pode virar 'ok'
+    r = {"total": 3, "aprovados": 1, "reprovados": 1, "indeterminados": 1, "por_tipo": {},
+         "itens": [{"slug": "a", "veredito": "aprovado", "erro": "", "sondas": [],
+                    "defeitos_visao": [], "fonte_visao": "groq"},
+                   {"slug": "b", "veredito": "indeterminado", "erro": "", "sondas": [],
+                    "defeitos_visao": [], "fonte_visao": "sem_juiz:ocr"}]}
+    md = markdown(r)
+    assert "Sem veredito" in md and "⚠️ b" in md and "### ⛔" not in md, md
+    assert "1/3 aprovados" in md, "indeterminado não pode inflar o placar"
+    print("qa_visual OK — juiz ausente vira 'indeterminado', não aprovação; "
+          "defeito ganha de não-sei; relatório conta os três separados")
 
 
 if __name__ == "__main__":
@@ -231,7 +303,11 @@ if __name__ == "__main__":
     ap.add_argument("slugs", nargs="*", help="vazio = todos os publicados")
     ap.add_argument("--sem-visao", action="store_true", help="só as sondas (rápido, sem LLM)")
     ap.add_argument("--saida", default="")
+    ap.add_argument("--check", action="store_true", help="só o autoteste da lógica")
     a = ap.parse_args()
+    if a.check:
+        _autoteste()
+        raise SystemExit(0)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     r = auditar_todos(a.slugs or None, com_visao=not a.sem_visao)
     txt = markdown(r)
