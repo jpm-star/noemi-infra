@@ -40,9 +40,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import acervo_fotos as af  # noqa: E402 — pelo MÓDULO, não pelos nomes: o autoteste
 from acervo_fotos import RAIZ, URL_BASE, _servicos, _slug  # noqa: E402  precisa baixar o piso
 
-# Ruído de OCR (uma letra solta num azulejo, um reflexo) não é "foto com texto". O que
-# reprova é texto DE VERDADE: marca d'água, legenda, post de rede social.
-MIN_CHARS_TEXTO = 12
+# Ruído de OCR (uma letra solta num azulejo, o reflexo de uma lombada) não é "foto com
+# texto". O que reprova é texto DE VERDADE: marca d'água, legenda, post de rede social.
+# Contar CARACTERES não separa os dois: a foto de estante de livros jurídicos rendeu
+# "Ea e NNE HE NI E E E" — 13 caracteres de ruído puro, e reprovou uma foto boa.
+# Contar PALAVRAS de 4+ letras separa: lombada não forma palavra, legenda forma.
+MIN_PALAVRAS = 2
+TAM_PALAVRA = 4
 _UA = "noemi-motor-site/1.0 (+https://jpos.com.br)"
 
 
@@ -57,8 +61,8 @@ def texto_na_imagem(caminho: Path) -> str:
                            capture_output=True, text=True, timeout=45)
     except (OSError, subprocess.SubprocessError):
         return ""
-    limpo = re.sub(r"[^0-9A-Za-zÀ-ÿ]+", "", r.stdout or "")
-    return r.stdout.strip() if len(limpo) >= MIN_CHARS_TEXTO else ""
+    palavras = re.findall(rf"[0-9A-Za-zÀ-ÿ]{{{TAM_PALAVRA},}}", r.stdout or "")
+    return " ".join(palavras) if len(palavras) >= MIN_PALAVRAS else ""
 
 
 def _baixar(origem: str, destino: Path) -> bytes:
@@ -152,6 +156,12 @@ def _autoteste() -> None:
         assert texto_na_imagem(limpa) == "", "foto lisa não pode acusar texto"
         # o defeito da Bellator: se isto passar, post de Instagram vira hero de novo
         assert texto_na_imagem(com_texto) != "", "texto impresso tem que reprovar"
+        # ruído de OCR sobre lombada de livro não é legenda — reprovou foto boa uma vez
+        ruido = raiz / "ruido.png"
+        im2 = Image.new("RGB", (1200, 800), (240, 240, 240))
+        ImageDraw.Draw(im2).text((60, 300), "Ea e NNE HE NI E E E", fill=(0, 0, 0))
+        im2.save(ruido)
+        assert texto_na_imagem(ruido) == "", "ruído de OCR não pode reprovar foto"
 
         r = ingerir("salão de beleza", [str(limpa), str(com_texto)], destino_raiz=raiz)
         assert r["urls"][0].endswith("/1.jpg"), r["urls"]
