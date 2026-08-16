@@ -29,6 +29,21 @@ from __future__ import annotations
 
 NICHOS: dict[str, tuple[str, ...]] = {
     "clinica": (
+        # A ÁREA, não só quem exerce (2026-08-16). O catálogo tinha "dentista",
+        # "ortodontista", "fisioterapeuta" e "psicólogo" — a PESSOA — mas não
+        # "odontologia", "ortodontia", "fisioterapia" nem "psicologia", que é como o
+        # próprio negócio se chama na placa e como o CRM grava (853 leads em
+        # "clínica odontológica"/"dentista"). Quem pedisse "odontologia" caía no
+        # estilo genérico, calado. Mesmo padrão do bug anterior, uma camada acima.
+        "odontologia",
+        "odontológica",
+        "ortodontia",
+        "implante dentário",
+        "harmonização facial",
+        "fisioterapia",
+        "psicologia",
+        "estética",
+        "dermatologia",
         "casa de repouso",
         "geriatria",
         "reabilitacao esportiva",
