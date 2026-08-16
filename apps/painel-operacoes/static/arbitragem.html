@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="pt-BR"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Arbitragem — JPOS</title>
+<style>
+:root{--bg:#0a0e14;--card:#111823;--line:#1e2a3a;--ink:#e6edf3;--mut:#7d8da3;--cy:#38bdf8;--ok:#34d399;--warn:#fbbf24;--bad:#f87171}
+*{box-sizing:border-box}
+body{margin:0 auto;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,Segoe UI,Roboto,sans-serif;padding:20px;max-width:980px}
+a{color:var(--cy)}h1{font-size:1.4rem;margin:.2em 0}.sub{color:var(--mut);font-size:.9rem;margin-top:0}
+.voltar{position:fixed;top:14px;left:14px;background:rgba(0,0,0,.55);color:#fff;text-decoration:none;padding:7px 13px;border-radius:20px;font-size:.85rem;font-weight:600;z-index:9}
+.dom{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:14px}
+.dom h2{font-size:1.05rem;margin:0 0 10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.dom h2 .n{font-size:.75rem;color:var(--mut);font-weight:400;background:#0c131d;border:1px solid var(--line);padding:1px 9px;border-radius:20px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+label{display:block;font-size:.75rem;color:var(--mut);margin-bottom:3px}
+input,select,textarea{width:100%;background:#0c131d;border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 10px;font:inherit}
+input:focus,select:focus{outline:none;border-color:var(--cy)}
+.bt{cursor:pointer;font-weight:600;background:var(--cy);color:#001;border:0;border-radius:20px;padding:9px 18px;font:inherit}
+.bt.ghost{background:#12233a;color:var(--cy);border:1px solid var(--line)}
+.bt:disabled{opacity:.5;cursor:default}
+.dois{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+@media(max-width:640px){.dois{grid-template-columns:1fr}}
+.modo{border:1px solid var(--line);border-radius:11px;padding:12px 14px;background:#0c131d}
+.modo.vence{border-color:var(--ok);box-shadow:0 0 0 1px var(--ok) inset}
+.modo h3{margin:0 0 8px;font-size:.92rem;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.tag{font-size:.66rem;font-weight:700;padding:1px 8px;border-radius:20px;background:var(--ok);color:#001}
+.lin{display:flex;justify-content:space-between;gap:10px;font-size:.85rem;padding:2px 0;border-bottom:1px dashed rgba(255,255,255,.05)}
+.lin b{font-variant-numeric:tabular-nums}
+.lucro{font-size:1.5rem;font-weight:800;font-variant-numeric:tabular-nums;margin:6px 0 2px}
+.pos{color:var(--ok)}.neg{color:var(--bad)}.mut{color:var(--mut)}
+.alerta{font-size:.8rem;color:var(--warn);margin-top:8px;line-height:1.4}
+.camada{border-left:3px solid var(--line);padding:6px 0 6px 12px;margin:8px 0;font-size:.88rem}
+.camada.no-ar{border-left-color:var(--ok)}.camada.parado{border-left-color:var(--warn)}.camada.vazio{border-left-color:var(--mut)}
+.camada .est{color:var(--mut);font-size:.78rem}
+.camada .num{color:var(--ink);font-size:.8rem;margin-top:3px}
+table{width:100%;border-collapse:collapse;font-size:.85rem}
+th{text-align:left;color:var(--mut);font-weight:500;font-size:.75rem;border-bottom:1px solid var(--line);padding:6px 8px}
+td{padding:7px 8px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:top}
+tr:hover td{background:rgba(56,189,248,.04)}
+.st{font-size:.68rem;font-weight:700;padding:1px 8px;border-radius:20px;border:1px solid var(--line);background:#0c131d;color:var(--mut);cursor:pointer}
+.st.fechada{background:var(--ok);color:#001;border-color:var(--ok)}
+.st.perdida{background:#2a1114;color:var(--bad);border-color:var(--bad)}
+.st.cotando{background:#2a2411;color:var(--warn);border-color:var(--warn)}
+.placar{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:10px}
+.placar div{font-size:.78rem;color:var(--mut)}
+.placar b{display:block;font-size:1.25rem;color:var(--ink);font-variant-numeric:tabular-nums}
+.empty{color:var(--mut);text-align:center;padding:24px}
+</style></head><body>
+<a class="voltar" href="/obs" onclick="if(history.length>1){history.back();return false}">‹ Voltar</a>
+<h1>💱 Arbitragem</h1>
+<p class="sub">Achou aqui, passou ali — com a conta feita antes de você prometer preço.
+Frete entra na conta: é o que mata negócio que parecia bom.</p>
+
+<!-- ─────────── a conta, que é o motivo desta tela existir ─────────── -->
+<div class="dom">
+  <h2>🧮 Vale a pena? <span class="n">os dois modos, lado a lado</span></h2>
+  <div class="grid">
+    <div><label>O que é</label><input id="item" placeholder="ex: 500 chinelos sublimados"></div>
+    <div><label>Onde achou</label><input id="origem" placeholder="fornecedor / marketplace"></div>
+    <div><label>Pra quem passa</label><input id="destino" placeholder="comprador"></div>
+  </div>
+  <div class="grid" style="margin-top:10px">
+    <div><label>Quantidade</label><input id="qtd" type="number" min="0" step="any" value="100"></div>
+    <div><label>Custo por unidade (R$)</label><input id="custo_unit" type="number" min="0" step="any" value="40"></div>
+    <div><label>Frete total (R$)</label><input id="frete_total" type="number" min="0" step="any" value="150"></div>
+    <div><label>Preço de venda por un. (R$)</label><input id="preco_unit" type="number" min="0" step="any" value="60"></div>
+    <div><label>Sua comissão (%)</label><input id="comissao_pct" type="number" min="0" max="100" step="any" value="8"></div>
+    <div><label>Margem que você quer (%)</label><input id="margem_alvo_pct" type="number" min="0" max="99" step="any" value="30"></div>
+  </div>
+  <div class="dois" id="cmp"><p class="empty">preencha acima…</p></div>
+  <div id="alvo" class="alerta"></div>
+  <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <select id="modo" style="width:auto"><option value="revenda">registrar como revenda</option><option value="comissao">registrar como comissão</option></select>
+    <button class="bt" id="btsalvar" onclick="salvar()">Guardar oportunidade</button>
+    <span id="msg" class="mut" style="font-size:.82rem"></span>
+  </div>
+</div>
+
+<!-- ─────────── o que já foi registrado ─────────── -->
+<div class="dom">
+  <h2>📒 Oportunidades <span class="n" id="cnt">—</span></h2>
+  <div class="placar" id="placar"></div>
+  <div id="lista"><p class="empty">carregando…</p></div>
+</div>
+
+<!-- ─────────── estado da infraestrutura, sem inflar ─────────── -->
+<div class="dom">
+  <h2>🏗️ As três camadas <span class="n">estado real, não somado</span></h2>
+  <div id="camadas"><p class="empty">carregando…</p></div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const brl = v => v==null ? '—' : 'R$ ' + Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const pct = v => v==null ? '—' : Number(v).toLocaleString('pt-BR',{maximumFractionDigits:1}) + '%';
+const CAMPOS = ['item','origem','destino','qtd','custo_unit','frete_total','preco_unit','comissao_pct','margem_alvo_pct'];
+
+function corpo(){
+  const o = {};
+  for(const c of CAMPOS){ const el=$(c); o[c] = el.type==='number' ? Number(el.value||0) : el.value.trim(); }
+  return o;
+}
+
+// A comparação é o produto desta tela: o mesmo negócio rende diferente como revenda ou
+// como comissão, e o que decide é o frete — não a preferência de quem está vendendo.
+function cartao(nome, c, vence, obs){
+  const cls = c.lucro > 0 ? 'pos' : (c.lucro < 0 ? 'neg' : 'mut');
+  return `<div class="modo ${vence?'vence':''}">
+    <h3>${nome} ${vence?'<span class="tag">paga mais</span>':''}</h3>
+    <div class="lucro ${cls}">${brl(c.lucro)}</div>
+    <div class="mut" style="font-size:.75rem;margin-bottom:8px">lucro no negócio inteiro</div>
+    <div class="lin"><span>receita</span><b>${brl(c.receita)}</b></div>
+    <div class="lin"><span>sai do seu bolso</span><b>${brl(c.custo_total)}</b></div>
+    <div class="lin"><span>margem</span><b>${pct(c.margem_pct)}</b></div>
+    <div class="lin"><span>markup (sobre o custo)</span><b>${pct(c.markup_pct)}</b></div>
+    ${obs||''}</div>`;
+}
+
+async function simular(){
+  let r;
+  try{ r = await (await fetch('/api/arbitragem/simular',{method:'POST',
+        headers:{'content-type':'application/json'},body:JSON.stringify(corpo())})).json(); }
+  catch(e){ $('cmp').innerHTML = '<p class="empty">sem conexão com o painel</p>'; return; }
+  const rev = r.revenda, com = r.comissao;
+  const vRev = rev.lucro >= com.lucro;
+  // o frete comendo o lucro é o alerta que evita fechar negócio que morre no reajuste
+  let obs = '';
+  if(rev.frete_pct_lucro != null && rev.frete_pct_lucro >= 30)
+    obs = `<div class="alerta">⚠️ o frete é ${pct(rev.frete_pct_lucro)} do seu lucro
+           (${brl(rev.frete_unit)}/un). Reajuste de transportadora derruba este negócio.</div>`;
+  else if(rev.lucro <= 0)
+    obs = `<div class="alerta">⛔ como revenda isso dá prejuízo — só faz sentido por comissão.</div>`;
+  $('cmp').innerHTML = cartao('Revenda', rev, vRev, obs)
+                     + cartao('Comissão', com, !vRev,
+                        '<div class="alerta mut" style="color:var(--mut)">sem capital e sem frete: o teto é a sua %</div>');
+  $('alvo').innerHTML = r.preco_para_margem
+    ? `🎯 pra fechar <b>${pct(r.margem_alvo_pct)}</b> de margem na revenda, o preço mínimo é
+       <b>${brl(r.preco_para_margem)}</b> por unidade — abaixo disso você está pagando pra trabalhar.`
+    : '';
+}
+
+async function salvar(){
+  const o = {...corpo(), modo: $('modo').value};
+  if(!o.item){ $('msg').textContent = 'sem "o que é" não dá pra guardar'; return; }
+  $('btsalvar').disabled = true;
+  try{
+    const r = await (await fetch('/api/arbitragem/oportunidade',{method:'POST',
+      headers:{'content-type':'application/json'},body:JSON.stringify(o)})).json();
+    $('msg').textContent = r.ok ? `guardada (#${r.id})` : (r.erro || 'não deu');
+    if(r.ok) carregar();
+  }catch(e){ $('msg').textContent = 'falhou ao guardar'; }
+  $('btsalvar').disabled = false;
+}
+
+const PROX = {achada:'cotando', cotando:'fechada', fechada:'perdida', perdida:'achada'};
+window.girar = async (id, atual)=>{
+  await fetch(`/api/arbitragem/oportunidade/${id}/status`,{method:'POST',
+    headers:{'content-type':'application/json'},body:JSON.stringify({status:PROX[atual]||'achada'})});
+  carregar();
+};
+
+async function carregar(){
+  let d;
+  try{ d = await (await fetch('/api/arbitragem/oportunidades')).json(); }
+  catch(e){ $('lista').innerHTML='<p class="empty">sem conexão</p>'; return; }
+  $('cnt').textContent = d.total + (d.total===1?' registro':' registros');
+  // realizado e potencial SEPARADOS: somar os dois é o número que faz pipeline parecer caixa
+  $('placar').innerHTML = `
+    <div>fechado<b class="pos">${brl(d.lucro_fechado)}</b></div>
+    <div>em aberto (potencial)<b class="mut">${brl(d.lucro_potencial_aberto)}</b></div>
+    ${Object.entries(d.por_status).map(([k,v])=>`<div>${k}<b>${v}</b></div>`).join('')}`;
+  if(!d.itens.length){ $('lista').innerHTML='<p class="empty">nada registrado ainda — use a conta acima e guarde a primeira.</p>'; return; }
+  $('lista').innerHTML = `<table><thead><tr><th>o quê</th><th>modo</th><th>de → pra</th>
+    <th style="text-align:right">lucro</th><th style="text-align:right">margem</th><th>status</th></tr></thead><tbody>` +
+    d.itens.map(i=>`<tr>
+      <td><b>${esc(i.item)}</b><div class="mut" style="font-size:.75rem">${Number(i.qtd).toLocaleString('pt-BR')} un · ${esc(i.nota||'')}</div></td>
+      <td class="mut">${esc(i.modo)}</td>
+      <td class="mut" style="font-size:.78rem">${esc(i.origem||'—')} → ${esc(i.destino||'—')}</td>
+      <td style="text-align:right"><b class="${i.conta.lucro>0?'pos':(i.conta.lucro<0?'neg':'mut')}">${brl(i.conta.lucro)}</b></td>
+      <td style="text-align:right">${pct(i.conta.margem_pct)}</td>
+      <td><span class="st ${esc(i.status)}" onclick="girar(${i.id},'${esc(i.status)}')" title="clique pra avançar">${esc(i.status)}</span></td>
+    </tr>`).join('') + '</tbody></table>';
+}
+
+async function camadas(){
+  let d;
+  try{ d = await (await fetch('/api/arbitragem/resumo')).json(); }
+  catch(e){ $('camadas').innerHTML='<p class="empty">sem conexão</p>'; return; }
+  const classe = e => /no ar/.test(e) ? 'no-ar' : (/sem dado|vazio/.test(e) ? 'vazio' : 'parado');
+  $('camadas').innerHTML = (d.camadas||[]).map(c=>{
+    const nums = Object.entries(c).filter(([k,v])=>typeof v==='number')
+                  .map(([k,v])=>`${k.replace(/_/g,' ')}: <b>${v.toLocaleString('pt-BR')}</b>`).join(' · ');
+    return `<div class="camada ${classe(c.estado||'')}">
+      <b>${esc(c.camada)}</b> <span class="est">— ${esc(c.estado)}</span>
+      <div class="num">${nums}</div>
+      <div class="est">fonte: ${esc(c.fonte||'—')}</div></div>`;
+  }).join('') + `<div class="est" style="color:var(--mut);font-size:.75rem;margin-top:6px">
+      lido em ${esc(d.lido_em||'—')} · os números NÃO são somados entre camadas: são bancos
+      diferentes, e somar inventaria um total que não existe em lugar nenhum.</div>`;
+}
+
+CAMPOS.forEach(c => $(c).addEventListener('input', simular));
+simular(); carregar(); camadas();
+</script>
+</body></html>

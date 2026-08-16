@@ -115,6 +115,60 @@ def arbitragem_resumo() -> JSONResponse:
     return JSONResponse(motores.arbitragem())
 
 
+# --- operação do dia: as oportunidades, com a conta feita ---------------------
+# Separado do resumo de propósito: `/resumo` é o estado da INFRAESTRUTURA (o que está
+# de pé), isto é o que você viu hoje e vale quanto. Misturar os dois é como o placar
+# de "sites gerados" virou orgulho enquanto nenhum lead tinha demo apontada.
+@app.get("/api/arbitragem/oportunidades")
+def arbitragem_listar(status: str = "") -> JSONResponse:
+    import arbitragem_ops
+    return JSONResponse(arbitragem_ops.listar(status.strip().lower()))
+
+
+@app.post("/api/arbitragem/oportunidade")
+async def arbitragem_registrar(request: Request) -> JSONResponse:
+    import arbitragem_ops
+    try:
+        corpo = await request.json()
+    except ValueError:
+        return JSONResponse({"ok": False, "erro": "corpo precisa ser JSON"}, status_code=400)
+    r = arbitragem_ops.registrar(corpo)
+    return JSONResponse(r, status_code=200 if r.get("ok") else 400)
+
+
+@app.post("/api/arbitragem/oportunidade/{oid}/status")
+async def arbitragem_status(oid: int, request: Request) -> JSONResponse:
+    import arbitragem_ops
+    try:
+        corpo = await request.json()
+    except ValueError:
+        corpo = {}
+    r = arbitragem_ops.mudar_status(oid, (corpo.get("status") or "").strip().lower())
+    return JSONResponse(r, status_code=200 if r.get("ok") else 400)
+
+
+@app.post("/api/arbitragem/simular")
+async def arbitragem_simular(request: Request) -> JSONResponse:
+    """A conta SEM gravar — é o que se usa com o comprador na linha.
+
+    Devolve os dois modos lado a lado: a mesma oportunidade como revenda (você compra e
+    assume frete) e como comissão (você só apresenta). Qual paga mais não é opinião,
+    é a conta — e ela muda com o frete."""
+    import arbitragem_ops
+    try:
+        op = await request.json()
+    except ValueError:
+        return JSONResponse({"erro": "corpo precisa ser JSON"}, status_code=400)
+    alvo = float(op.get("margem_alvo_pct") or 30)
+    rev = {**op, "modo": "revenda"}
+    return JSONResponse({
+        "revenda": arbitragem_ops.conta(rev),
+        "comissao": arbitragem_ops.conta({**op, "modo": "comissao"}),
+        "preco_para_margem": arbitragem_ops.preco_para_margem(rev, alvo),
+        "margem_alvo_pct": alvo,
+    })
+
+
 # --- Motor B: repasse das 3 rotas de geração -------------------------------
 # O formulário mora nesta página, mas quem gera vídeo é o :8010. Repasse em vez
 # de CORS: o navegador fala só com esta origem (que já tem o basic auth do Caddy)
@@ -1210,6 +1264,11 @@ def radar_pagina() -> str:
 @app.get("/obs/ideias", response_class=HTMLResponse)
 def ideias_pagina() -> str:
     return (_AQUI / "static" / "ideias.html").read_text(encoding="utf-8")
+
+
+@app.get("/obs/arbitragem", response_class=HTMLResponse)
+def arbitragem_pagina() -> str:
+    return (_AQUI / "static" / "arbitragem.html").read_text(encoding="utf-8")
 
 
 @app.get("/obs/pessoal", response_class=HTMLResponse)
