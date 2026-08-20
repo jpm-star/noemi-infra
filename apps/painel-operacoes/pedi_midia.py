@@ -171,13 +171,47 @@ def apontar_video(slug: str, caminhos: dict) -> None:
     _reescrever_frontmatter(md, muda)
 
 
-def publicar() -> dict:
-    """Build + porteiro + cópia pro diretório servido. Falhou = nada vai ao ar."""
+def estampas_mock() -> list[str]:
+    """Slugs que ainda mostram foto gerada. Leitura barata dos .md — roda antes do
+    build pra decidir se vale gastar 40s compilando algo que não pode ir ao ar."""
+    import yaml
+    fora = []
+    for md in sorted(_PRODUTOS.glob("*.md")):
+        try:
+            m = re.match(r"^---\n(.*?)\n---", md.read_text(encoding="utf-8"), re.S)
+            d = yaml.safe_load(m.group(1)) if m else {}
+        except (OSError, ValueError):
+            continue
+        if (d or {}).get("mock"):
+            fora.append(md.stem)
+    return fora
+
+
+def publicar(permitir_mock: bool = False) -> dict:
+    """Build + porteiro + cópia pro diretório servido. Falhou = nada vai ao ar.
+
+    `PERMITIR_MOCK=1` era injetado FIXO aqui, com a justificativa de que "o porteiro
+    é quem julga". Só que o porteiro que julga mock é o `guardMock` do build
+    (src/lib/dados.ts) — `checa-lancavel.mjs` apenas AVISA. Injetar a variável
+    sempre desarmava o único guarda que existia: o site foi ao ar com 8 de 8
+    estampas em foto gerada, sem nada reclamar.
+
+    Agora o padrão é o guarda ligado, e publicar com mock virou escolha explícita
+    (`permitir_mock=True`) em vez de efeito colateral invisível.
+    """
     if not (_REPO / "package.json").exists():
         return {"ok": False, "etapa": "repo", "saida": f"{_REPO} não parece o site"}
+    mocks = estampas_mock()
+    if mocks and not permitir_mock:
+        return {"ok": False, "etapa": "porteiro", "mock": mocks,
+                "saida": (f"{len(mocks)} estampa(s) ainda com foto gerada: {', '.join(mocks)}.\n"
+                          "Suba as fotos reais (Drive → painel) ou publique como AMOSTRA "
+                          "de propósito.")}
     passos = [("build", ["npm", "run", "build"]),
               ("checagem", ["node", "scripts/checa-lancavel.mjs"])]
-    env = {**os.environ, "PERMITIR_MOCK": "1"}   # o porteiro é quem julga, não o build
+    env = {**os.environ}
+    if permitir_mock:
+        env["PERMITIR_MOCK"] = "1"
     for nome, cmd in passos:
         r = subprocess.run(cmd, cwd=_REPO, capture_output=True, text=True, timeout=900, env=env)
         if r.returncode != 0:
@@ -204,6 +238,8 @@ def publicar() -> dict:
     no_ar = len(list(_PUBLICADO.rglob("*.html")))
     no_build = len(list(dist.rglob("*.html")))
     return {"ok": True, "paginas": no_ar, "no_build": no_build,
+            # publicou com foto gerada? o retorno diz — senão "ok" esconde o buraco
+            "mock": mocks,
             # divergência aqui significa órfã sobrevivendo: aparece no painel em vez
             # de virar descoberta acidental daqui a semanas
             "orfas": max(0, no_ar - no_build), "podou": bool(shutil.which("rsync"))}

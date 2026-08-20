@@ -358,11 +358,28 @@ async def pedi_catalogo_remover(slug: str) -> JSONResponse:
 
 
 @app.post("/api/pedi/publicar")
-async def pedi_publicar() -> JSONResponse:
+async def pedi_publicar(amostra: bool = False) -> JSONResponse:
     """Build + porteiro + cópia pro diretório servido. Se o porteiro reprovar,
-    nada vai ao ar e a saída dele volta pra tela."""
+    nada vai ao ar e a saída dele volta pra tela.
+
+    `?amostra=1` publica MESMO com estampa em foto gerada. É o escape consciente:
+    antes essa permissão era automática e ninguém via que estava usando ela.
+    """
     import pedi_midia
-    r = await asyncio.to_thread(pedi_midia.publicar)
+    r = await asyncio.to_thread(pedi_midia.publicar, amostra)
+    return JSONResponse(r, status_code=200 if r.get("ok") else 400)
+
+
+@app.post("/api/pedi/drive")
+async def pedi_drive_sincronizar(aplicar: bool = True, raiz: str | None = None) -> JSONResponse:
+    """Puxa as fotos reais do Drive e troca as imagens mock do catálogo.
+
+    `?aplicar=0` só confere (mostra o casamento pasta→estampa e o que seria
+    recusado, sem escrever). NÃO publica: a troca entra no catálogo, e o botão de
+    publicar continua sendo quem decide o que o cliente vê.
+    """
+    import pedi_drive
+    r = await asyncio.to_thread(pedi_drive.sincronizar, raiz, aplicar)
     return JSONResponse(r, status_code=200 if r.get("ok") else 400)
 
 

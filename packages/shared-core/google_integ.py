@@ -20,7 +20,11 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-_SCOPES = "https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/spreadsheets"
+# drive.readonly: o pipeline da Pé Di LÊ a pasta de fotos do JP. Somente leitura de
+# propósito — este código nunca deve poder apagar material do cliente.
+_SCOPES = ("https://www.googleapis.com/auth/calendar "
+           "https://www.googleapis.com/auth/spreadsheets "
+           "https://www.googleapis.com/auth/drive.readonly")
 _TOKEN_URL = "https://oauth2.googleapis.com/token"
 
 
@@ -91,6 +95,95 @@ def _api(metodo: str, url: str, tok: str, corpo: dict | None) -> tuple[bool, str
         return False, str(e)[:160]
 
 
+# --- Drive (somente leitura) ---------------------------------------------------
+# `_api` trunca a resposta em 300 chars (bom pra confirmar POST, inútil pra listar),
+# então o Drive tem seus próprios dois acessos: um que devolve JSON inteiro e um que
+# devolve bytes.
+#
+# `supportsAllDrives`/`includeItemsFromAllDrives`/`corpora=allDrives` NÃO são
+# opcionais: a conta do JP é Workspace e as pastas vivem num Drive COMPARTILHADO
+# (id começa com `0A`). Sem esses três, a API responde 200 com lista vazia — falha
+# que se disfarça de "pasta sem nada".
+_DRIVE = "https://www.googleapis.com/drive/v3/files"
+_TODOS_OS_DRIVES = {"supportsAllDrives": "true", "includeItemsFromAllDrives": "true",
+                    "corpora": "allDrives"}
+
+
+def _drive_get(url: str, tok: str) -> tuple[bool, dict | str]:
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {tok}"})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return True, json.loads(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        return False, f"HTTP {e.code}: {(e.read()[:200] if e.fp else b'').decode(errors='replace')}"
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        return False, str(e)[:200]
+
+
+def drive_listar(pasta_id: str, so_pastas: bool = False) -> tuple[bool, list | str]:
+    """Filhos diretos de uma pasta. Pagina até o fim — 100 fotos numa subpasta é
+    normal e a API entrega 100 por página."""
+    tok = _token()
+    if not tok:
+        return False, "sem GOOGLE_SERVICE_ACCOUNT_JSON (inerte)"
+    itens, page = [], ""
+    while True:
+        q = f"'{pasta_id}' in parents and trashed = false"
+        if so_pastas:
+            q += " and mimeType = 'application/vnd.google-apps.folder'"
+        params = {**_TODOS_OS_DRIVES, "q": q, "pageSize": "100",
+                  "fields": "nextPageToken,files(id,name,mimeType,size)"}
+        if page:
+            params["pageToken"] = page
+        ok, d = _drive_get(f"{_DRIVE}?{urllib.parse.urlencode(params)}", tok)
+        if not ok:
+            return False, d
+        itens.extend(d.get("files") or [])
+        page = d.get("nextPageToken") or ""
+        if not page:
+            return True, itens
+
+
+def drive_achar_pasta(nome: str) -> tuple[bool, str]:
+    """Id da pasta com esse nome exato. Devolve erro nomeando o SA quando não acha:
+    a causa quase sempre é 'existe, mas não foi compartilhada com o service account',
+    e sem o e-mail na mensagem ninguém sabe com quem compartilhar."""
+    tok = _token()
+    if not tok:
+        return False, "sem GOOGLE_SERVICE_ACCOUNT_JSON (inerte)"
+    q = (f"name = '{nome.replace(chr(39), chr(92) + chr(39))}' and trashed = false "
+         "and mimeType = 'application/vnd.google-apps.folder'")
+    params = {**_TODOS_OS_DRIVES, "q": q, "pageSize": "10", "fields": "files(id,name)"}
+    ok, d = _drive_get(f"{_DRIVE}?{urllib.parse.urlencode(params)}", tok)
+    if not ok:
+        return False, str(d)
+    achadas = d.get("files") or []
+    if not achadas:
+        sa = _sa() or {}
+        return False, (f"não achei a pasta {nome!r} no Drive. Se ela já existe, "
+                       f"compartilhe com {sa.get('client_email', 'o service account')} (Leitor).")
+    return True, achadas[0]["id"]
+
+
+def drive_baixar(file_id: str, limite_mb: int = 60) -> tuple[bool, bytes | str]:
+    """Bytes do arquivo. `limite_mb` corta antes de estourar a RAM com um vídeo."""
+    tok = _token()
+    if not tok:
+        return False, "sem GOOGLE_SERVICE_ACCOUNT_JSON (inerte)"
+    url = f"{_DRIVE}/{file_id}?alt=media&supportsAllDrives=true"
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {tok}"})
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            dados = r.read(limite_mb * 1024 * 1024 + 1)
+        if len(dados) > limite_mb * 1024 * 1024:
+            return False, f"arquivo passa de {limite_mb} MB"
+        return True, dados
+    except urllib.error.HTTPError as e:
+        return False, f"HTTP {e.code}: {(e.read()[:200] if e.fp else b'').decode(errors='replace')}"
+    except (urllib.error.URLError, OSError) as e:
+        return False, str(e)[:200]
+
+
 def sheets_append(valores: list, sheet_id: str | None = None, aba: str = "A1") -> tuple[bool, str]:
     """Adiciona uma linha na planilha de controle. Inerte sem credencial."""
     tok = _token()
@@ -129,4 +222,10 @@ if __name__ == "__main__":  # self-check: INERTE sem credencial (nunca crasha)
     assert ok2 is False and "GOOGLE_SERVICE_ACCOUNT_JSON" in m2, (ok2, m2)
     # b64url sem padding (formato JWT)
     assert _b64u(b"abc") == "YWJj" and "=" not in _b64u(b"ab")
-    print("google_integ OK — inerte sem SA (Resend-pattern); JWT via openssl; sheets/calendar prontos")
+    for chamada in (lambda: drive_listar("x"), lambda: drive_achar_pasta("y"),
+                    lambda: drive_baixar("z")):
+        ok3, m3 = chamada()
+        assert ok3 is False and "GOOGLE_SERVICE_ACCOUNT_JSON" in str(m3), (ok3, m3)
+    assert "drive.readonly" in _SCOPES and "drive.file" not in _SCOPES
+    print("google_integ OK — inerte sem SA (Resend-pattern); JWT via openssl; "
+          "sheets/calendar/drive(ro) prontos")
