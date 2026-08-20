@@ -408,6 +408,22 @@ async def pedi_custo_simular(req: Request) -> JSONResponse:
         return JSONResponse({"erro": str(e)}, status_code=400)
 
 
+@app.get("/api/pedi/toque")
+def pedi_toque_fila(todos: int = 0) -> JSONResponse:
+    """Fila de primeiro toque com mensagem e link de WhatsApp já montados."""
+    import pedi_toque
+    return JSONResponse({"fila": pedi_toque.fila(incluir_tocados=bool(todos)),
+                         "placar": pedi_toque.placar()})
+
+
+@app.post("/api/pedi/toque/marcar")
+async def pedi_toque_marcar(req: Request) -> JSONResponse:
+    """Registra o toque. Sem isso a fila devolve o mesmo lead amanhã."""
+    import pedi_toque
+    d = await req.json()
+    return JSONResponse(pedi_toque.marcar(str(d.get("id") or ""), str(d.get("resultado") or "enviado")))
+
+
 @app.get("/api/diagnostico")
 def diagnostico_dados() -> JSONResponse:
     return JSONResponse(_diagnostico())
@@ -1311,6 +1327,12 @@ def ideias_pagina() -> str:
 @app.get("/obs/arbitragem", response_class=HTMLResponse)
 def arbitragem_pagina() -> str:
     return (_AQUI / "static" / "arbitragem.html").read_text(encoding="utf-8")
+
+
+@app.get("/obs/pedi-toque", response_class=HTMLResponse)
+def pedi_toque_pagina() -> str:
+    """Fila de primeiro toque da Pé Di: lead + mensagem pronta + WhatsApp."""
+    return (_AQUI / "static" / "pedi-toque.html").read_text(encoding="utf-8")
 
 
 @app.get("/obs/pedi-calculadora", response_class=HTMLResponse)
