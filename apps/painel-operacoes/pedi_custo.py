@@ -55,25 +55,24 @@ BANDEIRA_ACIMA = 0.30
 SAQUINHO_PRECO = 3.00
 SAQUINHO_CUSTO = 2.53
 
-# Semente da curva. Os NOMES são os componentes da v2; os VALORES ficam a cargo do
-# JP na tela — o único número de custo confirmado é o total BASE (R$19,31/par
-# diluído), que entra no item de ajuste abaixo até a decomposição real ser digitada.
-# Nada aqui é diluição inventada: ou é dado confirmado, ou é zero à espera.
+# Semente da curva: portada VERBATIM da aba 08_PRODUTO da PEDI_OPERACIONAL_v2.xlsx.
+# Soma BASE = 19,31 e PREMIUM = 26,79, batendo com "CUSTO REAL POR PAR" da planilha.
+# Nenhum valor foi recalculado ou "corrigido" — inclusive os que divergem da aba
+# CONFIG (embalagem BASE 2,35 aqui vs 2,53 na CONFIG; provisão de MO 0,10 aqui vs
+# 6,00 na CONFIG). A aba PRODUTO é o que a planilha de fato usava pra cotar.
 _SEMENTE = [
-    ("direto", "Placa", 0.0, 0.0, "base: placa 70/30 rateada por par · premium: placa 100%"),
-    ("direto", "Tira", 0.0, 0.0, ""),
-    ("direto", "Sublimação", 0.0, 0.0, "base não usa"),
-    ("direto", "Lacre + etiqueta", 0.0, 0.0, ""),
-    ("direto", "Embalagem", 0.0, 0.0, ""),
-    ("provisao", "Provisão · Mão de obra", 0.0, 0.0, "diluída em 1000 pares/mês"),
-    ("provisao", "Provisão · Aluguel/energia", 0.0, 0.0, "diluída em 1000 pares/mês"),
-    ("provisao", "Provisão · Marketing", 0.0, 0.0, "diluída em 1000 pares/mês"),
-    ("provisao", "Provisão · Tecnologia", 0.0, 0.0, "diluída em 1000 pares/mês"),
-    ("provisao", "Provisão · Conhecimento", 0.0, 0.0, "diluída em 1000 pares/mês"),
-    ("diluicao", "Diluição CAPEX", 0.0, 0.0, "diluída em 1000 pares/mês"),
-    ("diluicao", "Diluição FINAME", 0.0, 0.0, "diluída em 1000 pares/mês"),
-    ("diluicao", "Ajuste v2 (total agregado — zerar ao destrinchar acima)", 19.31, 0.0,
-     "custo real/par BASE confirmado da v2. Ao digitar os componentes reais, zere esta linha."),
+    ("direto", "Placa", 5.00, 10.00, "base: 70/30 R$180 ÷ 36 pares · premium: 90/10 R$80 ÷ 8 pares"),
+    ("direto", "Tira", 3.20, 3.20, "base: tradicional · premium: slim glitter premier"),
+    ("direto", "Sublimação", 0.94, 0.94, "papel + tinta + tecido + tempo de prensa"),
+    ("direto", "Lacre + etiqueta", 0.07, 0.07, "lacre R$0,02 + etiqueta R$0,05"),
+    ("direto", "Embalagem", 2.35, 2.53, "base: saco + tag de evento · premium: caixa+seda+cartão+sacola"),
+    ("provisao", "Provisão de mão de obra", 0.10, 0.10, "diluída em 1000 pares/mês"),
+    ("provisao", "Provisão de aluguel e energia", 0.10, 0.10, "diluída em 1000 pares/mês"),
+    ("provisao", "Provisão de marketing", 1.00, 2.00, "diluída em 1000 pares/mês"),
+    ("provisao", "Provisão de tecnologia", 0.10, 0.50, "diluída em 1000 pares/mês"),
+    ("provisao", "Provisão de conhecimento", 0.00, 1.00, "diluída em 1000 pares/mês"),
+    ("diluicao", "Diluição CAPEX", 4.35, 4.35, "diluída em 1000 pares/mês"),
+    ("diluicao", "Diluição FINAME", 2.10, 2.00, "diluída em 1000 pares/mês"),
 ]
 
 
@@ -306,6 +305,13 @@ if __name__ == "__main__":  # self-check: os 3 cenários que o JP vai conferir
     assert comissao_bandeira(1200) == 0.30
 
     assert custo_par("BASE") == 19.31, custo_par("BASE")
+    assert custo_par("PREMIUM") == 26.79, custo_par("PREMIUM")
+
+    # Contrato com a planilha: aos preços sugeridos da aba PRODUTO, a margem tem de
+    # reproduzir a linha "Margem (%)" da v2 — 31,0% BASE e 45,3% PREMIUM. É o teste
+    # que quebra se alguém mexer na fórmula de margem sem querer.
+    assert round(simular("BASE", 100, 28.00)["margem_pct"], 3) == 0.310
+    assert round(simular("PREMIUM", 100, 49.00)["margem_pct"], 3) == 0.453
 
     # 1) 300 pares BASE a R$25,97 — não é tier 1000+, nenhum auto-ajuste
     a = simular("BASE", 300, 25.97, bandeira=True)
