@@ -424,6 +424,74 @@ async def pedi_toque_marcar(req: Request) -> JSONResponse:
     return JSONResponse(pedi_toque.marcar(str(d.get("id") or ""), str(d.get("resultado") or "enviado")))
 
 
+@app.get("/api/pedi/hub")
+def pedi_hub_estado() -> JSONResponse:
+    """Saúde + demos publicados + jobs. Uma chamada, a tela inteira."""
+    import pedi_hub
+    return JSONResponse({"saude": pedi_hub.saude(), "demos": pedi_hub.listar_demos(),
+                         "jobs": pedi_hub.jobs()})
+
+
+@app.post("/api/pedi/hub/sondar")
+async def pedi_hub_sondar(req: Request) -> JSONResponse:
+    """Consulta o Places ANTES de gerar — barato e evita demo sem foto."""
+    import pedi_hub
+    d = await req.json()
+    try:
+        return JSONResponse(await asyncio.to_thread(pedi_hub.sondar, str(d.get("busca") or "")))
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"erro": str(e)}, status_code=400)
+
+
+@app.post("/api/pedi/hub/gerar")
+async def pedi_hub_gerar(req: Request) -> JSONResponse:
+    import pedi_hub
+    d = await req.json()
+    try:
+        jid = pedi_hub.job_gerar_demo(str(d.get("nome") or ""), str(d.get("cidade") or ""),
+                                      str(d.get("tier") or "T3"), str(d.get("modelo") or "assessoria"))
+    except (TypeError, ValueError) as e:
+        return JSONResponse({"erro": str(e)}, status_code=400)
+    return JSONResponse({"job": jid})
+
+
+@app.post("/api/pedi/hub/regerar")
+async def pedi_hub_regerar(req: Request) -> JSONResponse:
+    import pedi_hub
+    d = await req.json()
+    return JSONResponse({"job": pedi_hub.job_regerar(str(d.get("slug") or ""),
+                                                     str(d.get("tier") or ""))})
+
+
+@app.post("/api/pedi/hub/excluir")
+async def pedi_hub_excluir(req: Request) -> JSONResponse:
+    import pedi_hub
+    d = await req.json()
+    try:
+        return JSONResponse(await asyncio.to_thread(pedi_hub.excluir_demo, str(d.get("slug") or "")))
+    except ValueError as e:
+        return JSONResponse({"erro": str(e)}, status_code=400)
+
+
+@app.post("/api/pedi/hub/captar")
+async def pedi_hub_captar(req: Request) -> JSONResponse:
+    import pedi_hub
+    d = await req.json()
+    return JSONResponse({"job": pedi_hub.job_captar(
+        str(d.get("segmento") or ""), list(d.get("cidades") or []), int(d.get("alvo") or 10))})
+
+
+@app.get("/api/pedi/leads.csv")
+def pedi_leads_csv() -> Response:
+    """Baixa a fila de leads. Fica atrás do login do painel como todo o resto."""
+    import os
+    p = Path(os.environ.get("PEDI_LEADS_CSV", "/root/jpos-entregaveis/pedi_leads.csv"))
+    if not p.exists():
+        return JSONResponse({"erro": "sem CSV ainda — capte leads primeiro"}, status_code=404)
+    return Response(p.read_bytes(), media_type="text/csv",
+                    headers={"Content-Disposition": 'attachment; filename="pedi_leads.csv"'})
+
+
 @app.get("/api/diagnostico")
 def diagnostico_dados() -> JSONResponse:
     return JSONResponse(_diagnostico())
@@ -1333,6 +1401,12 @@ def arbitragem_pagina() -> str:
 def pedi_toque_pagina() -> str:
     """Fila de primeiro toque da Pé Di: lead + mensagem pronta + WhatsApp."""
     return (_AQUI / "static" / "pedi-toque.html").read_text(encoding="utf-8")
+
+
+@app.get("/obs/pedi", response_class=HTMLResponse)
+def pedi_central_pagina() -> str:
+    """Central Pé Di: sondar, gerar demo, captar lead — sem sair do painel."""
+    return (_AQUI / "static" / "pedi.html").read_text(encoding="utf-8")
 
 
 @app.get("/obs/pedi-calculadora", response_class=HTMLResponse)

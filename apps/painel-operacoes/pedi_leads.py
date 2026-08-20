@@ -322,6 +322,30 @@ def exportar(leads: list[dict], destino: str) -> dict:
     return {"fila": destino, "n_fila": len(fila), "conferir": alt, "n_conferir": len(conferir)}
 
 
+def anexar(leads: list[dict], destino: str) -> int:
+    """Soma leads novos ao CSV existente, sem duplicar quem já está lá.
+
+    Anexa em vez de reescrever porque o CSV é a fila de trabalho do JP: um
+    `exportar` em cima apagaria os IDs que ele já tocou e a fila reiniciaria.
+    """
+    caminho = Path(destino)
+    existentes, ja = [], set()
+    if caminho.exists():
+        with caminho.open(encoding="utf-8-sig") as f:
+            existentes = list(csv.DictReader(f))
+        ja = {re.sub(r"\D", "", x.get("Telefone/WhatsApp", "")) for x in existentes}
+        ja.discard("")
+    novas = [x for x in para_linhas(leads)
+             if re.sub(r"\D", "", x["Telefone/WhatsApp"]) not in ja]
+    for i, linha in enumerate(novas, len(existentes) + 1):
+        linha["ID"] = f"PD{i:04d}"
+    with caminho.open("w", newline="", encoding="utf-8-sig") as f:
+        w = csv.DictWriter(f, fieldnames=COLUNAS)
+        w.writeheader()
+        w.writerows(existentes + novas)
+    return len(novas)
+
+
 def _chave() -> str:
     k = os.environ.get("GOOGLE_PLACES_API_KEY", "").strip()
     if not k:

@@ -1,0 +1,200 @@
+<!doctype html><html lang="pt-BR"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pé Di · Central</title>
+<style>
+:root{--bg:#060a12;--panel:#0c1422;--panel2:#0f1a2c;--line:#1b2942;--cy:#34e2ff;--op:#2fe6a0;
+      --ri:#ffb020;--rd:#ff6b6b;--mut:#8aa2c0;--txt:#e6edf7}
+*{box-sizing:border-box;margin:0}
+body{background:radial-gradient(800px 420px at 100% 0%,rgba(52,226,255,.06),transparent 55%),var(--bg);
+     color:var(--txt);font:15px/1.5 system-ui,-apple-system,sans-serif;padding:22px 16px;max-width:1000px;margin:0 auto}
+a{color:var(--cy);text-decoration:none}
+h1{font-size:1.35rem;margin-bottom:2px}
+h2{font-size:.95rem;margin-bottom:10px;letter-spacing:.03em;text-transform:uppercase;color:var(--mut)}
+.top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px}
+.sub{color:var(--mut);font-size:.85rem;margin-bottom:16px}
+.card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);
+      border-radius:14px;padding:14px 16px;margin-bottom:14px}
+input,select,button,textarea{font:inherit;border-radius:9px;border:1px solid var(--line);
+      background:#08101d;color:var(--txt);padding:8px 10px}
+input:focus,select:focus{outline:1px solid var(--cy)}
+.linha{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
+.linha label{color:var(--mut);font-size:.74rem;display:flex;flex-direction:column;gap:3px}
+.go{background:var(--cy);color:#001522;font-weight:700;border:0;cursor:pointer;padding:9px 16px}
+.go:hover{filter:brightness(1.1)}
+.go.sec{background:transparent;color:var(--mut);border:1px solid var(--line);font-weight:400}
+.go.sec:hover{color:var(--txt)}
+.go.perigo{background:transparent;color:var(--rd);border:1px solid rgba(255,107,107,.4)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:9px}
+.kpi{background:#08101d;border:1px solid var(--line);border-radius:10px;padding:9px 11px}
+.kpi small{color:var(--mut);font-size:.7rem;display:block}
+.kpi b{font-size:1.2rem;font-variant-numeric:tabular-nums}
+table{width:100%;border-collapse:collapse;font-size:.85rem}
+th{text-align:left;color:var(--mut);font-size:.7rem;padding:6px;border-bottom:1px solid var(--line)}
+td{padding:6px;border-bottom:1px solid rgba(27,41,66,.5);vertical-align:middle}
+.tag{border-radius:7px;padding:1px 8px;font-size:.72rem;font-weight:700;white-space:nowrap}
+.t1{background:rgba(138,162,192,.15);color:var(--mut)}
+.t3{background:rgba(52,226,255,.13);color:var(--cy)}
+.t4{background:rgba(167,139,250,.16);color:#c4b5fd}
+.ok{color:var(--op)}.ruim{color:var(--rd)}.aviso{color:var(--ri)}
+.job{font-size:.82rem;padding:7px 10px;border-radius:9px;background:#08101d;
+     border:1px solid var(--line);margin-bottom:6px;display:flex;justify-content:space-between;gap:10px}
+.job.rodando{border-color:rgba(52,226,255,.4)}
+.job.erro{border-color:rgba(255,107,107,.4);color:var(--rd)}
+.job.ok{border-color:rgba(47,230,160,.35)}
+.sonda{margin-top:10px;font-size:.85rem;padding:10px 12px;border-radius:10px;
+       background:#08101d;border:1px solid var(--line);white-space:pre-wrap}
+.atalhos{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.atalhos a{background:var(--panel);border:1px solid var(--line);border-radius:20px;
+           padding:6px 14px;font-size:.83rem}
+.atalhos a:hover{border-color:var(--cy)}
+</style></head><body>
+
+<div class="top"><h1>🩴 Pé Di · Central</h1><a href="/obs">← QG</a></div>
+<div class="sub">Gerar demo, captar lead, cotar e disparar — tudo daqui, sem pedir pra ninguém rodar script.</div>
+
+<div class="atalhos">
+  <a href="/obs/pedi-calculadora">🧮 Calculadora de cotação</a>
+  <a href="/obs/pedi-toque">📲 Primeiro toque</a>
+  <a href="/api/pedi/leads.csv">⬇️ Baixar CSV de leads</a>
+</div>
+
+<div class="card"><h2>Saúde</h2><div class="kpis" id="saude"></div></div>
+
+<div class="card">
+  <h2>1 · Sondar antes de gerar</h2>
+  <div class="sub" style="margin:0 0 9px">Vê se o negócio tem perfil e foto no Google — evita gerar
+    o demo inteiro pra descobrir que não tinha imagem.</div>
+  <div class="linha">
+    <label style="flex:1 1 320px">Nome e cidade
+      <input id="s-busca" placeholder="Ex: Academia Iron Gym, Adamantina, SP"></label>
+    <button class="go" onclick="sondar()">Sondar</button>
+  </div>
+  <div id="s-out"></div>
+</div>
+
+<div class="card">
+  <h2>2 · Gerar demo novo</h2>
+  <div class="linha">
+    <label style="flex:1 1 200px">Nome do negócio<input id="g-nome" placeholder="Academia Iron Gym"></label>
+    <label>Cidade<input id="g-cidade" placeholder="Adamantina" style="width:150px"></label>
+    <label>Modelo<select id="g-modelo">
+      <option value="assessoria">assessoria esportiva</option>
+      <option value="clube">clube</option>
+      <option value="box">box / crossfit</option>
+      <option value="uniformes">uniformes</option>
+      <option value="barbearia">barbearia</option>
+      <option value="estetica">estética</option>
+      <option value="advocacia">advocacia</option>
+    </select></label>
+    <label>Tier<select id="g-tier">
+      <option>T3</option><option>T4</option><option>T1</option><option>T2</option>
+    </select></label>
+    <button class="go" onclick="gerar()">Gerar</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>3 · Captar leads novos</h2>
+  <div class="linha">
+    <label style="flex:1 1 220px">Segmento (vira termo de busca)
+      <input id="c-seg" placeholder="Ex: buffet infantil"></label>
+    <label style="flex:1 1 200px">Cidades (vírgula, vazio = todas)
+      <input id="c-cid" placeholder="Bauru, Marília"></label>
+    <label>Alvo<input id="c-alvo" type="number" value="10" min="1" max="100" style="width:80px"></label>
+    <button class="go" onclick="captar()">Captar</button>
+  </div>
+</div>
+
+<div class="card"><h2>Em andamento</h2><div id="jobs"></div></div>
+
+<div class="card">
+  <h2>Demos publicados</h2>
+  <table><tbody id="demos"></tbody></table>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const post = (u, b) => fetch(u, {method:'POST', headers:{'Content-Type':'application/json'},
+                               body: JSON.stringify(b)}).then(r => r.json());
+
+async function carregar() {
+  const d = await (await fetch('/api/pedi/hub')).json();
+  const s = d.saude;
+  $('#saude').innerHTML =
+    `<div class="kpi"><small>demos no ar</small><b>${s.demos.total}</b></div>` +
+    `<div class="kpi"><small>com foto real</small><b class="${s.demos.com_foto_real === s.demos.total ? 'ok' : 'aviso'}">${s.demos.com_foto_real}</b></div>` +
+    `<div class="kpi"><small>imagem genérica</small><b class="${s.demos.com_imagem_generica.length ? 'ruim' : 'ok'}">${s.demos.com_imagem_generica.length}</b></div>` +
+    `<div class="kpi"><small>leads no CSV</small><b>${s.leads.no_csv}</b></div>` +
+    `<div class="kpi"><small>na fila de toque</small><b>${s.leads.restam ?? '—'}</b></div>` +
+    `<div class="kpi"><small>custo/par BASE</small><b>R$ ${(s.custo_par.BASE ?? 0).toFixed(2)}</b></div>` +
+    `<div class="kpi"><small>chave Places</small><b class="${s.places_key ? 'ok' : 'ruim'}">${s.places_key ? 'ok' : 'falta'}</b></div>`;
+
+  $('#demos').innerHTML = '<tr><th>Negócio</th><th>Tier</th><th>Fotos</th><th></th></tr>' +
+    d.demos.map(x => `<tr>
+      <td><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.nome)}</a>
+        <div style="color:var(--mut);font-size:.73rem">${esc(x.slug)}</div></td>
+      <td><span class="tag ${x.tier === 'T1' ? 't1' : x.tier === 'T4' ? 't4' : 't3'}">${esc(x.tier)}</span>
+        <div style="color:var(--mut);font-size:.7rem">${esc(x.motion)}</div></td>
+      <td class="${x.generico ? 'ruim' : x.fotos_reais ? 'ok' : 'aviso'}">
+        ${x.fotos_reais} real${x.placeholders ? ' · ' + x.placeholders + ' bloco' : ''}
+        ${x.generico ? '<br><b>genérica!</b>' : ''}</td>
+      <td style="white-space:nowrap">
+        <select id="t-${esc(x.slug)}" style="padding:4px 6px;font-size:.78rem">
+          ${['T1','T2','T3','T4'].map(t => `<option ${t === x.tier ? 'selected' : ''}>${t}</option>`).join('')}
+        </select>
+        <button class="go sec" style="padding:5px 9px;font-size:.78rem"
+          onclick="regerar('${esc(x.slug)}')">regerar</button>
+        <button class="go perigo" style="padding:5px 9px;font-size:.78rem"
+          onclick="excluir('${esc(x.slug)}')">✕</button></td></tr>`).join('');
+
+  $('#jobs').innerHTML = d.jobs.length ? d.jobs.map(j => `
+    <div class="job ${j.estado}"><span>${esc(j.rotulo)}</span>
+      <span>${esc(j.estado)}${j.duracao ? ' · ' + j.duracao + 's' : ''}
+        ${j.erro ? '<br>' + esc(j.erro) : ''}</span></div>`).join('')
+    : '<div style="color:var(--mut);font-size:.83rem">nada rodando</div>';
+
+  if (d.jobs.some(j => j.estado === 'rodando')) setTimeout(carregar, 3000);
+}
+
+async function sondar() {
+  const b = $('#s-busca').value.trim();
+  if (!b) return;
+  $('#s-out').innerHTML = '<div class="sonda">consultando o Google…</div>';
+  const r = await post('/api/pedi/hub/sondar', {busca: b});
+  $('#s-out').innerHTML = `<div class="sonda">${r.achou
+    ? `<b>${esc(r.nome)}</b>\n${esc(r.endereco || '')}\ntel ${esc(r.telefone || '—')} · nota ${r.nota ?? '—'} (${r.avaliacoes ?? 0} aval)\n` +
+      `site: ${esc(r.site || '—')}\n<b>fotos disponíveis: ${r.fotos}</b>\n→ ${esc(r.recado)}`
+    : `<span class="aviso"><b>não achou no Places</b> (${esc(r.status)})\n→ ${esc(r.recado)}</span>`}</div>`;
+}
+
+async function gerar() {
+  const nome = $('#g-nome').value.trim(), cidade = $('#g-cidade').value.trim();
+  if (!nome || !cidade) return alert('nome e cidade são obrigatórios');
+  await post('/api/pedi/hub/gerar', {nome, cidade, tier: $('#g-tier').value, modelo: $('#g-modelo').value});
+  $('#g-nome').value = '';
+  carregar();
+}
+
+async function captar() {
+  const seg = $('#c-seg').value.trim();
+  if (!seg) return alert('informe o segmento');
+  const cid = $('#c-cid').value.split(',').map(x => x.trim()).filter(Boolean);
+  await post('/api/pedi/hub/captar', {segmento: seg, cidades: cid, alvo: +$('#c-alvo').value || 10});
+  carregar();
+}
+
+async function regerar(slug) {
+  await post('/api/pedi/hub/regerar', {slug, tier: $('#t-' + slug).value});
+  carregar();
+}
+
+async function excluir(slug) {
+  if (!confirm('Tirar ' + slug + ' do ar?')) return;
+  await post('/api/pedi/hub/excluir', {slug});
+  carregar();
+}
+
+carregar();
+</script>
+</body></html>

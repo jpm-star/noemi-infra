@@ -268,6 +268,33 @@ NOVOS = {
 NEGOCIOS.update(NOVOS)
 
 
+# Modelos de serviço reaproveitáveis — é o que permite criar demo pelo painel sem
+# escrever copy do zero. Copy boa é o que demora; a estrutura não muda por cliente.
+MODELOS = {
+    "clube": {"cor": "#22d3ee", "cor2": "#083344",
+              "tagline": "Clube em {cidade} · sócio, esporte e eventos",
+              "servicos": _CLUBE},
+    "assessoria": {"cor": "#4ade80", "cor2": "#14532d",
+                   "tagline": "Assessoria esportiva em {cidade} · treino com acompanhamento",
+                   "servicos": _ASSESSORIA},
+    "box": {"cor": "#facc15", "cor2": "#1c1917",
+            "tagline": "Box em {cidade} · agende sua aula experimental",
+            "servicos": lambda cidade: NOVOS["crossfit-bauru"]["servicos"]},
+    "uniformes": {"cor": "#f97316", "cor2": "#7c2d12",
+                  "tagline": "Uniformes sob medida em {cidade} · orçamento pelo WhatsApp",
+                  "servicos": lambda cidade: NOVOS["vloz-sports"]["servicos"]},
+    "barbearia": {"cor": "#f5c518", "cor2": "#1a1a1a",
+                  "tagline": "Barbearia em {cidade} · agende pelo WhatsApp",
+                  "servicos": lambda cidade: NEGOCIOS["charles-cabeleireiros"]["servicos"]},
+    "estetica": {"cor": "#a3e635", "cor2": "#14532d",
+                 "tagline": "Estética em {cidade} · avaliação pelo WhatsApp",
+                 "servicos": lambda cidade: NEGOCIOS["oligoflora"]["servicos"]},
+    "advocacia": {"cor": "#c9a227", "cor2": "#0f2740",
+                  "tagline": "Advocacia em {cidade} · atendimento pelo WhatsApp",
+                  "servicos": lambda cidade: NEGOCIOS["vitor-canevaroli-advocacia"]["servicos"]},
+}
+
+
 def gerar(slugs: list[str] | None = None) -> dict:
     api_key = _chave()
     relatorio = {}
@@ -294,6 +321,10 @@ if __name__ == "__main__":
         assert motion_alto.css("nenhum") == "" and motion_alto.js("nenhum") == ""
         assert NEGOCIOS["charles-cabeleireiros"]["tier"] == "T1"
         assert len(NEGOCIOS) == 11, len(NEGOCIOS)
+        for m, cfg in MODELOS.items():   # todo modelo tem de render 6 serviços
+            sv = cfg["servicos"]("Lins")
+            assert len(sv) == 6 and all(x.get("desc") for x in sv), m
+            assert "{cidade}" in cfg["tagline"], m
         for s, d in NEGOCIOS.items():
             assert d.get("busca") and d.get("tier"), s
             assert len(d["servicos"]) == 6, s
