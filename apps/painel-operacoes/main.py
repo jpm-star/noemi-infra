@@ -366,6 +366,48 @@ async def pedi_publicar() -> JSONResponse:
     return JSONResponse(r, status_code=200 if r.get("ok") else 400)
 
 
+@app.get("/api/pedi/custo")
+def pedi_custo_resumo() -> JSONResponse:
+    """Curva ABC, custo por par, histórico e config. Base própria (pedi_custo.db)."""
+    import pedi_custo
+    return JSONResponse(pedi_custo.resumo())
+
+
+@app.post("/api/pedi/custo/item")
+async def pedi_custo_item(req: Request) -> JSONResponse:
+    """Cria (sem id) ou edita um componente da curva. A diferença vai pro log."""
+    import pedi_custo
+    d = await req.json()
+    try:
+        item = pedi_custo.salvar_item(d.get("id"), str(d.get("nome") or ""),
+                                      d.get("base"), d.get("premium"),
+                                      str(d.get("grupo") or "direto"), str(d.get("nota") or ""))
+    except (TypeError, ValueError) as e:
+        return JSONResponse({"erro": str(e)}, status_code=400)
+    return JSONResponse({"ok": True, "item": item, "custo": {t: pedi_custo.custo_par(t)
+                                                             for t in pedi_custo.TIPOS}})
+
+
+@app.delete("/api/pedi/custo/item/{id_}")
+def pedi_custo_remover(id_: int) -> JSONResponse:
+    import pedi_custo
+    ok = pedi_custo.remover_item(id_)
+    return JSONResponse({"ok": ok}, status_code=200 if ok else 404)
+
+
+@app.post("/api/pedi/custo/simular")
+async def pedi_custo_simular(req: Request) -> JSONResponse:
+    """Cotação ao vivo: tipo + quantidade + preço → custo, margem, imposto, veredito."""
+    import pedi_custo
+    d = await req.json()
+    try:
+        return JSONResponse(pedi_custo.simular(
+            str(d.get("tipo") or "BASE"), d.get("qtd") or 0, d.get("preco") or 0,
+            bool(d.get("bandeira")), bool(d.get("saquinho"))))
+    except (TypeError, ValueError) as e:
+        return JSONResponse({"erro": str(e)}, status_code=400)
+
+
 @app.get("/api/diagnostico")
 def diagnostico_dados() -> JSONResponse:
     return JSONResponse(_diagnostico())
@@ -1269,6 +1311,12 @@ def ideias_pagina() -> str:
 @app.get("/obs/arbitragem", response_class=HTMLResponse)
 def arbitragem_pagina() -> str:
     return (_AQUI / "static" / "arbitragem.html").read_text(encoding="utf-8")
+
+
+@app.get("/obs/pedi-calculadora", response_class=HTMLResponse)
+def pedi_calculadora_pagina() -> str:
+    """Calculadora da Pé Di: curva ABC + simulador de cotação ao vivo."""
+    return (_AQUI / "static" / "pedi-calculadora.html").read_text(encoding="utf-8")
 
 
 @app.get("/obs/pessoal", response_class=HTMLResponse)

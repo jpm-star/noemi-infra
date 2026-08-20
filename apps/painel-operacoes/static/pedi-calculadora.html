@@ -1,0 +1,176 @@
+<!doctype html><html lang="pt-BR"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pé Di · Calculadora de cotação</title>
+<style>
+:root{--bg:#060a12;--panel:#0c1422;--panel2:#0f1a2c;--line:#1b2942;--cy:#34e2ff;--op:#2fe6a0;
+      --ri:#ffb020;--rd:#ff6b6b;--mut:#8aa2c0;--txt:#e6edf7}
+*{box-sizing:border-box;margin:0}
+body{background:radial-gradient(700px 400px at 100% 0%,rgba(52,226,255,.06),transparent 55%),var(--bg);
+     color:var(--txt);font:15px/1.5 system-ui,-apple-system,sans-serif;padding:22px 16px;max-width:940px;margin:0 auto}
+a{color:var(--cy);text-decoration:none}
+h1{font-size:1.35rem;margin-bottom:2px}
+h2{font-size:1rem;margin-bottom:10px;letter-spacing:.02em}
+.top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px}
+.sub{color:var(--mut);font-size:.85rem;margin-bottom:18px}
+.card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);
+      border-radius:14px;padding:14px 16px;margin-bottom:16px}
+input,select,button{font:inherit;border-radius:9px;border:1px solid var(--line);background:#08101d;color:var(--txt);padding:8px 10px}
+input:focus,select:focus{outline:1px solid var(--cy)}
+.linha{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.linha label{color:var(--mut);font-size:.78rem;display:flex;flex-direction:column;gap:3px}
+.linha input[type=number]{width:120px}
+button.go{background:var(--cy);color:#001522;font-weight:700;border:0;cursor:pointer;padding:9px 18px}
+button.go:hover{filter:brightness(1.1)}
+.chk{flex-direction:row!important;align-items:center;gap:6px!important;font-size:.85rem;color:var(--txt)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:14px}
+.kpi{background:#08101d;border:1px solid var(--line);border-radius:11px;padding:10px 12px}
+.kpi small{color:var(--mut);font-size:.72rem;display:block;margin-bottom:3px}
+.kpi b{font-size:1.15rem;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.kpi.destaque{border-color:rgba(47,230,160,.4);background:rgba(47,230,160,.06)}
+.kpi.destaque b{color:var(--op)}
+.veredito{margin-top:14px;padding:12px 14px;border-radius:11px;font-weight:700;font-size:1.02rem}
+.veredito.ok{background:rgba(47,230,160,.1);border:1px solid rgba(47,230,160,.4);color:var(--op)}
+.veredito.no{background:rgba(255,107,107,.1);border:1px solid rgba(255,107,107,.4);color:var(--rd)}
+.aviso{margin-top:10px;padding:10px 12px;border-radius:11px;font-size:.86rem;
+       background:rgba(255,176,32,.09);border:1px solid rgba(255,176,32,.38);color:var(--ri)}
+table{width:100%;border-collapse:collapse;font-size:.88rem}
+th{text-align:left;color:var(--mut);font-size:.72rem;font-weight:600;padding:6px;border-bottom:1px solid var(--line)}
+td{padding:4px 6px;border-bottom:1px solid rgba(27,41,66,.5)}
+td input{padding:5px 7px;width:100%;background:transparent;border-color:transparent}
+td input:hover{border-color:var(--line)}
+td input.num{width:92px;text-align:right;font-variant-numeric:tabular-nums}
+tr.grupo td{color:var(--cy);font-size:.72rem;letter-spacing:.08em;padding-top:12px;border:0;font-weight:700}
+tr.total td{font-weight:800;border-top:1px solid var(--line);border-bottom:0;padding-top:9px;font-variant-numeric:tabular-nums}
+.ic{background:none;border:0;color:var(--mut);cursor:pointer;padding:3px 5px}
+.ic:hover{color:var(--rd)}
+.log{font-size:.8rem;color:var(--mut);font-variant-numeric:tabular-nums}
+.log div{padding:5px 0;border-bottom:1px solid rgba(27,41,66,.5)}
+.log b{color:var(--txt);font-weight:600}
+.vazio{color:var(--mut);text-align:center;padding:20px}
+</style></head><body>
+
+<div class="top"><h1>🧮 Pé Di · Calculadora de cotação</h1><a href="/obs">← QG</a></div>
+<div class="sub">Custo real por par, margem, comissão e imposto — pra cotar ao vivo na ligação, sem abrir planilha.</div>
+
+<div class="card">
+  <h2>Simulador de pedido</h2>
+  <div class="linha">
+    <label>Tipo<select id="tipo"><option>BASE</option><option>PREMIUM</option></select></label>
+    <label>Quantidade de pares<input id="qtd" type="number" min="1" step="1" value="300"></label>
+    <label>Preço cotado por par (R$)<input id="preco" type="number" min="0" step="0.01" value="25.97"></label>
+    <label class="chk"><input type="checkbox" id="bandeira" checked> upsell bandeira</label>
+    <label class="chk"><input type="checkbox" id="saquinho"> upsell saquinho</label>
+    <button class="go" onclick="simular()">Calcular</button>
+  </div>
+  <div id="resultado"></div>
+</div>
+
+<div class="card">
+  <h2>Curva ABC — componentes do custo por par</h2>
+  <div class="sub" style="margin:0 0 8px">Editar um valor salva na hora e grava no histórico. O custo real por par é a soma de tudo.</div>
+  <table id="curva"><tbody></tbody></table>
+  <div class="linha" style="margin-top:12px">
+    <select id="n-grupo"><option value="direto">direto</option><option value="provisao">provisão</option><option value="diluicao">diluição</option></select>
+    <input id="n-nome" placeholder="novo componente" style="flex:1 1 200px">
+    <input id="n-base" type="number" step="0.01" placeholder="base" style="width:100px">
+    <input id="n-premium" type="number" step="0.01" placeholder="premium" style="width:100px">
+    <button class="go" onclick="criar()">Adicionar</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Histórico de mudanças</h2>
+  <div class="log" id="log"></div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const brl = v => (v ?? 0).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+const pct = v => ((v ?? 0) * 100).toFixed(1).replace('.', ',') + '%';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const ROTULO = {direto: 'CUSTO DIRETO', provisao: 'PROVISÕES', diluicao: 'DILUIÇÕES'};
+
+async function carregar() {
+  const d = await (await fetch('/api/pedi/custo')).json();
+  let html = '<tr><th></th><th>Componente</th><th style="text-align:right">Base (R$)</th>' +
+             '<th style="text-align:right">Premium (R$)</th><th></th></tr>';
+  let atual = null;
+  for (const it of d.curva) {
+    if (it.grupo !== atual) { atual = it.grupo; html += `<tr class="grupo"><td colspan="5">${ROTULO[atual] || atual}</td></tr>`; }
+    html += `<tr data-id="${it.id}" data-grupo="${it.grupo}">
+      <td></td>
+      <td><input value="${esc(it.nome)}" title="${esc(it.nota)}" onchange="salvar(this)"></td>
+      <td><input class="num" type="number" step="0.01" value="${it.base.toFixed(2)}" onchange="salvar(this)"></td>
+      <td><input class="num" type="number" step="0.01" value="${it.premium.toFixed(2)}" onchange="salvar(this)"></td>
+      <td><button class="ic" title="remover" onclick="remover(${it.id})">✕</button></td></tr>`;
+  }
+  html += `<tr class="total"><td></td><td>CUSTO REAL POR PAR</td>
+    <td style="text-align:right">${brl(d.custo.BASE)}</td>
+    <td style="text-align:right">${brl(d.custo.PREMIUM)}</td><td></td></tr>`;
+  $('#curva tbody').innerHTML = html;
+
+  $('#log').innerHTML = d.historico.length ? d.historico.map(h =>
+    `<div><b>${esc(h.item)}</b> · ${esc(h.campo)}: ${esc(h.de) || '—'} → ${esc(h.para) || '—'}
+     <span style="float:right">${esc(h.ts).replace('T', ' ').slice(0, 16)}</span></div>`).join('')
+    : '<div class="vazio">nenhuma mudança registrada ainda</div>';
+}
+
+async function salvar(el) {
+  const tr = el.closest('tr'), ins = tr.querySelectorAll('input');
+  await fetch('/api/pedi/custo/item', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({id: +tr.dataset.id, grupo: tr.dataset.grupo, nome: ins[0].value,
+                          base: +ins[1].value, premium: +ins[2].value})});
+  await carregar();
+  await simular();
+}
+
+async function criar() {
+  const nome = $('#n-nome').value.trim();
+  if (!nome) return;
+  await fetch('/api/pedi/custo/item', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({nome, grupo: $('#n-grupo').value, base: +$('#n-base').value || 0,
+                          premium: +$('#n-premium').value || 0})});
+  $('#n-nome').value = $('#n-base').value = $('#n-premium').value = '';
+  await carregar();
+  await simular();
+}
+
+async function remover(id) {
+  await fetch('/api/pedi/custo/item/' + id, {method: 'DELETE'});
+  await carregar();
+  await simular();
+}
+
+async function simular() {
+  const r = await (await fetch('/api/pedi/custo/simular', {method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({tipo: $('#tipo').value, qtd: +$('#qtd').value, preco: +$('#preco').value,
+                          bandeira: $('#bandeira').checked, saquinho: $('#saquinho').checked})})).json();
+
+  const kpi = (rot, val, cls = '') => `<div class="kpi ${cls}"><small>${rot}</small><b>${val}</b></div>`;
+  let html = '<div class="kpis">' +
+    kpi('Custo real / par', brl(r.custo_par)) +
+    kpi('Custo total', brl(r.custo_total)) +
+    kpi('Margem / par', brl(r.margem_par)) +
+    kpi('Margem', pct(r.margem_pct), 'destaque') +
+    kpi('Margem total', brl(r.margem_total), 'destaque') +
+    kpi('Imposto (Simples) / par', brl(r.imposto_par)) +
+    kpi('PREÇO FINAL AO CLIENTE', brl(r.preco_final_cliente), 'destaque') +
+    kpi('Adiantamento 50%', brl(r.adiantamento_50));
+  if (r.bandeira) html += kpi('Bandeira — comissão do vendedor',
+    brl(r.bandeira.comissao_vendedor) + ` (${brl(r.bandeira.por_par)}/par)`);
+  if (r.saquinho) html += kpi('Saquinho — margem da empresa', brl(r.saquinho.margem_total));
+  html += '</div>';
+
+  if (r.ajuste_automatico) {
+    const a = r.ajuste_automatico;
+    html += `<div class="aviso">⚙️ <b>Preço ajustado automaticamente</b>: ${brl(a.de)} → ${brl(a.para)}
+      (passos de ${brl(a.passo)}). ${esc(a.porque)}. Piso alcançado em ${brl(a.alvo_piso)}.</div>`;
+  }
+  html += `<div class="veredito ${r.fecha ? 'ok' : 'no'}">${esc(r.veredito)}</div>`;
+  $('#resultado').innerHTML = html;
+}
+
+carregar().then(simular);
+</script>
+</body></html>
