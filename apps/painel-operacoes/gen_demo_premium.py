@@ -82,6 +82,21 @@ def baixar_fotos(slug: str, busca: str, quantas: int = 6) -> list[str]:
     return fora
 
 
+def _milhar(n) -> str:
+    """7096 -> 7.096. Número sem separador lê como dado cru de sistema, não como
+    página escrita por gente — e é o dono do negócio que vai ler."""
+    return f"{int(n):,}".replace(",", ".")
+
+
+def _corta(txt: str, limite: int = 200) -> str:
+    """Corta na última palavra INTEIRA. Cortar no meio ('...buscam d') faz o
+    depoimento parecer quebrado justamente na seção que serve pra dar credibilidade."""
+    t = " ".join((txt or "").split())
+    if len(t) <= limite:
+        return t
+    return t[:limite].rsplit(" ", 1)[0].rstrip(".,;:") + "…"
+
+
 def _primeiro_nome(autor: str) -> str:
     """'Francisco Kurimori' -> 'Francisco K.' — crédito sem expor nome completo."""
     partes = (autor or "").strip().split()
@@ -195,7 +210,7 @@ def render(neg: dict, dados: dict, fotos: list[str]) -> str:
     prova = ""
     if dados.get("nota") and dados.get("avaliacoes"):
         depos = "".join(f'''
-          <figure class="depo revela"><blockquote>{e(r.get("text", "").strip()[:220])}</blockquote>
+          <figure class="depo revela"><blockquote>{e(_corta(r.get("text", "")))}</blockquote>
             <figcaption>{e(_primeiro_nome(r.get("author_name", "")))} <span>· Google</span></figcaption>
           </figure>''' for r in dados["reviews"])
         nota = f"{dados['nota']:.1f}".replace(".", ",")
@@ -204,13 +219,13 @@ def render(neg: dict, dados: dict, fotos: list[str]) -> str:
   <p class="rot">O que dizem</p>
   <h2 class="tit">{e(neg.get("tit_prova", "A reputação já existe."))}</h2>
   <div class="nota-big revela"><b>{nota}</b>
-    <span>de {dados["avaliacoes"]} avaliações no Google.</span></div>
+    <span>de {_milhar(dados["avaliacoes"])} avaliações no Google.</span></div>
   <div class="depos">{depos}</div>
 </div></section>'''
 
     tel = dados.get("telefone") or ""
     end = dados.get("endereco") or ""
-    selo = (f'<p class="selo">★ {dados["nota"]:.1f} no Google <b>· {dados["avaliacoes"]} avaliações</b></p>'
+    selo = (f'<p class="selo">★ {dados["nota"]:.1f} no Google <b>· {_milhar(dados["avaliacoes"])} avaliações</b></p>'
             if dados.get("nota") else "")
 
     return f"""<!doctype html><html lang="pt-BR" data-tier="{neg['tier']}" data-motion="completo"
@@ -289,6 +304,11 @@ if __name__ == "__main__":
             assert x in h, x
         for proibido in ("fonts.googleapis", "cdn.", "gsap", "three.min", "loremflickr", "picsum"):
             assert proibido not in h, proibido
+        assert _milhar(7096) == "7.096" and _milhar(61) == "61"
+        cortado = _corta("uma frase bem comprida que precisa ser cortada", 20)
+        assert cortado.endswith("…") and not cortado.endswith(" …")
+        assert " d…" not in cortado, "cortou no meio da palavra"
+        assert _corta("curta") == "curta"
         assert _primeiro_nome("Francisco Kurimori") == "Francisco K."
         assert _primeiro_nome("") == "Cliente do Google"
         print("OK — self-check do template premium passou.")
