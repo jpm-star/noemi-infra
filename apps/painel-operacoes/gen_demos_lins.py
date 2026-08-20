@@ -87,9 +87,10 @@ DEMOS_LINS = {
 }
 
 
-def main() -> None:
-    motor.DEMOS.update(DEMOS_LINS)
-    motor.main(list(DEMOS_LINS))
+# SEM main() de propósito. Este módulo virou SÓ o dataset dos 3 de Lins; quem gera
+# é gen_demos_venda.py, que baixa foto real do Places e aplica o gate de motion.
+# Rodar a geração daqui republicaria os 3 com o banco de imagem genérico — foi o
+# fallback aleatório dele que pôs um gato no card de massagem.
 
 
 if __name__ == "__main__":
@@ -105,4 +106,4 @@ if __name__ == "__main__":
         assert "Charles Cabeleireiros" in html and "Degradê" in html
         print("OK — self-check dos demos passou.")
     else:
-        main()
+        print("Este módulo é só o dataset. Para gerar: python3 gen_demos_venda.py")
