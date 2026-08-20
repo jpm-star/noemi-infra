@@ -424,6 +424,13 @@ async def pedi_toque_marcar(req: Request) -> JSONResponse:
     return JSONResponse(pedi_toque.marcar(str(d.get("id") or ""), str(d.get("resultado") or "enviado")))
 
 
+@app.get("/api/demos/fila")
+def demos_fila() -> JSONResponse:
+    """Demos prontos pra prospectar: contato, vídeo e mensagem já montada."""
+    import pedi_hub
+    return JSONResponse({"fila": pedi_hub.fila_demos()})
+
+
 @app.get("/api/pedi/hub")
 def pedi_hub_estado() -> JSONResponse:
     """Saúde + demos publicados + jobs. Uma chamada, a tela inteira."""

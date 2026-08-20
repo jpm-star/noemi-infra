@@ -104,6 +104,60 @@ def listar_demos() -> list[dict]:
     return fora
 
 
+def fila_demos() -> list[dict]:
+    """Demos prontos pra prospectar: contato + vídeo + mensagem já escrita.
+
+    O vídeo vai como LINK do próprio domínio, não anexo: o WhatsApp renderiza
+    preview com play, então o lead vê o site dele antes de decidir clicar. É o
+    "vídeo de cara" sem disparo automático — disparo em massa queima o número e é
+    decisão do JP, não default de ferramenta.
+    """
+    import json as _json
+    import urllib.parse
+    fora = []
+    for d in listar_demos():
+        meta_f = SITES / d["slug"] / "meta.json"
+        tem_video = (SITES / d["slug"] / "video.mp4").exists()
+        if not meta_f.exists():
+            continue
+        try:
+            m = _json.loads(meta_f.read_text(encoding="utf-8"))
+        except ValueError:
+            continue
+        fone = re.sub(r"\D", "", m.get("telefone") or "")
+        # fixo sem DDD (8 dígitos) não vira WhatsApp: prefixar 55 produziria um
+        # número que EXISTE e é de outra pessoa. Melhor sem link do que link errado.
+        if len(fone) < 10:
+            fone = ""
+        elif not fone.startswith("55"):
+            fone = "55" + fone
+        video = f"https://p.jpos.com.br/{d['slug']}/video.mp4"
+        # gancho honesto: muda conforme ele já tenha site ou não
+        if m.get("site_atual"):
+            gancho = ("Vi o site de vocês e montei uma versão nova pra comparar — "
+                      "com as avaliações do Google de vocês na página.")
+        else:
+            gancho = ("Vocês não têm site e apareceram no Google com nota alta. "
+                      "Montei um pra vocês verem como ficaria.")
+        nota_br = str(m.get("nota", "")).replace(".", ",")  # 4.6 -> 4,6
+        nota = (f" Vocês estão com {nota_br} de {m['avaliacoes']} avaliações — "
+                f"isso é o que a página mostra logo de cara."
+                if m.get("nota") and m.get("avaliacoes") else "")
+        msg = (f"Oi! Aqui é o João Pedro, da JPOS.\n\n{gancho}{nota}\n\n"
+               f"Vídeo de 10s: {video}\nSite: {d['url']}\n\n"
+               f"Fiz sem compromisso. Se não fizer sentido, é só falar.")
+        fora.append({
+            "slug": d["slug"], "negocio": m.get("negocio") or d["nome"], "tier": d["tier"],
+            "telefone": m.get("telefone") or "", "tem_video": tem_video,
+            "tem_site_hoje": bool(m.get("site_atual")),
+            "nota": m.get("nota"), "avaliacoes": m.get("avaliacoes", 0),
+            "url": d["url"], "video": video if tem_video else "", "mensagem": msg,
+            "link": f"https://wa.me/{fone}?text={urllib.parse.quote(msg)}" if fone else "",
+        })
+    fora.sort(key=lambda x: (x["avaliacoes"] or 0), reverse=True)
+    return fora
+
+
 def sondar(busca: str) -> dict:
     """O negócio tem perfil no Google e quantas fotos? Rodar ANTES de gerar.
 

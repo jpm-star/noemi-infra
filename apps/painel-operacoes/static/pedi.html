@@ -108,6 +108,13 @@ td{padding:6px;border-bottom:1px solid rgba(27,41,66,.5);vertical-align:middle}
 <div class="card"><h2>Em andamento</h2><div id="jobs"></div></div>
 
 <div class="card">
+  <h2>Prospectar com vídeo</h2>
+  <div class="sub" style="margin:0 0 10px">Cada demo com o contato do Google, o vídeo de 10s
+    e a mensagem pronta. O link do vídeo abre com preview no WhatsApp.</div>
+  <div id="fila"></div>
+</div>
+
+<div class="card">
   <h2>Demos publicados</h2>
   <table><tbody id="demos"></tbody></table>
 </div>
@@ -147,6 +154,23 @@ async function carregar() {
           onclick="regerar('${esc(x.slug)}')">regerar</button>
         <button class="go perigo" style="padding:5px 9px;font-size:.78rem"
           onclick="excluir('${esc(x.slug)}')">✕</button></td></tr>`).join('');
+
+  const fr = await (await fetch('/api/demos/fila')).json();
+  $('#fila').innerHTML = fr.fila.length ? fr.fila.map(x => `
+    <div class="job" style="display:block">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
+        <div><b>${esc(x.negocio)}</b>
+          <div style="color:var(--mut);font-size:.75rem">${esc(x.tier)} · ${esc(x.telefone) || 'sem telefone'}
+            ${x.avaliacoes ? ' · ' + x.avaliacoes + ' aval' : ''}
+            · ${x.tem_site_hoje ? 'tem site hoje' : 'SEM site hoje'}</div></div>
+        <span style="white-space:nowrap">
+          <a class="go sec" style="padding:5px 9px;font-size:.78rem" href="${esc(x.video)}" target="_blank" rel="noopener">vídeo</a>
+          <a class="go sec" style="padding:5px 9px;font-size:.78rem" href="${esc(x.url)}" target="_blank" rel="noopener">demo</a>
+          ${x.link ? `<a class="go" style="padding:5px 12px;font-size:.78rem;background:#25d366;color:#04220f"
+             href="${esc(x.link)}" target="_blank" rel="noopener">WhatsApp</a>`
+             : '<span style="color:var(--ri);font-size:.75rem">fixo sem DDD</span>'}
+        </span></div></div>`).join('')
+    : '<div style="color:var(--mut);font-size:.83rem">nenhum demo com meta ainda</div>';
 
   $('#jobs').innerHTML = d.jobs.length ? d.jobs.map(j => `
     <div class="job ${j.estado}"><span>${esc(j.rotulo)}</span>
