@@ -270,7 +270,25 @@ NEGOCIOS.update(NOVOS)
 
 # Modelos de serviço reaproveitáveis — é o que permite criar demo pelo painel sem
 # escrever copy do zero. Copy boa é o que demora; a estrutura não muda por cliente.
+_IMOBILIARIA = lambda cidade: [
+    {"nome": "Imóveis de Alto Padrão", "preco": "carteira exclusiva", "img": "luxury,house,interior",
+     "desc": f"Casas e apartamentos selecionados em {cidade}, com visita agendada e acompanhamento do início ao fim."},
+    {"nome": "Lançamentos", "preco": "condição de tabela", "img": "modern,building,architecture",
+     "desc": "Acesso a unidades na planta antes do mercado, com simulação de financiamento na hora."},
+    {"nome": "Locação", "preco": "consulte disponibilidade", "img": "apartment,living,room",
+     "desc": "Contrato com garantia sem fiador e vistoria documentada. Chave na mão em poucos dias."},
+    {"nome": "Avaliação do seu Imóvel", "preco": "gratuita", "img": "house,keys,evaluation",
+     "desc": "Quanto vale hoje, com base em negócios fechados na região — não em chute de portal."},
+    {"nome": "Venda com Exclusividade", "preco": "comissão combinada", "img": "real,estate,sale",
+     "desc": "Fotos profissionais, anúncio em todos os portais e filtro de curioso antes da visita."},
+    {"nome": "Falar com um Corretor", "preco": "agora pelo WhatsApp", "img": "realtor,consultation",
+     "desc": "Diga o bairro e a faixa de preço; a gente manda as opções que realmente cabem."},
+]
+
 MODELOS = {
+    "imobiliaria": {"cor": "#c9a227", "cor2": "#111827",
+                    "tagline": "Imóveis em {cidade} · fale com um corretor pelo WhatsApp",
+                    "servicos": _IMOBILIARIA},
     "clube": {"cor": "#22d3ee", "cor2": "#083344",
               "tagline": "Clube em {cidade} · sócio, esporte e eventos",
               "servicos": _CLUBE},
